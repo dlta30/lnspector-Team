@@ -172,6 +172,39 @@ def inspect_defender():
         return []
 
 
+def create_pdf_report(report, destination):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.pdfgen import canvas
+    from reportlab.lib import colors
+    pdf = canvas.Canvas(str(destination), pagesize=A4)
+    w, h = A4; y = h - 55
+    pdf.setFillColor(colors.HexColor('#090a0f')); pdf.rect(0, h-90, w, 90, fill=1, stroke=0)
+    pdf.setFillColor(colors.HexColor('#ff4057')); pdf.setFont('Helvetica-Bold', 17); pdf.drawString(38, h-42, '3EN INSPECTOR TEAM')
+    pdf.setFillColor(colors.white); pdf.setFont('Helvetica', 9); pdf.drawString(38, h-62, 'PLAYER INSPECTION REPORT | by: ROITH')
+    pdf.setFillColor(colors.black)
+    def write(text, bold=False):
+        nonlocal y
+        if y < 45: pdf.showPage(); y = h-45
+        pdf.setFont('Helvetica-Bold' if bold else 'Helvetica', 8)
+        text = str(text).encode('ascii', 'replace').decode('ascii')
+        pdf.drawString(38, y, text[:130]); y -= 12
+    y = h-115
+    write('SUMMARY', True)
+    write('Player: ' + str(report.get('player', 'Unknown')))
+    write('Device: ' + str(report.get('device', 'Unknown')))
+    write('Platform: ' + str(report.get('platform', 'Unknown')))
+    write('Created UTC: ' + str(report.get('created_at', 'Unknown')))
+    write('Results: ' + str(report.get('result_count', 0)) + ' | Review leads: ' + str(report.get('review_count', 0)))
+    write('Files inventoried: ' + str(report.get('files_examined', 0)))
+    write('FINDINGS', True)
+    for i, item in enumerate(report.get('results', []), 1):
+        write(str(i) + '. [' + str(item.get('severity', 'info')).upper() + '] ' + str(item.get('category', '')) + ' - ' + str(item.get('item', '')), True)
+        if item.get('path'): write('Path: ' + str(item['path']))
+        if item.get('details'): write('Details: ' + str(item['details']))
+        if item.get('sha256'): write('SHA256: ' + str(item['sha256']))
+    write('Note: indicators are leads for human review, not proof of cheating or malware.')
+    pdf.save()
+
 class InspectorApp:
     def __init__(self, root):
         self.root = root
@@ -393,6 +426,27 @@ class InspectorApp:
         dest = filedialog.asksaveasfilename(defaultextension=".json", initialfile="3EN_Inspection.json", filetypes=[("JSON","*.json")])
         if dest:
             Path(dest).write_text(json.dumps(self.report, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def export_pdf(self):
+        if not self.report or not self.pdf_path or not self.pdf_path.exists():
+            messagebox.showinfo('لا يوجد تقرير', 'شغّل الفحص أولًا.')
+            return
+        dest = filedialog.asksaveasfilename(defaultextension='.pdf', initialfile=self.pdf_path.name, filetypes=[('PDF', '*.pdf')])
+        if dest:
+            import shutil
+            shutil.copy2(self.pdf_path, dest)
+            messagebox.showinfo('تم الحفظ', 'تم حفظ نسخة PDF في المسار المحدد.')
+
+    def save_report_copy(self):
+        if not self.report or not self.report_path or not self.pdf_path:
+            messagebox.showinfo('لا يوجد تقرير', 'شغّل الفحص أولًا.')
+            return
+        dest = filedialog.askdirectory(title='اختر مجلد حفظ التقرير')
+        if dest:
+            import shutil
+            shutil.copy2(self.pdf_path, Path(dest) / self.pdf_path.name)
+            shutil.copy2(self.report_path, Path(dest) / self.report_path.name)
+            messagebox.showinfo('تم الحفظ', 'حُفظت نسختا PDF وJSON.')
 
     def export_csv(self):
         if not self.results:
