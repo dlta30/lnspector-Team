@@ -6,6 +6,8 @@ import platform
 import subprocess
 import threading
 import time
+import secrets
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 import tkinter as tk
@@ -14,6 +16,7 @@ from tkinter import ttk, messagebox, filedialog
 APP_NAME = "3EN INSPECTOR TEAM"
 BYLINE = "by: ROITH"
 REPORT_DIR = Path.home() / "Documents" / "3EN_Inspector_Team"
+CONFIG_PATH = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "3EN_Inspector_Team" / "config.json"
 EXTENSIONS = {".exe", ".dll", ".sys", ".bat", ".cmd", ".ps1", ".vbs", ".scr", ".asi", ".lua"}
 TERMS = ("cheat engine", "aimbot", "wallhack", "injector", "mapper", "mod menu", "trainer", "memory editor", "hwid spoofer")
 MAX_FILES = 12000
@@ -26,6 +29,23 @@ RED = "#ff4057"
 TEXT = "#f4f5f8"
 MUTED = "#969daf"
 BORDER = "#292d3a"
+
+
+def load_config():
+    try:
+        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def save_config(config):
+    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    CONFIG_PATH.write_text(json.dumps(config, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def password_digest(password, salt):
+    import hashlib
+    return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt.encode("utf-8"), 250000).hex()
 
 
 def sha256_file(path):
@@ -163,6 +183,8 @@ class InspectorApp:
         self.root.configure(bg=BG)
         self.results = []
         self.report = None
+        self.report_path = None
+        self.config = load_config()
         self.busy = False
         self._setup_style()
         self._build()
@@ -250,6 +272,8 @@ class InspectorApp:
         footer = tk.Frame(self.root, bg=BG); footer.pack(fill="x", padx=22, pady=(0, 14))
         tk.Button(footer, text="تصدير تقرير JSON", command=self.export_json, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="right")
         tk.Button(footer, text="تصدير CSV", command=self.export_csv, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="right", padx=8)
+        tk.Button(footer, text="إعدادات Webhook", command=self.webhook_settings, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="left", padx=(0, 8))
+        tk.Button(footer, text="إرسال التقرير إلى Discord", command=self.send_discord, bg="#5865F2", fg="white", relief="flat", padx=12, pady=7).pack(side="left", padx=(0, 8))
         tk.Button(footer, text="فتح مجلد التقارير", command=self.open_reports, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="left")
         tk.Label(footer, text="الاشتباه ليس إثباتًا • افحص المصدر والتوقيع قبل اتخاذ قرار", bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(side="left", padx=12)
 
@@ -316,6 +340,7 @@ class InspectorApp:
 
     def finish(self, report, path):
         self.report = report
+        self.report_path = path
         self.results = report["results"]
         self.render()
         self.total_label.configure(text=str(report["result_count"]))
@@ -377,6 +402,56 @@ class InspectorApp:
             writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
             writer.writeheader(); writer.writerows(self.results)
 
+    def webhook_settings(self):
+        from tkinter import simpledialog
+        value = simpledialog.askstring("إعدادات Webhook", "ألصق رابط Discord Webhook للروم المطلوب (احتفظ به سريًا):", initialvalue=self.config.get("discord_webhook", ""), parent=self.root)
+        if value is None:
+            return
+        value = value.strip()
+        if value and not value.startswith(("https://discord.com/api/webhooks/", "https://discordapp.com/api/webhooks/")):
+            messagebox.showerror("رابط غير صحيح", "أدخل رابط Discord Webhook رسميًا.")
+            return
+        self.config["discord_webhook"] = value
+        save_config(self.config)
+        messagebox.showinfo("تم الحفظ", "حُفظ رابط Webhook محليًا.")
+
+    def send_discord(self):
+        if not self.report or not self.report_path or not self.report_path.exists():
+            messagebox.showinfo("لا يوجد تقرير", "شغّل الفحص أولًا.")
+            return
+        webhook = self.config.get("discord_webhook", "")
+        if not webhook:
+            messagebox.showinfo("إعدادات مطلوبة", "أضف رابط Webhook أولًا.")
+            return
+        if not messagebox.askyesno("تأكيد الإرسال", "سيتم إرسال ملخص وملف JSON إلى روم Discord المحدد. هل وافق صاحب الجهاز على مشاركة التقرير؟"):
+            return
+        threading.Thread(target=self._send_discord_worker, args=(webhook, self.report_path, self.report), daemon=True).start()
+
+    def _send_discord_worker(self, webhook, report_path, report):
+        try:
+            boundary = "----3EN" + secrets.token_hex(12)
+            summary = json.dumps({"content": (
+                "**3EN INSPECTOR TEAM**\\n"
+                f"Player: {report.get('player', 'Unknown')}\\n"
+                f"Device: {report.get('device', 'Unknown')}\\n"
+                f"Results: {report.get('result_count', 0)} | Review leads: {report.get('review_count', 0)}\\n"
+                "Note: indicators require human review; they are not proof."
+            )}, ensure_ascii=False).encode("utf-8")
+            parts = [
+                f"--{boundary}\\r\\nContent-Disposition: form-data; name=\"payload_json\"\\r\\nContent-Type: application/json\\r\\n\\r\\n".encode(),
+                summary, b"\\r\\n",
+                f"--{boundary}\\r\\nContent-Disposition: form-data; name=\"files[0]\"; filename=\"{report_path.name}\"\\r\\nContent-Type: application/json\\r\\n\\r\\n".encode(),
+                report_path.read_bytes(), b"\\r\\n", f"--{boundary}--\\r\\n".encode()
+            ]
+            req = urllib.request.Request(webhook, data=b"".join(parts), headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}, method="POST")
+            with urllib.request.urlopen(req, timeout=30) as response:
+                if response.status not in (200, 204):
+                    raise RuntimeError(f"HTTP {response.status}")
+            self.root.after(0, lambda: messagebox.showinfo("تم الإرسال", "أُرسل ملخص الفحص وملف JSON إلى الروم المحدد."))
+        except Exception as exc:
+            msg = str(exc)
+            self.root.after(0, lambda m=msg: messagebox.showerror("فشل الإرسال", "تعذر الإرسال. تحقق من Webhook والاتصال.\\n" + m))
+
     def open_reports(self):
         REPORT_DIR.mkdir(parents=True, exist_ok=True)
         if os.name == "nt":
@@ -385,7 +460,47 @@ class InspectorApp:
             messagebox.showinfo("مجلد التقارير", str(REPORT_DIR))
 
 
+def password_gate(root):
+    from tkinter import simpledialog
+    config = load_config()
+    saved = config.get("password_hash")
+    if not saved:
+        messagebox.showinfo("إنشاء كلمة مرور", "أول تشغيل: أنشئ كلمة مرور للأداة. احفظها؛ لا توجد استعادة تلقائية.")
+        while True:
+            p1 = simpledialog.askstring("كلمة المرور", "أنشئ كلمة مرور (8 أحرف على الأقل):", show="*", parent=root)
+            if p1 is None:
+                return False
+            if len(p1) < 8:
+                messagebox.showwarning("قصيرة جدًا", "استخدم 8 أحرف على الأقل.")
+                continue
+            p2 = simpledialog.askstring("تأكيد كلمة المرور", "أعد كتابة كلمة المرور:", show="*", parent=root)
+            if p2 is None:
+                return False
+            if p1 != p2:
+                messagebox.showerror("غير متطابقتين", "كلمتا المرور غير متطابقتين.")
+                continue
+            salt = secrets.token_hex(16)
+            config["password_salt"] = salt
+            config["password_hash"] = password_digest(p1, salt)
+            save_config(config)
+            return True
+    for _ in range(3):
+        p = simpledialog.askstring("3EN INSPECTOR TEAM", "أدخل كلمة المرور:", show="*", parent=root)
+        if p is None:
+            return False
+        if secrets.compare_digest(password_digest(p, config.get("password_salt", "")), saved):
+            return True
+        messagebox.showerror("خطأ", "كلمة المرور غير صحيحة.")
+    messagebox.showerror("مرفوض", "تجاوزت عدد المحاولات.")
+    return False
+
+
 if __name__ == "__main__":
     root = tk.Tk()
-    app = InspectorApp(root)
-    root.mainloop()
+    root.withdraw()
+    if password_gate(root):
+        root.deiconify()
+        app = InspectorApp(root)
+        root.mainloop()
+    else:
+        root.destroy()
