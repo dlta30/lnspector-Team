@@ -13,7 +13,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-APP_NAME = "3EN INSPECTOR TEAM"
+APP_NAME = "3eN Inspector Team"
 BYLINE = "by: ROITH"
 REPORT_DIR = Path.home() / "Documents" / "3EN_Inspector_Team"
 CONFIG_PATH = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "3EN_Inspector_Team" / "config.json"
@@ -241,7 +241,7 @@ class InspectorApp:
         mark = tk.Label(header, text="3", bg="#2a0d16", fg=RED, font=("Segoe UI", 25, "bold"), width=3, height=2)
         mark.pack(side="left", padx=(0, 14))
         brand = tk.Frame(header, bg=BG); brand.pack(side="left", fill="y")
-        tk.Label(brand, text="3EN INSPECTOR TEAM", bg=BG, fg=TEXT, font=("Segoe UI", 22, "bold")).pack(anchor="w")
+        tk.Label(brand, text="3eN Inspector Team", bg=BG, fg=TEXT, font=("Segoe UI", 22, "bold")).pack(anchor="w")
         tk.Label(brand, text="by: ROITH  •  PLAYER INSPECTION OPERATIONS", bg=BG, fg=RED, font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(3, 0))
         tk.Label(header, text="CONSENT-BASED LOCAL INSPECTION", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="right", anchor="n", pady=8)
 
@@ -324,8 +324,13 @@ class InspectorApp:
             self.sessions_tree.heading(col, text=title)
             self.sessions_tree.column(col, width=width, anchor="w")
         self.sessions_tree.pack(fill="both", expand=True, padx=18, pady=8)
-        tk.Button(self.sessions_page, text="تحديث القائمة", command=self.refresh_saved_reports,
-                  bg=RED, fg="white", relief="flat", padx=12, pady=8).pack(anchor="e", padx=18, pady=(0, 14))
+        self.sessions_tree.bind("<Double-1>", self.open_selected_report)
+        session_actions = tk.Frame(self.sessions_page, bg=BG)
+        session_actions.pack(fill="x", padx=18, pady=(0, 14))
+        tk.Button(session_actions, text="فتح التقرير المحدد", command=self.open_selected_report,
+                  bg=RED, fg="white", relief="flat", padx=12, pady=8).pack(side="right")
+        tk.Button(session_actions, text="تحديث القائمة", command=self.refresh_saved_reports,
+                  bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=8).pack(side="right", padx=8)
         self.refresh_saved_reports()
 
         self.reports_page = tk.Frame(self.pages, bg=BG)
@@ -371,6 +376,26 @@ class InspectorApp:
                 except OSError:
                     date = "غير معروف"
                 self.sessions_tree.insert("", "end", values=(path.name, date, path.suffix[1:].upper()))
+
+    def open_selected_report(self, event=None):
+        if not hasattr(self, "sessions_tree"):
+            return
+        selected = self.sessions_tree.selection()
+        if not selected:
+            messagebox.showinfo("اختر تقريرًا", "حدد تقريرًا من القائمة أولًا.")
+            return
+        name = self.sessions_tree.item(selected[0], "values")[0]
+        path = REPORT_DIR / name
+        if not path.is_file() or path.parent.resolve() != REPORT_DIR.resolve():
+            messagebox.showerror("تعذر فتح التقرير", "مسار التقرير غير صالح.")
+            return
+        try:
+            if os.name == "nt":
+                os.startfile(str(path))
+            else:
+                messagebox.showinfo("مسار التقرير", str(path))
+        except OSError as exc:
+            messagebox.showerror("تعذر فتح التقرير", str(exc))
 
     def _stat(self, parent, title, value):
         frame = tk.Frame(parent, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
