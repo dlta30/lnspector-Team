@@ -574,7 +574,7 @@ class InspectorApp:
         if not webhook:
             messagebox.showinfo("إعدادات مطلوبة", "أضف رابط Webhook أولًا.")
             return
-        if not messagebox.askyesno("تأكيد الإرسال", "سيتم إرسال ملخص وملف JSON إلى روم Discord المحدد. هل وافق صاحب الجهاز على مشاركة التقرير؟"):
+        if not messagebox.askyesno("تأكيد الإرسال", "سيتم إرسال ملخص وملف PDF إلى روم Discord المحدد. هل وافق صاحب الجهاز على مشاركة التقرير؟"):
             return
         threading.Thread(target=self._send_discord_worker, args=(webhook, self.pdf_path, self.report), daemon=True).start()
 
