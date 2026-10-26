@@ -448,6 +448,12 @@ class InspectorApp:
         self.progress.configure(value=100)
         self.status.configure(text=f"اكتمل الفحص — حُفظ التقرير محليًا: {path}")
         self.scan_btn.configure(state="normal", text="↻  إعادة الفحص")
+        self.refresh_saved_reports()
+        if hasattr(self, "events_text"):
+            self.events_text.configure(state="normal")
+            self.events_text.insert("end", f"اكتمل فحص {report.get('player', 'Unknown')} — {report.get('result_count', 0)} نتيجة، {report.get('review_count', 0)} مؤشرات للمراجعة.\\n")
+            self.events_text.see("end")
+            self.events_text.configure(state="disabled")
         self.busy = False
 
     def fail(self, message):
