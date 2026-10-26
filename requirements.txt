@@ -1,1 +1,2 @@
-reportlab>=4.2,<5
+# PDF report generation dependency
+reportlab>=4.0,<5.0
