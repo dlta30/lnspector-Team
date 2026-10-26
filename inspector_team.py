@@ -245,6 +245,10 @@ class InspectorApp:
                       relief="flat", bd=0, font=("Segoe UI", 10), padx=18, pady=11,
                       cursor="hand2").pack(fill="x", padx=8, pady=2)
         tk.Frame(self.sidebar, bg=BORDER, height=1).pack(fill="x", padx=12, pady=18)
+        tk.Button(self.sidebar, text="☁  لوحة المشرف المركزية", anchor="w",
+                  command=self.central_dashboard_settings, bg="#0d0f16", fg=TEXT,
+                  activebackground="#3a101b", activeforeground=RED, relief="flat", bd=0,
+                  font=("Segoe UI", 9), padx=18, pady=11, cursor="hand2").pack(fill="x", padx=8, pady=2)
         tk.Label(self.sidebar, text="●  Inspector", bg="#0d0f16", fg=RED,
                  font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=18)
         tk.Label(self.sidebar, text="LOCAL SCAN  •  v1.0.0", bg="#0d0f16", fg=MUTED,
@@ -588,6 +592,62 @@ class InspectorApp:
             fields = ("category","item","path","severity","details","modified_utc","size_bytes","sha256")
             writer = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
             writer.writeheader(); writer.writerows(self.results)
+
+    def central_dashboard_settings(self):
+        from tkinter import simpledialog
+        current_url = self.config.get("dashboard_url", "")
+        current_key = self.config.get("dashboard_api_key", "")
+        value = simpledialog.askstring("لوحة المشرف المركزية", "عنوان الخادم، مثال: https://your-private-server.example (بدون / في النهاية):", initialvalue=current_url, parent=self.root)
+        if value is None:
+            return
+        value = value.strip().rstrip("/")
+        if value and not value.startswith(("https://", "http://127.0.0.1", "http://localhost")):
+            messagebox.showerror("عنوان غير آمن", "استخدم HTTPS للخوادم البعيدة. HTTP مسموح فقط لـ localhost.")
+            return
+        key = simpledialog.askstring("مفتاح الربط", "ألصق INSPECTOR_API_KEY الذي ضبطته على الخادم. سيُحفظ محليًا على هذا الجهاز:", initialvalue=current_key, parent=self.root, show="*")
+        if key is None:
+            return
+        self.config["dashboard_url"] = value
+        self.config["dashboard_api_key"] = key.strip()
+        save_config(self.config)
+        messagebox.showinfo("تم الحفظ", "حُفظ إعداد الربط محليًا. لن يُرسل أي تقرير إلا بعد موافقتك في رسالة التأكيد.")
+
+    def send_central_report(self):
+        if not self.report:
+            messagebox.showinfo("لا يوجد تقرير", "شغّل الفحص أولًا.")
+            return
+        server = self.config.get("dashboard_url", "").rstrip("/")
+        api_key = self.config.get("dashboard_api_key", "")
+        if not server or not api_key:
+            messagebox.showinfo("إعداد الربط", "افتح «لوحة المشرف المركزية» من القائمة وأدخل عنوان الخادم ومفتاح API أولًا.")
+            return
+        if not messagebox.askyesno("مشاركة التقرير", "سيُرسل ملف JSON الخاص بنتائج الفحص (أسماء العمليات والمسارات ومؤشرات المراجعة) إلى خادم اللوحة المركزية. لن تُرسل ملفات الجهاز نفسها. هل توافق؟"):
+            return
+        report = dict(self.report)
+        payload = {
+            "session_id": secrets.token_hex(8),
+            "computer_label": str(report.get("device", "Unspecified"))[:100],
+            "summary": f"Player: {report.get('player','Unknown')} | results: {report.get('result_count',0)} | review leads: {report.get('review_count',0)}",
+            "report": report
+        }
+        threading.Thread(target=self._central_upload_worker, args=(server, api_key, payload), daemon=True).start()
+
+    def _central_upload_worker(self, server, api_key, payload):
+        try:
+            data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            req = urllib.request.Request(
+                server + "/api/v1/reports", data=data,
+                headers={"Content-Type": "application/json", "X-Inspector-Key": api_key},
+                method="POST"
+            )
+            with urllib.request.urlopen(req, timeout=20) as response:
+                result = json.loads(response.read().decode("utf-8"))
+                if response.status not in (200, 201) or not result.get("ok"):
+                    raise RuntimeError("The server did not confirm receipt.")
+            self.root.after(0, lambda: messagebox.showinfo("تم الإرسال", f"تم حفظ التقرير في اللوحة المركزية. رقم التقرير: {result.get('report_id','?')}"))
+        except Exception as exc:
+            msg = str(exc)
+            self.root.after(0, lambda m=msg: messagebox.showerror("تعذر الإرسال", "لم يتم تأكيد وصول التقرير. تحقق من عنوان الخادم ومفتاح API والاتصال.\n" + m))
 
     def webhook_settings(self):
         from tkinter import simpledialog
