@@ -12,7 +12,8 @@ A Windows desktop inspection utility with a dark red/black UI.
 - First launch requires creating a local password; later launches prompt for it (3 attempts).
 - Optional Discord webhook delivery: sends a short summary and attaches the JSON report after an explicit confirmation.
 - Optional request for Microsoft Defender to perform its own quick scan.
-- Local reports stored in Documents/3EN_Inspector_Team.
+- Inventory of executable/script files in common user and program folders, with time/file-count limits to avoid an unbounded disk crawl. File contents are not read by the inventory.
+- Automatically saves PDF and JSON reports in Documents/3EN_Inspector_Team, with buttons to save a copy or download the PDF.
 
 ## Build a Windows EXE
 1. Open the repository's **Actions** tab.
