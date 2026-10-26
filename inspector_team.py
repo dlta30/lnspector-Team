@@ -474,7 +474,7 @@ class InspectorApp:
         messagebox.showinfo("تم الحفظ", "حُفظ رابط Webhook محليًا.")
 
     def send_discord(self):
-        if not self.report or not self.report_path or not self.report_path.exists():
+        if not self.report or not self.report_path or not self.report_path.exists() or not self.pdf_path or not self.pdf_path.exists():
             messagebox.showinfo("لا يوجد تقرير", "شغّل الفحص أولًا.")
             return
         webhook = self.config.get("discord_webhook", "")
@@ -489,26 +489,26 @@ class InspectorApp:
         try:
             boundary = "----3EN" + secrets.token_hex(12)
             summary = json.dumps({"content": (
-                "**3EN INSPECTOR TEAM**\\n"
-                f"Player: {report.get('player', 'Unknown')}\\n"
-                f"Device: {report.get('device', 'Unknown')}\\n"
-                f"Results: {report.get('result_count', 0)} | Review leads: {report.get('review_count', 0)}\\n"
+                "**3EN INSPECTOR TEAM**\n"
+                f"Player: {report.get('player', 'Unknown')}\n"
+                f"Device: {report.get('device', 'Unknown')}\n"
+                f"Results: {report.get('result_count', 0)} | Review leads: {report.get('review_count', 0)}\n"
                 "Note: indicators require human review; they are not proof."
             )}, ensure_ascii=False).encode("utf-8")
             parts = [
-                f"--{boundary}\\r\\nContent-Disposition: form-data; name=\"payload_json\"\\r\\nContent-Type: application/json\\r\\n\\r\\n".encode(),
-                summary, b"\\r\\n",
-                f"--{boundary}\\r\\nContent-Disposition: form-data; name=\"files[0]\"; filename=\"{report_path.name}\"\\r\\nContent-Type: application/pdf\\r\\n\\r\\n".encode(),
-                report_path.read_bytes(), b"\\r\\n", f"--{boundary}--\\r\\n".encode()
+                f"--{boundary}\r\nContent-Disposition: form-data; name=\"payload_json\"\r\nContent-Type: application/json\r\n\r\n".encode(),
+                summary, b"\r\n",
+                f"--{boundary}\r\nContent-Disposition: form-data; name=\"files[0]\"; filename=\"{report_path.name}\"\r\nContent-Type: application/pdf\r\n\r\n".encode(),
+                report_path.read_bytes(), b"\r\n", f"--{boundary}--\r\n".encode()
             ]
             req = urllib.request.Request(webhook, data=b"".join(parts), headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}, method="POST")
             with urllib.request.urlopen(req, timeout=30) as response:
                 if response.status not in (200, 204):
                     raise RuntimeError(f"HTTP {response.status}")
-            self.root.after(0, lambda: messagebox.showinfo("تم الإرسال", "أُرسل ملخص الفحص وملف JSON إلى الروم المحدد."))
+            self.root.after(0, lambda: messagebox.showinfo("تم الإرسال", "أُرسل ملخص الفحص وملف PDF إلى الروم المحدد."))
         except Exception as exc:
             msg = str(exc)
-            self.root.after(0, lambda m=msg: messagebox.showerror("فشل الإرسال", "تعذر الإرسال. تحقق من Webhook والاتصال.\\n" + m))
+            self.root.after(0, lambda m=msg: messagebox.showerror("فشل الإرسال", "تعذر الإرسال. تحقق من Webhook والاتصال.\n" + m))
 
     def open_reports(self):
         REPORT_DIR.mkdir(parents=True, exist_ok=True)
