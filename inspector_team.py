@@ -483,7 +483,7 @@ class InspectorApp:
             return
         if not messagebox.askyesno("تأكيد الإرسال", "سيتم إرسال ملخص وملف JSON إلى روم Discord المحدد. هل وافق صاحب الجهاز على مشاركة التقرير؟"):
             return
-        threading.Thread(target=self._send_discord_worker, args=(webhook, self.report_path, self.report), daemon=True).start()
+        threading.Thread(target=self._send_discord_worker, args=(webhook, self.pdf_path, self.report), daemon=True).start()
 
     def _send_discord_worker(self, webhook, report_path, report):
         try:
