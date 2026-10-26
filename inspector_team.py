@@ -232,7 +232,11 @@ class InspectorApp:
         style.configure("TCombobox", fieldbackground=PANEL2, background=PANEL2, foreground=TEXT)
 
     def _build(self):
-        header = tk.Frame(self.root, bg=BG)
+        self.pages = ttk.Notebook(self.root)
+        self.pages.pack(fill="both", expand=True, padx=10, pady=10)
+        self.main_page = tk.Frame(self.pages, bg=BG)
+        self.pages.add(self.main_page, text="الرئيسية")
+        header = tk.Frame(self.main_page, bg=BG)
         header.pack(fill="x", padx=22, pady=(18, 12))
         mark = tk.Label(header, text="3", bg="#2a0d16", fg=RED, font=("Segoe UI", 25, "bold"), width=3, height=2)
         mark.pack(side="left", padx=(0, 14))
@@ -241,7 +245,7 @@ class InspectorApp:
         tk.Label(brand, text="by: ROITH  •  PLAYER INSPECTION OPERATIONS", bg=BG, fg=RED, font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(3, 0))
         tk.Label(header, text="CONSENT-BASED LOCAL INSPECTION", bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="right", anchor="n", pady=8)
 
-        control = tk.Frame(self.root, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        control = tk.Frame(self.main_page, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         control.pack(fill="x", padx=22, pady=(0, 12))
         tk.Label(control, text="جلسة التفتيش", bg=PANEL, fg=TEXT, font=("Segoe UI", 12, "bold")).grid(row=0, column=0, sticky="w", padx=14, pady=(12, 4))
         tk.Label(control, text="اسم اللاعب", bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).grid(row=1, column=0, sticky="w", padx=14)
@@ -262,18 +266,18 @@ class InspectorApp:
         self.scan_btn.grid(row=1, column=3, rowspan=2, padx=18, pady=12)
         control.grid_columnconfigure(0, weight=1)
 
-        stats = tk.Frame(self.root, bg=BG); stats.pack(fill="x", padx=18, pady=(0, 12))
+        stats = tk.Frame(self.main_page, bg=BG); stats.pack(fill="x", padx=18, pady=(0, 12))
         self.total_label = self._stat(stats, "نتائج الفحص", "0")
         self.review_label = self._stat(stats, "مؤشرات للمراجعة", "0")
         self.status_label = self._stat(stats, "حالة النظام", "READY")
 
-        progress_frame = tk.Frame(self.root, bg=BG); progress_frame.pack(fill="x", padx=22, pady=(0, 12))
+        progress_frame = tk.Frame(self.main_page, bg=BG); progress_frame.pack(fill="x", padx=22, pady=(0, 12))
         self.status = tk.Label(progress_frame, text="جاهز — أدخل اسم اللاعب وابدأ بموافقته", bg=BG, fg=MUTED, anchor="w")
         self.status.pack(fill="x")
         self.progress = ttk.Progressbar(progress_frame, maximum=100, mode="determinate")
         self.progress.pack(fill="x", pady=(7, 0))
 
-        tools = tk.Frame(self.root, bg=BG); tools.pack(fill="x", padx=22, pady=(0, 8))
+        tools = tk.Frame(self.main_page, bg=BG); tools.pack(fill="x", padx=22, pady=(0, 8))
         tk.Label(tools, text="نتائج الفحص", bg=BG, fg=TEXT, font=("Segoe UI", 12, "bold")).pack(side="left")
         self.search = tk.StringVar()
         search = tk.Entry(tools, textvariable=self.search, bg=PANEL2, fg=TEXT, insertbackground=TEXT, relief="flat", width=28)
@@ -284,7 +288,7 @@ class InspectorApp:
         self.search.trace_add("write", lambda *_: self.render())
         self.filter.trace_add("write", lambda *_: self.render())
 
-        table_wrap = tk.Frame(self.root, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
+        table_wrap = tk.Frame(self.main_page, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         table_wrap.pack(fill="both", expand=True, padx=22, pady=(0, 12))
         cols = ("severity", "category", "item", "path", "details")
         self.tree = ttk.Treeview(table_wrap, columns=cols, show="headings")
@@ -301,7 +305,7 @@ class InspectorApp:
         self.tree.grid(row=0, column=0, sticky="nsew"); yscroll.grid(row=0, column=1, sticky="ns"); xscroll.grid(row=1, column=0, sticky="ew")
         table_wrap.grid_rowconfigure(0, weight=1); table_wrap.grid_columnconfigure(0, weight=1)
 
-        footer = tk.Frame(self.root, bg=BG); footer.pack(fill="x", padx=22, pady=(0, 14))
+        footer = tk.Frame(self.main_page, bg=BG); footer.pack(fill="x", padx=22, pady=(0, 14))
         tk.Button(footer, text="تنزيل تقرير PDF", command=self.export_pdf, bg=RED, fg="white", relief="flat", padx=12, pady=7).pack(side="right")
         tk.Button(footer, text="حفظ التقرير", command=self.save_report_copy, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="right", padx=8)
         tk.Button(footer, text="تصدير CSV", command=self.export_csv, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="right", padx=8)
@@ -309,6 +313,64 @@ class InspectorApp:
         tk.Button(footer, text="إرسال التقرير إلى Discord", command=self.send_discord, bg="#5865F2", fg="white", relief="flat", padx=12, pady=7).pack(side="left", padx=(0, 8))
         tk.Button(footer, text="فتح مجلد التقارير", command=self.open_reports, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="left")
         tk.Label(footer, text="الاشتباه ليس إثباتًا • افحص المصدر والتوقيع قبل اتخاذ قرار", bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(side="left", padx=12)
+
+        # Additional real pages for saved reports, session history, and settings.
+        self.sessions_page = tk.Frame(self.pages, bg=BG)
+        self.pages.add(self.sessions_page, text="الجلسات")
+        tk.Label(self.sessions_page, text="سجل الجلسات والتقارير المحفوظة", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=18, pady=(18, 8))
+        self.sessions_tree = ttk.Treeview(self.sessions_page, columns=("name", "date", "type"), show="headings")
+        for col, title, width in (("name", "اسم التقرير", 420), ("date", "آخر تعديل", 220), ("type", "النوع", 100)):
+            self.sessions_tree.heading(col, text=title)
+            self.sessions_tree.column(col, width=width, anchor="w")
+        self.sessions_tree.pack(fill="both", expand=True, padx=18, pady=8)
+        tk.Button(self.sessions_page, text="تحديث القائمة", command=self.refresh_saved_reports,
+                  bg=RED, fg="white", relief="flat", padx=12, pady=8).pack(anchor="e", padx=18, pady=(0, 14))
+        self.refresh_saved_reports()
+
+        self.reports_page = tk.Frame(self.pages, bg=BG)
+        self.pages.add(self.reports_page, text="التقارير")
+        tk.Label(self.reports_page, text="التقارير المتاحة", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=18, pady=(18, 8))
+        tk.Label(self.reports_page, text="اختر تقريرًا من صفحة الجلسات أو شغّل فحصًا جديدًا لإنشاء PDF وJSON.",
+                 bg=BG, fg=MUTED, font=("Segoe UI", 10)).pack(anchor="w", padx=18, pady=4)
+        tk.Button(self.reports_page, text="فتح مجلد التقارير", command=self.open_reports,
+                  bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=8).pack(anchor="w", padx=18, pady=12)
+
+        self.settings_page = tk.Frame(self.pages, bg=BG)
+        self.pages.add(self.settings_page, text="الإعدادات")
+        tk.Label(self.settings_page, text="إعدادات النظام", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=18, pady=(18, 8))
+        tk.Label(self.settings_page, text="Discord Webhook", bg=BG, fg=MUTED).pack(anchor="w", padx=18, pady=(10, 2))
+        tk.Button(self.settings_page, text="إعداد Discord Webhook", command=self.webhook_settings,
+                  bg=RED, fg="white", relief="flat", padx=12, pady=8).pack(anchor="w", padx=18)
+        tk.Label(self.settings_page, text="التفتيش الحالي محلي وبموافقة صاحب الجهاز. لا يثبت الغش بشكل قطعي.",
+                 bg=BG, fg=MUTED, wraplength=850, justify="left").pack(anchor="w", padx=18, pady=18)
+
+        self.events_page = tk.Frame(self.pages, bg=BG)
+        self.pages.add(self.events_page, text="سجل الأحداث")
+        tk.Label(self.events_page, text="سجل الأحداث", bg=BG, fg=TEXT,
+                 font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=18, pady=(18, 8))
+        self.events_text = tk.Text(self.events_page, bg=PANEL, fg=TEXT, insertbackground=TEXT,
+                                   relief="flat", height=20, wrap="word")
+        self.events_text.pack(fill="both", expand=True, padx=18, pady=8)
+        self.events_text.insert("end", "تم تشغيل 3eN Inspector Team\\n")
+        self.events_text.insert("end", "يتم تسجيل نتائج الفحص بعد اكتماله.\\n")
+        self.events_text.configure(state="disabled")
+
+    def refresh_saved_reports(self):
+        if not hasattr(self, "sessions_tree"):
+            return
+        for item in self.sessions_tree.get_children():
+            self.sessions_tree.delete(item)
+        REPORT_DIR.mkdir(parents=True, exist_ok=True)
+        for path in sorted(REPORT_DIR.glob("*"), key=lambda p: p.stat().st_mtime if p.exists() else 0, reverse=True):
+            if path.is_file() and path.suffix.lower() in (".pdf", ".json", ".csv"):
+                try:
+                    date = datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+                except OSError:
+                    date = "غير معروف"
+                self.sessions_tree.insert("", "end", values=(path.name, date, path.suffix[1:].upper()))
 
     def _stat(self, parent, title, value):
         frame = tk.Frame(parent, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
