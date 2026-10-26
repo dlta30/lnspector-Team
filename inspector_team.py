@@ -224,7 +224,7 @@ class InspectorApp:
     def _setup_style(self):
         style = ttk.Style()
         style.theme_use("clam")
-        style.configure("TNotebook", background=BG, borderwidth=0, tabposition="wn")
+        style.configure("TNotebook", background=BG, borderwidth=0)
         style.configure("TNotebook.Tab", background=PANEL, foreground=MUTED,
                         padding=(15, 13), width=15, font=("Segoe UI", 10, "bold"))
         style.map("TNotebook.Tab", background=[("selected", "#3a101b")],
