@@ -13,7 +13,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-APP_NAME = "3eN Inspector Team"
+APP_NAME = "3EN INSPECTOR TEAM"
 BYLINE = "by: ROITH"
 REPORT_DIR = Path.home() / "Documents" / "3EN_Inspector_Team"
 CONFIG_PATH = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "3EN_Inspector_Team" / "config.json"
@@ -209,8 +209,8 @@ class InspectorApp:
     def __init__(self, root):
         self.root = root
         self.root.title(f"{APP_NAME} | {BYLINE}")
-        self.root.geometry("1180x790")
-        self.root.minsize(950, 650)
+        self.root.geometry("1380x860")
+        self.root.minsize(1050, 700)
         self.root.configure(bg=BG)
         self.results = []
         self.report = None
@@ -224,6 +224,11 @@ class InspectorApp:
     def _setup_style(self):
         style = ttk.Style()
         style.theme_use("clam")
+        style.configure("TNotebook", background=BG, borderwidth=0, tabposition="wn")
+        style.configure("TNotebook.Tab", background=PANEL, foreground=MUTED,
+                        padding=(15, 13), width=15, font=("Segoe UI", 10, "bold"))
+        style.map("TNotebook.Tab", background=[("selected", "#3a101b")],
+                  foreground=[("selected", RED)])
         style.configure("Treeview", background=PANEL, foreground=TEXT, fieldbackground=PANEL,
                         rowheight=29, borderwidth=0, font=("Segoe UI", 9))
         style.configure("Treeview.Heading", background=PANEL2, foreground=TEXT,
@@ -231,11 +236,39 @@ class InspectorApp:
         style.map("Treeview", background=[("selected", "#4a1c27")], foreground=[("selected", TEXT)])
         style.configure("TCombobox", fieldbackground=PANEL2, background=PANEL2, foreground=TEXT)
 
+
+    def _build_sidebar_navigation(self):
+        entries = [("⌂  الرئيسية", 0), ("⚡  بدء التفتيش", 0), ("▣  الجلسات", 1), ("▤  التقارير", 2), ("⚙  الإعدادات", 3), ("◷  سجل الأحداث", 4)]
+        for label, index in entries:
+            tk.Button(self.sidebar, text=label, anchor="w", command=lambda i=index: self.pages.select(i),
+                      bg="#0d0f16", fg=TEXT, activebackground="#3a101b", activeforeground=RED,
+                      relief="flat", bd=0, font=("Segoe UI", 10), padx=18, pady=11,
+                      cursor="hand2").pack(fill="x", padx=8, pady=2)
+        tk.Frame(self.sidebar, bg=BORDER, height=1).pack(fill="x", padx=12, pady=18)
+        tk.Label(self.sidebar, text="●  Inspector", bg="#0d0f16", fg=RED,
+                 font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=18)
+        tk.Label(self.sidebar, text="LOCAL SCAN  •  v1.0.0", bg="#0d0f16", fg=MUTED,
+                 font=("Segoe UI", 8)).pack(anchor="w", padx=18, pady=(4, 12))
+
     def _build(self):
-        self.pages = ttk.Notebook(self.root)
-        self.pages.pack(fill="both", expand=True, padx=10, pady=10)
+        shell = tk.Frame(self.root, bg=BG)
+        shell.pack(fill="both", expand=True)
+        self.sidebar = tk.Frame(shell, bg="#0d0f16", width=205,
+                                highlightbackground=BORDER, highlightthickness=1)
+        self.sidebar.pack(side="left", fill="y", padx=(10, 0), pady=10)
+        self.sidebar.pack_propagate(False)
+        tk.Label(self.sidebar, text="✦", bg="#0d0f16", fg=RED,
+                 font=("Segoe UI", 34, "bold")).pack(pady=(22, 0))
+        tk.Label(self.sidebar, text="3EN", bg="#0d0f16", fg=TEXT,
+                 font=("Segoe UI", 20, "bold")).pack()
+        tk.Label(self.sidebar, text="INSPECTOR TEAM", bg="#0d0f16", fg=RED,
+                 font=("Segoe UI", 10, "bold")).pack()
+        tk.Label(self.sidebar, text="by: ROITH", bg="#0d0f16", fg=MUTED,
+                 font=("Segoe UI", 9)).pack(pady=(0, 24))
+        self.pages = ttk.Notebook(shell)
+        self.pages.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         self.main_page = tk.Frame(self.pages, bg=BG)
-        self.pages.add(self.main_page, text="الرئيسية")
+        self.pages.add(self.main_page, text="⌂  الرئيسية")
         header = tk.Frame(self.main_page, bg=BG)
         header.pack(fill="x", padx=22, pady=(18, 12))
         mark = tk.Label(header, text="3", bg="#2a0d16", fg=RED, font=("Segoe UI", 25, "bold"), width=3, height=2)
@@ -332,6 +365,7 @@ class InspectorApp:
         tk.Button(session_actions, text="تحديث القائمة", command=self.refresh_saved_reports,
                   bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=8).pack(side="right", padx=8)
         self.refresh_saved_reports()
+        self._build_sidebar_navigation()
 
         self.reports_page = tk.Frame(self.pages, bg=BG)
         self.pages.add(self.reports_page, text="التقارير")
