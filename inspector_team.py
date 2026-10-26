@@ -249,6 +249,10 @@ class InspectorApp:
                   command=self.central_dashboard_settings, bg="#0d0f16", fg=TEXT,
                   activebackground="#3a101b", activeforeground=RED, relief="flat", bd=0,
                   font=("Segoe UI", 9), padx=18, pady=11, cursor="hand2").pack(fill="x", padx=8, pady=2)
+        tk.Button(self.sidebar, text="⇧  إرسال التقرير بموافقة", anchor="w",
+                  command=self.send_central_report, bg="#0d0f16", fg=TEXT,
+                  activebackground="#3a101b", activeforeground=RED, relief="flat", bd=0,
+                  font=("Segoe UI", 9), padx=18, pady=11, cursor="hand2").pack(fill="x", padx=8, pady=2)
         tk.Label(self.sidebar, text="●  Inspector", bg="#0d0f16", fg=RED,
                  font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=18)
         tk.Label(self.sidebar, text="LOCAL SCAN  •  v1.0.0", bg="#0d0f16", fg=MUTED,
