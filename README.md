@@ -42,9 +42,19 @@ The repository now includes `dashboard_server.py`, an optional Flask dashboard f
    - `INSPECTOR_OWNER_USER=owner` (or your preferred owner username)
    - `INSPECTOR_OWNER_PASSWORD` to a strong password of at least 12 characters
    - `INSPECTOR_SECRET_KEY` to a long random secret
-   - `INSPECTOR_API_KEY` to a separate long random key for report submissions
 3. Start it with `python dashboard_server.py`, then open `http://127.0.0.1:5000`.
 
-On Windows PowerShell, set a variable for the current terminal with `$env:INSPECTOR_OWNER_PASSWORD="use-a-long-unique-password"` (repeat for the other variables). Do not commit real secrets to GitHub. The owner can create inspector/viewer accounts and set report-view permissions. Report ingestion is disabled until `INSPECTOR_API_KEY` is configured.
+On Windows PowerShell, set a variable for the current terminal with `$env:INSPECTOR_OWNER_PASSWORD="use-a-long-unique-password"` (repeat for the other variables). Do not commit real secrets to GitHub. The owner can create inspector/viewer accounts and set report-view permissions. Inspectors can create a two-hour session code from **Sessions**; the desktop user enters that code and explicitly approves sending one JSON report. Each code can be used once. The older API-key endpoint remains optional.
 
-**Security and deployment:** this is an initial optional dashboard, not a hardened public production service. Keep it bound to localhost or a trusted private network unless you add HTTPS, a production WSGI server, rate limiting, CSRF protection, secure cookie settings, and deployment secrets. Never expose the development server directly to the public internet. The API accepts JSON report data only (not file uploads or remote commands). The desktop client integration, end-to-end tests, and hosted deployment are still outstanding.
+**Security and deployment:** this is an initial optional dashboard, not a hardened public production service. Keep it bound to localhost or a trusted private network unless you add HTTPS, a production WSGI server, rate limiting, CSRF protection, secure cookie settings, and deployment secrets. Never expose the development server directly to the public internet. The API accepts JSON report data only (not file uploads or remote commands). The desktop app now has central dashboard URL settings and a report-send flow using one-time session codes. End-to-end tests and hosted deployment are still outstanding.
+
+
+## Session-code workflow
+
+1. Start the dashboard on the trusted inspection host and sign in as owner or inspector.
+2. Open **Sessions** and create a code. It expires after two hours and accepts one report.
+3. On the player's Windows app, open **لوحة المشرف المركزية** in the left menu and set the dashboard URL.
+4. After the local scan finishes, choose **إرسال التقرير بموافقة**, enter the code, and confirm sharing.
+5. Open **Reports** in the dashboard to review the submitted JSON. The code is not a remote-control channel and cannot start a scan; the device owner must run the app and approve the scan and upload.
+
+The session-code endpoint accepts JSON report data only and does not accept uploaded files or remote commands. Treat report contents as private because paths and process names may be sensitive.
