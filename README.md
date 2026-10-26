@@ -31,3 +31,20 @@ This is a **Windows desktop application**, not a Render-hosted web app. It does 
 The scan uses process names, file paths, Defender status, and filename/path keyword heuristics. These are review leads, not proof of cheating or malware; false positives and missed detections are possible. It is not a complete anti-cheat scanner.
 
 Never commit a Discord webhook URL or other secret to this public repository. Configure it privately inside the app. The local password protects normal app entry but is not a substitute for Windows account security or encrypted storage.
+
+
+## Optional central web dashboard (new)
+
+The repository now includes `dashboard_server.py`, an optional Flask dashboard for central report storage, staff accounts, owner-controlled report permissions, and an event log. It is separate from the Windows desktop app; the desktop app is **not yet automatically connected** to it. To run the dashboard locally:
+
+1. Install Python 3.11+ and dependencies: `python -m pip install -r requirements.txt`.
+2. Set environment variables before first launch:
+   - `INSPECTOR_OWNER_USER=owner` (or your preferred owner username)
+   - `INSPECTOR_OWNER_PASSWORD` to a strong password of at least 12 characters
+   - `INSPECTOR_SECRET_KEY` to a long random secret
+   - `INSPECTOR_API_KEY` to a separate long random key for report submissions
+3. Start it with `python dashboard_server.py`, then open `http://127.0.0.1:5000`.
+
+On Windows PowerShell, set a variable for the current terminal with `$env:INSPECTOR_OWNER_PASSWORD="use-a-long-unique-password"` (repeat for the other variables). Do not commit real secrets to GitHub. The owner can create inspector/viewer accounts and set report-view permissions. Report ingestion is disabled until `INSPECTOR_API_KEY` is configured.
+
+**Security and deployment:** this is an initial optional dashboard, not a hardened public production service. Keep it bound to localhost or a trusted private network unless you add HTTPS, a production WSGI server, rate limiting, CSRF protection, secure cookie settings, and deployment secrets. Never expose the development server directly to the public internet. The API accepts JSON report data only (not file uploads or remote commands). The desktop client integration, end-to-end tests, and hosted deployment are still outstanding.
