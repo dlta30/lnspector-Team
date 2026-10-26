@@ -19,8 +19,8 @@ REPORT_DIR = Path.home() / "Documents" / "3EN_Inspector_Team"
 CONFIG_PATH = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "3EN_Inspector_Team" / "config.json"
 EXTENSIONS = {".exe", ".dll", ".sys", ".bat", ".cmd", ".ps1", ".vbs", ".scr", ".asi", ".lua"}
 TERMS = ("cheat engine", "aimbot", "wallhack", "injector", "mapper", "mod menu", "trainer", "memory editor", "hwid spoofer")
-MAX_FILES = 12000
-MAX_SECONDS = 90
+MAX_FILES = 100000
+MAX_SECONDS = 300
 
 BG = "#090a0f"
 PANEL = "#12141c"
@@ -105,7 +105,7 @@ def inspect_processes():
 def inspect_recent_files(progress):
     rows, seen = [], set()
     roots = []
-    for key in ("TEMP", "TMP", "LOCALAPPDATA", "APPDATA", "USERPROFILE"):
+    for key in ("TEMP", "TMP", "LOCALAPPDATA", "APPDATA", "USERPROFILE", "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMDATA"):
         val = os.environ.get(key)
         if val:
             roots.append(Path(val))
@@ -129,9 +129,7 @@ def inspect_recent_files(progress):
                         stat = path.stat()
                     except OSError:
                         continue
-                    # Recent 45 days only; does not read file contents.
-                    if time.time() - stat.st_mtime > 45 * 86400:
-                        continue
+                    # All dates are inventoried for executable/script types; file contents are not read.
                     norm = str(path).casefold()
                     if norm in seen:
                         continue
@@ -184,6 +182,7 @@ class InspectorApp:
         self.results = []
         self.report = None
         self.report_path = None
+        self.pdf_path = None
         self.config = load_config()
         self.busy = False
         self._setup_style()
@@ -270,7 +269,8 @@ class InspectorApp:
         table_wrap.grid_rowconfigure(0, weight=1); table_wrap.grid_columnconfigure(0, weight=1)
 
         footer = tk.Frame(self.root, bg=BG); footer.pack(fill="x", padx=22, pady=(0, 14))
-        tk.Button(footer, text="تصدير تقرير JSON", command=self.export_json, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="right")
+        tk.Button(footer, text="تنزيل تقرير PDF", command=self.export_pdf, bg=RED, fg="white", relief="flat", padx=12, pady=7).pack(side="right")
+        tk.Button(footer, text="حفظ التقرير", command=self.save_report_copy, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="right", padx=8)
         tk.Button(footer, text="تصدير CSV", command=self.export_csv, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="right", padx=8)
         tk.Button(footer, text="إعدادات Webhook", command=self.webhook_settings, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="left", padx=(0, 8))
         tk.Button(footer, text="إرسال التقرير إلى Discord", command=self.send_discord, bg="#5865F2", fg="white", relief="flat", padx=12, pady=7).pack(side="left", padx=(0, 8))
@@ -328,9 +328,12 @@ class InspectorApp:
                 "limitations":"Name/path heuristics can produce false positives and do not prove cheating or malware."
             }
             REPORT_DIR.mkdir(parents=True, exist_ok=True)
-            path = REPORT_DIR / ("3EN_Inspection_" + datetime.now().strftime("%Y%m%d_%H%M%S") + ".json")
+            stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            path = REPORT_DIR / ("3EN_Inspection_" + stamp + ".json")
             path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
-            self.root.after(0, lambda: self.finish(report, path))
+            pdf_path = REPORT_DIR / ("3EN_Inspection_" + stamp + ".pdf")
+            create_pdf_report(report, pdf_path)
+            self.root.after(0, lambda: self.finish(report, path, pdf_path))
         except Exception as exc:
             self.root.after(0, lambda msg=str(exc): self.fail(msg))
 
@@ -338,9 +341,10 @@ class InspectorApp:
         self.progress.configure(value=value)
         self.status.configure(text=msg)
 
-    def finish(self, report, path):
+    def finish(self, report, path, pdf_path):
         self.report = report
         self.report_path = path
+        self.pdf_path = pdf_path
         self.results = report["results"]
         self.render()
         self.total_label.configure(text=str(report["result_count"]))
