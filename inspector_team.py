@@ -498,7 +498,7 @@ class InspectorApp:
             parts = [
                 f"--{boundary}\\r\\nContent-Disposition: form-data; name=\"payload_json\"\\r\\nContent-Type: application/json\\r\\n\\r\\n".encode(),
                 summary, b"\\r\\n",
-                f"--{boundary}\\r\\nContent-Disposition: form-data; name=\"files[0]\"; filename=\"{report_path.name}\"\\r\\nContent-Type: application/json\\r\\n\\r\\n".encode(),
+                f"--{boundary}\\r\\nContent-Disposition: form-data; name=\"files[0]\"; filename=\"{report_path.name}\"\\r\\nContent-Type: application/pdf\\r\\n\\r\\n".encode(),
                 report_path.read_bytes(), b"\\r\\n", f"--{boundary}--\\r\\n".encode()
             ]
             req = urllib.request.Request(webhook, data=b"".join(parts), headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}, method="POST")
