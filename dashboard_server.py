@@ -43,6 +43,16 @@ CREATE TABLE IF NOT EXISTS users (
  can_ingest INTEGER NOT NULL DEFAULT 0,
  created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS inspection_sessions (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ code_hash TEXT UNIQUE NOT NULL,
+ display_code TEXT NOT NULL,
+ created_by TEXT NOT NULL,
+ created_at TEXT NOT NULL,
+ expires_at TEXT NOT NULL,
+ used_at TEXT,
+ status TEXT NOT NULL DEFAULT 'open'
+);
 CREATE TABLE IF NOT EXISTS reports (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  session_id TEXT NOT NULL,
@@ -126,7 +136,7 @@ input,select,textarea{background:#090909;border:1px solid #444;color:#fff;border
 label{display:block;color:#bbb;margin-top:8px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border-bottom:1px solid #303030;vertical-align:top}th{color:#ff6a74}
 .notice{padding:10px;background:#2a1517;border-radius:7px;margin:10px 0}.danger{color:#ff727c}pre{white-space:pre-wrap;overflow-wrap:anywhere}
 </style><header><div><h1>3EN INSPECTOR TEAM</h1><small>Central reports dashboard · by ROITH</small></div>
-<nav>{% if user %}<a href="{{ url_for('home') }}">Dashboard</a><a href="{{ url_for('reports') }}">Reports</a>{% if user['role']=='owner' %}<a href="{{ url_for('users_page') }}">Staff & permissions</a><a href="{{ url_for('audit_page') }}">Event log</a>{% endif %}<a href="{{ url_for('logout') }}">Logout</a>{% endif %}</nav></header>
+<nav>{% if user %}<a href="{{ url_for('home') }}">Dashboard</a><a href="{{ url_for('reports') }}">Reports</a>{% if user['role'] in ('owner','inspector') %}<a href="{{ url_for('sessions_page') }}">Sessions</a>{% endif %}{% if user['role']=='owner' %}<a href="{{ url_for('users_page') }}">Staff & permissions</a><a href="{{ url_for('audit_page') }}">Event log</a>{% endif %}<a href="{{ url_for('logout') }}">Logout</a>{% endif %}</nav></header>
 <div class="wrap">{% for msg in get_flashed_messages() %}<div class="notice">{{ msg }}</div>{% endfor %}{{ body|safe }}</div></html>
 """
 
@@ -169,6 +179,59 @@ def home():
         recent=con.execute("SELECT id,session_id,computer_label,created_at,summary FROM reports ORDER BY id DESC LIMIT 8").fetchall()
         staff=con.execute("SELECT COUNT(*) n FROM users").fetchone()["n"] if user["role"]=="owner" else None
     return page("""<div class="grid"><div class="card"><div class="muted">Saved reports</div><div class="metric">{{ count }}</div></div><div class="card"><div class="muted">Signed in as</div><div class="metric" style="font-size:20px">{{ user['username'] }}</div><div>{{ user['role'] }}</div></div>{% if staff is not none %}<div class="card"><div class="muted">Staff accounts</div><div class="metric">{{ staff }}</div></div>{% endif %}</div><div class="card"><h2>Recent reports</h2>{% if recent %}<table><tr><th>ID</th><th>Session</th><th>Computer label</th><th>Received (UTC)</th><th>Summary</th></tr>{% for r in recent %}<tr><td><a class="btn" href="{{ url_for('report_detail', report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td></tr>{% endfor %}</table>{% else %}<p class="muted">No reports received yet. Configure the desktop client to send an explicitly approved report.</p>{% endif %}</div>""",count=count,user=user,staff=staff,recent=recent)
+
+@app.route("/sessions", methods=["GET", "POST"])
+@login_required
+def sessions_page():
+    user = current_user()
+    if user["role"] not in ("owner", "inspector"):
+        abort(403)
+    if request.method == "POST":
+        code = secrets.token_urlsafe(6).replace("-", "").replace("_", "")[:8].upper()
+        code_hash = hashlib.sha256(code.encode()).hexdigest()
+        created = datetime.now(timezone.utc)
+        expires = created.timestamp() + 2 * 60 * 60
+        expires_at = datetime.fromtimestamp(expires, timezone.utc).isoformat(timespec="seconds")
+        with db() as con:
+            con.execute("INSERT INTO inspection_sessions(code_hash,display_code,created_by,created_at,expires_at,status) VALUES(?,?,?,?,?,?)",
+                        (code_hash, code, user["username"], now(), expires_at, "open"))
+        log_action(user["username"], "created two-hour inspection session")
+        return page("""<div class="card"><h2>Session created</h2><p>Give this code to the device owner to enter in the desktop app:</p><div class="metric">{{ code }}</div><p class="muted">One report can be submitted with this code. It expires in two hours. Keep it private.</p><a class="btn" href="{{ url_for('sessions_page') }}">Back to sessions</a></div>""", code=code)
+    with db() as con:
+        rows = con.execute("SELECT display_code,created_by,created_at,expires_at,used_at,status FROM inspection_sessions ORDER BY id DESC LIMIT 100").fetchall()
+    return page("""<div class="card"><h2>Inspection sessions</h2><p class="muted">Create a short-lived code for a consent-based scan. The code permits one report only.</p><form method="post"><button class="btn">Create session code (2 hours)</button></form></div><div class="card"><table><tr><th>Code</th><th>Created by</th><th>Created (UTC)</th><th>Expires (UTC)</th><th>Used (UTC)</th><th>Status</th></tr>{% for r in rows %}<tr><td>{{ r['display_code'] }}</td><td>{{ r['created_by'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['expires_at'] }}</td><td>{{ r['used_at'] or '—' }}</td><td>{{ r['status'] }}</td></tr>{% endfor %}</table></div>""", rows=rows)
+
+@app.post("/api/v1/session-report")
+def ingest_session_report():
+    if not request.is_json:
+        abort(415)
+    if len(request.get_data()) > 1_000_000:
+        abort(413)
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        abort(400)
+    code = str(data.get("session_code", "")).strip().upper()
+    if len(code) < 6 or len(code) > 20:
+        abort(401)
+    code_hash = hashlib.sha256(code.encode()).hexdigest()
+    with db() as con:
+        session_row = con.execute("SELECT * FROM inspection_sessions WHERE code_hash=?", (code_hash,)).fetchone()
+        if not session_row or session_row["status"] != "open":
+            abort(401, "Invalid or already-used session code.")
+        if datetime.fromisoformat(session_row["expires_at"]) < datetime.now(timezone.utc):
+            con.execute("UPDATE inspection_sessions SET status='expired' WHERE id=?", (session_row["id"],))
+            abort(410, "Session code expired.")
+        payload = data.get("report", {})
+        if not isinstance(payload, (dict, list)):
+            abort(400, "report must be a JSON object or array.")
+        label = str(data.get("computer_label", "Unspecified"))[:100]
+        summary = str(data.get("summary", ""))[:1000]
+        cur = con.execute("INSERT INTO reports(session_id,computer_label,created_at,summary,payload,submitted_by) VALUES(?,?,?,?,?,?)",
+                          (session_row["display_code"], label, now(), summary, json.dumps(payload, ensure_ascii=False), "session:" + session_row["created_by"]))
+        report_id = cur.lastrowid
+        con.execute("UPDATE inspection_sessions SET status='used',used_at=? WHERE id=?", (now(), session_row["id"]))
+    log_action("session:" + session_row["display_code"], "received report #" + str(report_id))
+    return {"ok": True, "report_id": report_id}, 201
 
 @app.route("/reports")
 @permission_required("can_view")
