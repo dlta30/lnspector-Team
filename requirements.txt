@@ -1,2 +1,2 @@
-# PDF report generation dependency
 reportlab>=4.0,<5.0
+Flask>=3.0,<4.0
