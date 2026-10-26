@@ -617,31 +617,34 @@ class InspectorApp:
         messagebox.showinfo("تم الحفظ", "حُفظ إعداد الربط محليًا. لن يُرسل أي تقرير إلا بعد موافقتك في رسالة التأكيد.")
 
     def send_central_report(self):
+        from tkinter import simpledialog
         if not self.report:
             messagebox.showinfo("لا يوجد تقرير", "شغّل الفحص أولًا.")
             return
         server = self.config.get("dashboard_url", "").rstrip("/")
-        api_key = self.config.get("dashboard_api_key", "")
-        if not server or not api_key:
-            messagebox.showinfo("إعداد الربط", "افتح «لوحة المشرف المركزية» من القائمة وأدخل عنوان الخادم ومفتاح API أولًا.")
+        if not server:
+            messagebox.showinfo("إعداد الربط", "افتح «لوحة المشرف المركزية» من القائمة وأدخل عنوان الخادم أولًا.")
             return
-        if not messagebox.askyesno("مشاركة التقرير", "سيُرسل ملف JSON الخاص بنتائج الفحص (أسماء العمليات والمسارات ومؤشرات المراجعة) إلى خادم اللوحة المركزية. لن تُرسل ملفات الجهاز نفسها. هل توافق؟"):
+        code = simpledialog.askstring("رمز جلسة التفتيش", "أدخل رمز الجلسة الذي أنشأه المشرف في لوحة الويب:", parent=self.root)
+        if not code:
+            return
+        if not messagebox.askyesno("مشاركة التقرير", "سيُرسل تقرير JSON الذي يحتوي على نتائج الفحص ومسارات الملفات إلى لوحة المشرف. لن تُرسل ملفات الجهاز نفسها. هل توافق على الإرسال؟"):
             return
         report = dict(self.report)
         payload = {
-            "session_id": secrets.token_hex(8),
+            "session_code": code.strip().upper(),
             "computer_label": str(report.get("device", "Unspecified"))[:100],
             "summary": f"Player: {report.get('player','Unknown')} | results: {report.get('result_count',0)} | review leads: {report.get('review_count',0)}",
             "report": report
         }
-        threading.Thread(target=self._central_upload_worker, args=(server, api_key, payload), daemon=True).start()
+        threading.Thread(target=self._central_upload_worker, args=(server, payload), daemon=True).start()
 
-    def _central_upload_worker(self, server, api_key, payload):
+    def _central_upload_worker(self, server, payload):
         try:
             data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             req = urllib.request.Request(
-                server + "/api/v1/reports", data=data,
-                headers={"Content-Type": "application/json", "X-Inspector-Key": api_key},
+                server + "/api/v1/session-report", data=data,
+                headers={"Content-Type": "application/json"},
                 method="POST"
             )
             with urllib.request.urlopen(req, timeout=20) as response:
@@ -651,7 +654,7 @@ class InspectorApp:
             self.root.after(0, lambda: messagebox.showinfo("تم الإرسال", f"تم حفظ التقرير في اللوحة المركزية. رقم التقرير: {result.get('report_id','?')}"))
         except Exception as exc:
             msg = str(exc)
-            self.root.after(0, lambda m=msg: messagebox.showerror("تعذر الإرسال", "لم يتم تأكيد وصول التقرير. تحقق من عنوان الخادم ومفتاح API والاتصال.\n" + m))
+            self.root.after(0, lambda m=msg: messagebox.showerror("تعذر الإرسال", "لم يتم تأكيد وصول التقرير. تحقق من عنوان الخادم ورمز الجلسة والاتصال.\\n" + m))
 
     def webhook_settings(self):
         from tkinter import simpledialog
