@@ -15,9 +15,10 @@ from datetime import datetime, timezone
 
 APP = "3eN Inspector Team"
 try:
-    from session_config import SESSION_CODE
+    from session_config import SESSION_CODE, DASHBOARD_URL
 except ImportError:
     SESSION_CODE = ""
+    DASHBOARD_URL = ""
 SUSPICIOUS_TERMS = (
     "cheat", "cheatengine", "cheat engine", "injector", "trainer", "modmenu",
     "aimbot", "wallhack", "processhacker", "xenos", "extreme injector",
@@ -278,6 +279,9 @@ class InspectorApp(tk.Tk):
         tk.Label(dialog, text="Dashboard URL (https://…)", bg="#10121a", fg="white").pack(anchor="w", padx=18, pady=(18, 0))
         url_entry = tk.Entry(dialog, bg="#08090e", fg="white", insertbackground="white")
         url_entry.pack(fill="x", padx=18, pady=5)
+        if DASHBOARD_URL:
+            url_entry.insert(0, DASHBOARD_URL)
+            url_entry.configure(state="readonly")
         tk.Label(dialog, text="One-time session code", bg="#10121a", fg="white").pack(anchor="w", padx=18)
         code_entry = tk.Entry(dialog, bg="#08090e", fg="white", insertbackground="white")
         code_entry.pack(fill="x", padx=18, pady=5)
