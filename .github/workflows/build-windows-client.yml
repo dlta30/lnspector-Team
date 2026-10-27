@@ -2,6 +2,15 @@ name: Build Windows Inspector EXE
 
 on:
   workflow_dispatch:
+    inputs:
+      session_code:
+        description: "One-time code created on the dashboard (leave blank for a generic build)"
+        required: false
+        type: string
+      dashboard_url:
+        description: "HTTPS dashboard URL (required when session_code is supplied)"
+        required: false
+        type: string
   push:
     paths:
       - "inspector_client.py"
@@ -27,12 +36,32 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install psutil pyinstaller
+      - name: Configure one-time session (optional)
+        if: ${{ inputs.session_code != '' }}
+        shell: pwsh
+        env:
+          SESSION_CODE: ${{ inputs.session_code }}
+          DASHBOARD_URL: ${{ inputs.dashboard_url }}
+        run: |
+          if ($env:SESSION_CODE -notmatch '^[A-Za-z0-9]{6,20}$') { throw "Session code must be 6-20 letters or digits." }
+          if ($env:DASHBOARD_URL -notmatch '^https://[^/]+') { throw "A valid HTTPS dashboard URL is required for a session build." }
+          @"
+          SESSION_CODE = "$($env:SESSION_CODE.ToUpper())"
+          DASHBOARD_URL = "$($env:DASHBOARD_URL.TrimEnd('/'))"
+          "@ | Set-Content -Encoding utf8 session_config.py
       - name: Build standalone EXE
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name 3eN-Inspector inspector_client.py
+        shell: pwsh
+        env:
+          SESSION_CODE: ${{ inputs.session_code }}
+        run: |
+          $name = "3eN-Inspector"
+          if ($env:SESSION_CODE) { $name = "$name-$($env:SESSION_CODE.ToUpper())" }
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name $name --hidden-import session_config inspector_client.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 3eN-Inspector-Windows
-          path: dist/3eN-Inspector.exe
+          name: 3eN-Inspector-${{ inputs.session_code || 'Generic' }}
+          path: dist/*.exe
           if-no-files-found: error
           retention-days: 14
