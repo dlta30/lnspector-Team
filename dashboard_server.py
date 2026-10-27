@@ -156,16 +156,18 @@ def login():
                 con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
                             (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
                 user = con.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+            pending_created = False
             if not user and STAFF_JOIN_PASSWORD and hmac.compare_digest(password, STAFF_JOIN_PASSWORD) and 2 <= len(username) <= 64:
                 safe_name = username.replace(" ", "_")
                 try:
                     con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
                                 (safe_name, generate_password_hash(secrets.token_urlsafe(32)), "viewer", 0, 0, now()))
                     user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
+                    pending_created = True
                     log_action(safe_name, "created pending staff account")
                 except sqlite3.IntegrityError:
                     user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
-            join_login = bool(user and user["role"] != "owner" and STAFF_JOIN_PASSWORD and hmac.compare_digest(password, STAFF_JOIN_PASSWORD))
+            join_login = bool(pending_created and user and user["role"] == "viewer" and STAFF_JOIN_PASSWORD and hmac.compare_digest(password, STAFF_JOIN_PASSWORD))
             if user and (check_password_hash(user["password_hash"], password) or join_login):
                 session.clear()
                 session["username"] = user["username"]
