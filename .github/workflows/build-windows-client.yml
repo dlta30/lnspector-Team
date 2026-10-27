@@ -1,0 +1,38 @@
+name: Build Windows Inspector EXE
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "inspector_client.py"
+      - "requirements.txt"
+      - ".github/workflows/build-windows-client.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install client dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install psutil pyinstaller
+      - name: Build standalone EXE
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name 3eN-Inspector inspector_client.py
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3eN-Inspector-Windows
+          path: dist/3eN-Inspector.exe
+          if-no-files-found: error
+          retention-days: 14
