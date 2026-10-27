@@ -1,70 +1,56 @@
-# 3EN INSPECTOR TEAM
+# 3eN Inspector Team
 **by: ROITH**
 
-A Windows desktop inspection utility with a dark red/black UI.
+A consent-based Windows inspection client with a Flask reporting dashboard.
 
-## Current capabilities
-- Consent confirmation before scanning.
-- Windows process inventory and Microsoft Defender status checks.
-- Inventory of executable/script files in selected user and program folders, with file-count and time limits.
-- SHA-256 hashes for keyword-matched candidates only; file contents are not uploaded.
-- Search/filter and sortable result table.
-- Local password setup on first launch, with password prompt on later launches.
-- JSON and CSV export, PDF report generation, and opening the local reports folder.
-- Saved report/session list, with double-click or button to open a selected report.
-- Event log page and settings page.
-- Optional request for Microsoft Defender to perform its own quick scan.
-- Optional Discord webhook delivery of the generated PDF report after explicit user action.
-- Automatically saves reports under `Documents/3EN_Inspector_Team`.
+## Current client scope
+- Requires an explicit consent checkbox and a confirmation before scanning.
+- Lists running process metadata and computes SHA-256 hashes for readable process executables.
+- Collects Windows Run-key startup entry names and command strings; it does not execute startup items.
+- Adds basic FiveM/Fortnite process context and configurable name-based indicators for manual review.
+- Hides detailed findings from the inspected user and prepares a JSON report for the administrator.
+- Requires explicit confirmation before uploading the report to the dashboard.
+- Does not read browser data, credentials, personal documents, keystrokes, or memory; it does not provide remote control.
+- The current indicators are heuristics only. They are not proof of cheating, and they can miss tools or flag legitimate software.
 
-## Download the Windows EXE
-1. Open the [latest successful build](https://github.com/dlta30/lnspector-Team/actions/runs/40390309601).
-2. Scroll to **Artifacts** and download **3EN-Inspector-Team-Windows**.
-3. Extract the ZIP file.
-4. Run `3EN_Inspector_Team.exe` on Windows.
+## Dashboard
+The optional Flask dashboard in `dashboard_server.py` supports staff login/permissions, two-hour one-use inspection session codes, report storage, report details, PDF downloads, audit events, and optional Discord webhook notifications.
 
-The artifact is a build output, not a signed installer. Windows SmartScreen may show a warning for unsigned builds. The build workflow succeeding confirms packaging completed; it does not replace testing on your own Windows computer.
+Required deployment environment variables:
+- `INSPECTOR_OWNER_PASSWORD`: strong owner password
+- `INSPECTOR_SECRET_KEY`: long random Flask session secret
+- `DISCORD_WEBHOOK_URL`: optional; configure only in the hosting provider's secret/environment settings
+- `INSPECTOR_OWNER_USER`: optional owner username (defaults to `owner`)
+- `INSPECTOR_DB`: optional database path
 
-## Important limitations
-This is a **Windows desktop application**, not a Render-hosted web app. It does not let an inspector remotely scan another player's computer through a URL, and it does not provide a central dashboard, online inspector accounts, session codes, or a remote agent. A player must run it on their own Windows computer and affirm consent.
+Install dependencies with `python -m pip install -r requirements.txt`. Run locally with `python dashboard_server.py`. In production, use HTTPS and a production WSGI server; configure the hosting provider's start command and environment variables. Do not expose Flask's development server directly to the public internet.
 
-The scan uses process names, file paths, Defender status, and filename/path keyword heuristics. These are review leads, not proof of cheating or malware; false positives and missed detections are possible. It is not a complete anti-cheat scanner.
+## Build a Windows EXE
+Open [Build Windows Inspector EXE](https://github.com/dlta30/lnspector-Team/actions/workflows/build-windows-client.yml).
 
-Never commit a Discord webhook URL or other secret to this public repository. Configure it privately inside the app. The local password protects normal app entry but is not a substitute for Windows account security or encrypted storage.
+### Generic EXE
+Run the workflow with both inputs empty. Download the artifact ZIP from a successful workflow run and extract the EXE.
 
+### Session-specific EXE
+1. Sign in to the dashboard and open **Sessions**.
+2. Create a fresh one-time session code.
+3. Open the workflow link above and choose **Run workflow**.
+4. Enter the session code and the dashboard HTTPS URL (for example, your Render service URL).
+5. Wait for a successful build, open the run, and download its artifact ZIP.
+6. Extract the EXE and send it only to the device owner, after explaining the scan and obtaining their permission.
 
-## Optional central web dashboard (new)
+The session code is valid for one report and expires after two hours. The EXE has the code and dashboard URL prefilled. It still requires the device owner to approve the scan and separately approve report upload. Build artifacts are retained for 14 days; create a fresh build when needed.
 
-The repository now includes `dashboard_server.py`, an optional Flask dashboard for central report storage, staff accounts, owner-controlled report permissions, and an event log. It is separate from the Windows desktop app; the desktop app is **not yet automatically connected** to it. To run the dashboard locally:
+## Report flow
+1. The device owner launches the EXE and approves the scan.
+2. The client gathers the declared metadata and keeps detailed findings out of its visible result panel.
+3. The device owner explicitly confirms sending the report.
+4. The dashboard validates the one-time session code, stores the report, and attempts a compact Discord notification if `DISCORD_WEBHOOK_URL` is configured.
+5. Authorized staff review **Reports** and can download the PDF.
 
-1. Install Python 3.11+ and dependencies: `python -m pip install -r requirements.txt`.
-2. Set environment variables before first launch:
-   - `INSPECTOR_OWNER_USER=owner` (or your preferred owner username)
-   - `INSPECTOR_OWNER_PASSWORD` to a strong password of at least 12 characters
-   - `INSPECTOR_SECRET_KEY` to a long random secret
-   - `INSPECTOR_STAFF_JOIN_PASSWORD` to a shared password you distribute privately; first-time staff usernames create pending viewer accounts with no permissions
-3. Start it with `python dashboard_server.py`, then open `http://127.0.0.1:5000`.
-
-On Windows PowerShell, set a variable for the current terminal with `$env:INSPECTOR_OWNER_PASSWORD="use-a-long-unique-password"` (repeat for the other variables). Do not commit real secrets to GitHub. The owner can create inspector/viewer accounts and set report-view permissions. A new staff member can enter their Discord username and the owner-configured `INSPECTOR_STAFF_JOIN_PASSWORD` to create a pending account; the account starts as a viewer with no report permissions. The owner can promote it to Inspector in Staff & permissions. A typed Discord username is not verified as ownership of that Discord account, so verify identity before granting access. Inspectors can create a two-hour session code from **Sessions**; the desktop user enters that code and explicitly approves sending one JSON report. Each code can be used once. The older API-key endpoint remains optional.
-
-**Security and deployment:** this is an initial optional dashboard, not a hardened public production service. Keep it bound to localhost or a trusted private network unless you add HTTPS, a production WSGI server, rate limiting, CSRF protection, secure cookie settings, and deployment secrets. Never expose the development server directly to the public internet. The API accepts JSON report data only (not file uploads or remote commands). The desktop app now has central dashboard URL settings and a report-send flow using one-time session codes. End-to-end tests and hosted deployment are still outstanding.
-
-
-## Session-code workflow
-
-1. Start the dashboard on the trusted inspection host and sign in as owner or inspector.
-2. Open **Sessions** and create a code. It expires after two hours and accepts one report.
-3. On the player's Windows app, open **لوحة المشرف المركزية** in the left menu and set the dashboard URL.
-4. After the local scan finishes, choose **إرسال التقرير بموافقة**, enter the code, and confirm sharing.
-5. Open **Reports** in the dashboard to review the submitted JSON. The code is not a remote-control channel and cannot start a scan; the device owner must run the app and approve the scan and upload.
-
-The session-code endpoint accepts JSON report data only and does not accept uploaded files or remote commands. Treat report contents as private because paths and process names may be sensitive.
-
-
-## Discord report-room notifications
-
-The central dashboard can post a compact notification to a Discord channel whenever a one-time session report is accepted. In the Discord channel, open **Edit Channel → Integrations → Webhooks → New Webhook**, copy the webhook URL, and add it to the dashboard host's environment as `DISCORD_WEBHOOK_URL`. Restart/redeploy the dashboard after setting it. Do not commit the URL to GitHub or put it in the desktop EXE. Notifications include the report ID, session code, device label, and summary only; the full process inventory and executable paths stay in the dashboard. The server must have outbound HTTPS access to Discord. The `/api/v1/session-report` response includes `discord_notified` so a client can tell whether the notification was delivered.
-
-## Session-specific desktop builds
-
-Use `build_session_exe.bat` on Windows to package `inspector_client.py` with a session code compiled into that build. Create a fresh session code in the dashboard for each inspection and build a separate EXE for that code. The code is one-time and expires after two hours. The EXE is not automatically generated by the dashboard; this build step is separate. The desktop app requires explicit consent and only uploads its report after the user confirms.
+## Important security and accuracy notes
+- This is a focused inspection utility, not a complete anti-cheat or malware scanner.
+- A process name, file path, hash, or startup entry is only a lead for manual review. Do not use it alone as grounds for punishment.
+- Report data can contain device names, executable paths, and running-process details. Restrict dashboard access and retain reports only as long as needed.
+- Never commit a Discord webhook, password, API token, or other secret to this repository or embed it in the EXE.
+- A successful build does not prove the app works correctly on every Windows device. Test the EXE, hosted API, PDF generation, and Discord delivery with a test session before using it operationally.
