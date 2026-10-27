@@ -186,7 +186,7 @@ def login():
                 log_action(username, "login")
                 return redirect(request.args.get("next") or url_for("home"))
         flash("Login failed. Check credentials and server environment configuration.")
-    return page("""<div class="card" style="max-width:440px;margin:5vh auto"><h2>Staff login</h2><p class="muted">Owner account is initialized from environment variables.</p><form method="post"><label>Username</label><input name="username" required autocomplete="username"><label>Password</label><input name="password" type="password" required autocomplete="current-password"><button class="btn">Sign in</button></form></div>""")
+    return page("""<div class="login-shell"><section class="login-hero"><div><div class="eyebrow">SECURITY OPERATIONS PLATFORM</div><div class="hero-mark">3eN<span>.</span></div><h2>INSPECTOR TEAM</h2><p class="muted">Inspection sessions, secure reports, and team access — in one place.</p></div><div class="status-pill"><i></i> PRIVATE TEAM ACCESS</div></section><section class="login-form"><div class="eyebrow">WELCOME BACK</div><h2>Sign in</h2><p class="muted">Use your team credentials to continue.</p><form method="post"><label>Username</label><input name="username" required autocomplete="username" placeholder="Enter username"><label>Password</label><input name="password" type="password" required autocomplete="current-password" placeholder="Enter password"><button class="btn">Sign in securely &rarr;</button></form><p class="muted" style="font-size:11px;margin-top:24px">Access is controlled by your assigned role.</p></section></div>""")
 
 @app.route("/logout")
 def logout():
