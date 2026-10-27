@@ -269,7 +269,7 @@ def reports():
         abort(403)
     with db() as con:
         rows=con.execute("SELECT id,session_id,computer_label,created_at,summary,submitted_by FROM reports ORDER BY id DESC LIMIT 250").fetchall()
-    return page("""<div class="card"><h2>Reports</h2><table><tr><th>ID</th><th>Session</th><th>Computer</th><th>UTC time</th><th>Summary</th><th>Submitted by</th>{% if is_owner %}<th>Action</th>{% endif %}</tr>{% for r in rows %}<tr><td><a href="{{ url_for('report_detail',report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td><td>{{ r['submitted_by'] }}</td>{% if is_owner %}<td><form method="post" action="{{ url_for('delete_report',report_id=r['id']) }}" onsubmit="return confirm('Delete this report permanently?')"><button class="btn danger" type="submit">Delete</button></form></td>{% endif %}</tr>{% endfor %}</table></div>""",rows=rows,is_owner=current_user()["role"]=="owner")
+    return page("""<div class="card"><h2>Reports</h2><table><tr><th>ID</th><th>Session</th><th>Computer</th><th>UTC time</th><th>Summary</th><th>Submitted by</th><th>PDF</th>{% if is_owner %}<th>Action</th>{% endif %}</tr>{% for r in rows %}<tr><td><a href="{{ url_for('report_detail',report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td><td>{{ r['submitted_by'] }}</td><td><a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">Download PDF</a></td>{% if is_owner %}<td><form method="post" action="{{ url_for('delete_report',report_id=r['id']) }}" onsubmit="return confirm('Delete this report permanently?')"><button class="btn danger" type="submit">Delete</button></form></td>{% endif %}</tr>{% endfor %}</table></div>""",rows=rows,is_owner=current_user()["role"]=="owner")
 
 @app.post("/reports/<int:report_id>/delete")
 @login_required
@@ -297,6 +297,52 @@ def report_detail(report_id):
     try: payload=json.dumps(json.loads(r["payload"]),indent=2,ensure_ascii=False)
     except Exception: payload=r["payload"]
     return page("""<div class="card"><h2>Report #{{ r['id'] }}</h2><p><b>Session:</b> {{ r['session_id'] }} · <b>Computer:</b> {{ r['computer_label'] }}</p><p><b>Received:</b> {{ r['created_at'] }} UTC</p><p>{{ r['summary'] }}</p><pre>{{ payload }}</pre><a class="btn" href="{{ url_for('reports') }}">Back</a></div>""",r=r,payload=payload)
+
+@app.route("/reports/<int:report_id>/pdf")
+@login_required
+def report_pdf(report_id):
+    actor = current_user()
+    if actor["role"] not in ("owner", "deputy", "inspector") and not actor["can_view"]:
+        abort(403)
+    with db() as con:
+        r = con.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
+    if not r:
+        abort(404)
+    try:
+        payload = json.dumps(json.loads(r["payload"]), indent=2, ensure_ascii=False)
+    except Exception:
+        payload = str(r["payload"])
+    # Generate a PDF in memory; never write report contents to a public file path.
+    from io import BytesIO
+    from xml.sax.saxutils import escape
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Preformatted
+    output = BytesIO()
+    doc = SimpleDocTemplate(output, pagesize=A4, rightMargin=18*mm, leftMargin=18*mm, topMargin=18*mm, bottomMargin=18*mm, title="3eN Inspector Report #" + str(report_id), author="3eN Inspector Team")
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="SmallMeta", parent=styles["BodyText"], fontSize=9, leading=13, textColor=colors.HexColor("#444444"), spaceAfter=5))
+    styles.add(ParagraphStyle(name="Payload", parent=styles["Code"], fontName="Courier", fontSize=7, leading=9, wordWrap="CJK"))
+    story = [
+        Paragraph("3eN INSPECTOR TEAM", styles["Title"]),
+        Paragraph("Inspection Report #" + str(report_id), styles["Heading1"]),
+        Spacer(1, 6*mm),
+        Paragraph("<b>Session:</b> " + escape(str(r["session_id"])), styles["SmallMeta"]),
+        Paragraph("<b>Computer:</b> " + escape(str(r["computer_label"])), styles["SmallMeta"]),
+        Paragraph("<b>Received (UTC):</b> " + escape(str(r["created_at"])), styles["SmallMeta"]),
+        Paragraph("<b>Submitted by:</b> " + escape(str(r["submitted_by"])), styles["SmallMeta"]),
+        Paragraph("<b>Summary:</b> " + escape(str(r["summary"] or "No summary provided")), styles["SmallMeta"]),
+        Spacer(1, 4*mm),
+        Paragraph("Inspection data", styles["Heading2"]),
+        Preformatted(payload[:100000], styles["Payload"], maxLineLength=100),
+    ]
+    doc.build(story)
+    output.seek(0)
+    from flask import send_file
+    log_action(actor["username"], "downloaded PDF for report #" + str(report_id))
+    return send_file(output, mimetype="application/pdf", as_attachment=True, download_name="3eN-report-" + str(report_id) + ".pdf")
 
 @app.route("/staff", methods=["GET","POST"])
 @login_required
