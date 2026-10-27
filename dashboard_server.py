@@ -326,7 +326,10 @@ def download_session_build(code):
             # Fetch the redirect with the token, then download the ZIP from storage
             # without forwarding the GitHub Authorization header to another host.
             req = urllib.request.Request(artifact["archive_download_url"], headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+GITHUB_ACTIONS_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"3eN-Inceptor-Dashboard"})
-            opener = urllib.request.build_opener(urllib.request.HTTPHandler())
+            class _NoRedirect(urllib.request.HTTPRedirectHandler):
+                def redirect_request(self, req, fp, code, msg, headers, newurl):
+                    return None
+            opener = urllib.request.build_opener(_NoRedirect())
             try:
                 with opener.open(req, timeout=20) as response:
                     data = response.read()
