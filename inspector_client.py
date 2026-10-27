@@ -200,6 +200,7 @@ class InspectorApp(tk.Tk):
         try:
             processes = collect_processes(self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
+            startup_entries = collect_startup_entries()
             self.report = {
                 "product": APP,
                 "signature": "3eN INSPECTOR TEAM",
@@ -209,8 +210,8 @@ class InspectorApp(tk.Tk):
                 "scan_scope": "running process metadata, readable executable SHA-256, and Windows startup entry names/commands",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
-                "startup_entry_count": len(collect_startup_entries()),
-                "startup_entries": collect_startup_entries(),
+                "startup_entry_count": len(startup_entries),
+                "startup_entries": startup_entries,
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
                 "note": "Name-based indicators are not proof of cheating. Manual review is required.",
                 "processes": processes,
