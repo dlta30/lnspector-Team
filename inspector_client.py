@@ -135,43 +135,43 @@ class InspectorApp(tk.Tk):
         brand = tk.Frame(brandrow, bg=PANEL)
         brand.pack(side="left", fill="x", expand=True)
         tk.Label(brand, text="3eN INSPECTOR TEAM", bg=PANEL, fg=WHITE, font=("Segoe UI", 19, "bold")).pack(anchor="w")
-        tk.Label(brand, text="SECURITY SCAN  •  PRIVATE REPORTING", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(3, 0))
-        tk.Label(brandrow, text="●  SESSION ACTIVE", bg="#25131b", fg="#ff7084", font=("Segoe UI", 9, "bold"), padx=12, pady=8).pack(side="right", anchor="center")
+        tk.Label(brand, text="فحص أمني • إرسال تقرير بموافقتك", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(3, 0))
+        tk.Label(brandrow, text="●  الجلسة جاهزة", bg="#25131b", fg="#ff7084", font=("Segoe UI", 9, "bold"), padx=12, pady=8).pack(side="right", anchor="center")
         body = tk.Frame(self, bg=BG, padx=24, pady=22)
         body.pack(fill="both", expand=True)
-        tk.Label(body, text="DEVICE SECURITY CHECK", bg=BG, fg=WHITE, font=("Segoe UI", 21, "bold")).pack(anchor="w")
-        tk.Label(body, text="A focused system scan. Detailed findings are sent to the inspection dashboard.", bg=BG, fg=MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(5, 16))
+        tk.Label(body, text="فحص أمان الجهاز", bg=BG, fg=WHITE, font=("Segoe UI", 21, "bold")).pack(anchor="w")
+        tk.Label(body, text="يفحص البرنامج معلومات العمليات الظاهرة وبعض عناصر بدء التشغيل، ثم يرسل التقرير إلى لوحة الفحص بعد موافقتك.", bg=BG, fg=MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(5, 16))
         cards = tk.Frame(body, bg=BG)
         cards.pack(fill="x", pady=(0, 14))
         self.metric_processes = tk.StringVar(value="—")
         self.metric_flags = tk.StringVar(value="—")
         self.metric_state = tk.StringVar(value="READY")
-        for title, var, accent in [("ITEMS CHECKED", self.metric_processes, RED), ("REPORT STATUS", self.metric_flags, "#ffb454"), ("STATUS", self.metric_state, "#62d6a7")]:
+        for title, var, accent in [("العناصر المفحوصة", self.metric_processes, RED), ("حالة التقرير", self.metric_flags, "#ffb454"), ("الحالة", self.metric_state, "#62d6a7")]:
             card = tk.Frame(cards, bg=PANEL, highlightbackground="#292c3a", highlightthickness=1, padx=16, pady=14)
             card.pack(side="left", fill="both", expand=True, padx=(0, 10))
             tk.Label(card, text=title, bg=PANEL, fg=MUTED, font=("Segoe UI", 8, "bold")).pack(anchor="w")
             tk.Label(card, textvariable=var, bg=PANEL, fg=accent, font=("Segoe UI", 18, "bold")).pack(anchor="w", pady=(8, 0))
         consent_box = tk.Frame(body, bg=PANEL, highlightbackground="#292c3a", highlightthickness=1, padx=16, pady=14)
         consent_box.pack(fill="x", pady=(0, 13))
-        tk.Label(consent_box, text="SCAN AUTHORIZATION", bg=PANEL, fg="#ff7084", font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        tk.Label(consent_box, text="الموافقة على الفحص", bg=PANEL, fg="#ff7084", font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent = tk.BooleanVar(value=False)
-        tk.Checkbutton(consent_box, text="I own this device or have permission to inspect it, and I agree to send the scan report to the administrator.", variable=self.consent, bg=PANEL, fg=WHITE, selectcolor="#242735", activebackground=PANEL, activeforeground=WHITE, wraplength=850, font=("Segoe UI", 10), relief="flat").pack(anchor="w", pady=(8, 0))
+        tk.Checkbutton(consent_box, text="أملك هذا الجهاز أو لدي إذن بفحصه، وأوافق على إرسال تقرير الفحص إلى المسؤول.", variable=self.consent, bg=PANEL, fg=WHITE, selectcolor="#242735", activebackground=PANEL, activeforeground=WHITE, wraplength=850, font=("Segoe UI", 10), relief="flat").pack(anchor="w", pady=(8, 0))
         scanbox = tk.Frame(body, bg=PANEL, highlightbackground="#292c3a", highlightthickness=1, padx=16, pady=14)
         scanbox.pack(fill="x", pady=(0, 13))
-        self.status = tk.StringVar(value="READY • Confirm authorization, then start the scan.")
+        self.status = tk.StringVar(value="جاهز • وافق على الفحص ثم ابدأ.")
         topstatus = tk.Frame(scanbox, bg=PANEL)
         topstatus.pack(fill="x")
-        tk.Label(topstatus, text="SCAN PROGRESS", bg=PANEL, fg=WHITE, font=("Segoe UI", 9, "bold")).pack(side="left")
+        tk.Label(topstatus, text="تقدم الفحص", bg=PANEL, fg=WHITE, font=("Segoe UI", 9, "bold")).pack(side="left")
         tk.Label(topstatus, textvariable=self.status, bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(side="right")
         self.progress = ttk.Progressbar(scanbox, maximum=100, mode="determinate")
         self.progress.pack(fill="x", pady=(12, 0))
         controls = tk.Frame(body, bg=BG)
         controls.pack(fill="x", pady=(0, 13))
-        ttk.Button(controls, text="▶  START SCAN", command=self.start).pack(side="left", padx=(0, 8))
-        ttk.Button(controls, text="↗  SEND REPORT TO ADMIN", command=self.submit).pack(side="left", padx=4)
+        ttk.Button(controls, text="▶  بدء الفحص", command=self.start).pack(side="left", padx=(0, 8))
+        ttk.Button(controls, text="↗  إرسال التقرير للمسؤول", command=self.submit).pack(side="left", padx=4)
         results = tk.Frame(body, bg=PANEL, highlightbackground="#292c3a", highlightthickness=1, padx=14, pady=12)
         results.pack(fill="both", expand=True)
-        tk.Label(results, text="SCAN ACTIVITY", bg=PANEL, fg=WHITE, font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 8))
+        tk.Label(results, text="سجل الفحص", bg=PANEL, fg=WHITE, font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 8))
         self.output = tk.Text(results, bg="#0b0d14", fg="#dce0ec", insertbackground="white", relief="flat", font=("Consolas", 9), wrap="word", padx=13, pady=12, selectbackground="#7d1b31", borderwidth=0)
         self.output.pack(fill="both", expand=True)
         self.output.insert("end", "SYSTEM READY\n\nYour scan has not started yet.\n\nAfter completion, the detailed report is intended for the administrator dashboard.\n")
@@ -233,7 +233,7 @@ class InspectorApp(tk.Tk):
 
     def export_pdf(self):
         if not self.report:
-            messagebox.showinfo(APP, "Run an inspection first.")
+            messagebox.showinfo(APP, "ابدأ الفحص أولاً.")
             return
         path = filedialog.asksaveasfilename(defaultextension=".pdf",
                     filetypes=[("PDF report", "*.pdf")], initialfile="3eN-inspection-report.pdf")
@@ -265,25 +265,25 @@ class InspectorApp(tk.Tk):
                 story.append(t)
             story.extend([Spacer(1, 7*mm), Paragraph("Important: name-based indicators are leads for manual review, not proof of cheating. Scope: running process metadata and readable executable SHA-256 only.", styles["Italic"])])
             doc.build(story)
-            messagebox.showinfo(APP, "PDF report exported successfully.")
+            messagebox.showinfo(APP, "تم تصدير تقرير PDF بنجاح.")
         except Exception as exc:
             messagebox.showerror(APP, "PDF export failed: " + str(exc))
 
     def submit(self):
         if not self.report:
-            messagebox.showinfo(APP, "Run an inspection first.")
+            messagebox.showinfo(APP, "ابدأ الفحص أولاً.")
             return
         dialog = tk.Toplevel(self)
         dialog.title("Submit approved report")
         dialog.configure(bg="#10121a")
         dialog.geometry("520x250")
-        tk.Label(dialog, text="Dashboard URL (https://…)", bg="#10121a", fg="white").pack(anchor="w", padx=18, pady=(18, 0))
+        tk.Label(dialog, text="رابط لوحة التحكم (https://…)", bg="#10121a", fg="white").pack(anchor="w", padx=18, pady=(18, 0))
         url_entry = tk.Entry(dialog, bg="#08090e", fg="white", insertbackground="white")
         url_entry.pack(fill="x", padx=18, pady=5)
         if DASHBOARD_URL:
             url_entry.insert(0, DASHBOARD_URL)
             url_entry.configure(state="readonly")
-        tk.Label(dialog, text="One-time session code", bg="#10121a", fg="white").pack(anchor="w", padx=18)
+        tk.Label(dialog, text="كود الجلسة لمرة واحدة", bg="#10121a", fg="white").pack(anchor="w", padx=18)
         code_entry = tk.Entry(dialog, bg="#08090e", fg="white", insertbackground="white")
         code_entry.pack(fill="x", padx=18, pady=5)
         if SESSION_CODE:
@@ -312,7 +312,7 @@ class InspectorApp(tk.Tk):
                 dialog.destroy()
             except Exception as exc:
                 messagebox.showerror(APP, f"Could not submit report: {exc}", parent=dialog)
-        ttk.Button(dialog, text="SEND REPORT", command=send).pack(pady=14)
+        ttk.Button(dialog, text="إرسال التقرير", command=send).pack(pady=14)
 
 if __name__ == "__main__":
     InspectorApp().mainloop()
