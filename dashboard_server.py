@@ -245,22 +245,31 @@ def home():
 @login_required
 def sessions_page():
     user = current_user()
-    if user["role"] not in ("owner", "deputy", "team", "inspector"):
+    if user["role"] not in ("owner", "deputy", "inspector"):
         abort(403)
     if request.method == "POST":
+        target_label = request.form.get("target_label", "").strip()[:120]
+        if len(target_label) < 2:
+            flash("اكتب اسم الشخص أو معرّفه قبل إنشاء الجلسة.")
+            return redirect(url_for("sessions_page"))
         code = secrets.token_urlsafe(6).replace("-", "").replace("_", "")[:8].upper()
         code_hash = hashlib.sha256(code.encode()).hexdigest()
         created = datetime.now(timezone.utc)
-        expires = created.timestamp() + 2 * 60 * 60
-        expires_at = datetime.fromtimestamp(expires, timezone.utc).isoformat(timespec="seconds")
+        expires_at = datetime.fromtimestamp(created.timestamp() + 2 * 60 * 60, timezone.utc).isoformat(timespec="seconds")
         with db() as con:
-            con.execute("INSERT INTO inspection_sessions(code_hash,display_code,created_by,created_at,expires_at,status) VALUES(?,?,?,?,?,?)",
-                        (code_hash, code, user["username"], now(), expires_at, "open"))
-        log_action(user["username"], "created two-hour inspection session")
-        return page("""<div class="card"><h2>تم إنشاء الجلسة</h2><p>كود الفحص لمرة واحدة:</p><div class="metric">{{ code }}</div><p class="muted">يسمح هذا الكود بتقرير واحد وينتهي بعد ساعتين. شاركه فقط بعد موافقة صاحب الجهاز على الفحص.</p><div class="notice"><b>إنشاء وتحميل برنامج Windows</b><p>افتح <a href="https://github.com/dlta30/lnspector-Team/actions/workflows/build-windows-client.yml" target="_blank" rel="noopener">مسار بناء ملف EXE</a>, اختر <b>Run workflow</b>, أدخل كود الجلسة ورابط لوحة التحكم HTTPS ثم ابدأ البناء.</p><p>عند نجاح البناء، افتح صفحة التنفيذ وحمّل ملف <b>3eN-Inspector-[session]</b> ZIP من Artifacts، ثم فك الضغط وأرسل EXE لصاحب الجهاز فقط. سيكون الكود والرابط مُجهزين مسبقاً، لكن الفحص يتطلب موافقة صاحب الجهاز.</p></div><a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div>""", code=code)
+            con.execute("INSERT INTO inspection_sessions(code_hash,display_code,target_label,created_by,created_at,expires_at,status) VALUES(?,?,?,?,?,?,?)",
+                        (code_hash, code, target_label, user["username"], now(), expires_at, "open"))
+        log_action(user["username"], "created inspection session for " + target_label)
+        build_ok, build_message = trigger_session_build(code)
+        if build_ok:
+            flash("تم إنشاء الجلسة وإرسال طلب بناء EXE الخاص بها.")
+        else:
+            flash("تم إنشاء الجلسة. " + build_message)
+        return page("""<div class="card"><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p>كود الجلسة:</p><div class="metric">{{ code }}</div><p class="muted">الكود صالح لساعتين ويقبل تقريراً واحداً. لا تشارك ملف الفحص إلا مع صاحب الجهاز وبموافقته.</p><div class="notice"><b>ملف Inceptor المستقل</b><p>{{ build_message }}</p><p>بعد اكتمال البناء ستجد الملف في <a href="https://github.com/dlta30/lnspector-Team/actions/workflows/build-windows-client.yml" target="_blank" rel="noopener">صفحة بناء Windows</a> ضمن Artifacts. فك ZIP وشغّل EXE.</p></div><a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div>""", code=code, target_label=target_label, build_message=build_message)
     with db() as con:
-        rows = con.execute("SELECT display_code,created_by,created_at,expires_at,used_at,status FROM inspection_sessions WHERE created_by=? ORDER BY id DESC LIMIT 100", (user["username"],)).fetchall() if user["role"] == "team" else con.execute("SELECT display_code,created_by,created_at,expires_at,used_at,status FROM inspection_sessions ORDER BY id DESC LIMIT 100").fetchall()
-    return page("""<div class="card"><h2>جلسات الفحص</h2><p class="muted">أنشئ كوداً مؤقتاً لفحص بموافقة صاحب الجهاز. يسمح الكود بإرسال تقرير واحد فقط.</p><form method="post"><button class="btn">إنشاء كود جلسة (ساعتان)</button></form></div><div class="card"><table><tr><th>الكود</th><th>أنشأها</th><th>الإنشاء (UTC)</th><th>ينتهي (UTC)</th><th>الاستخدام (UTC)</th><th>الحالة</th></tr>{% for r in rows %}<tr><td>{{ r['display_code'] }}</td><td>{{ r['created_by'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['expires_at'] }}</td><td>{{ r['used_at'] or '—' }}</td><td>{{ r['status'] }}</td></tr>{% endfor %}</table></div>""", rows=rows)
+        rows = con.execute("SELECT display_code,target_label,created_by,created_at,expires_at,used_at,status FROM inspection_sessions ORDER BY id DESC LIMIT 100").fetchall()
+    return page("""<div class="card"><h2>جلسات الفحص</h2><p class="muted">أنشئ كوداً مؤقتاً لفحص بموافقة صاحب الجهاز. يلزم أخذ موافقة صاحب الجهاز قبل التشغيل.</p><form method="post"><label>اسم الشخص أو معرّفه</label><input name="target_label" minlength="2" maxlength="120" required placeholder="اسم المستخدم أو ID"><button class="btn">إنشاء جلسة وملف فحص</button></form></div><div class="card"><table><tr><th>الكود</th><th>الشخص</th><th>أنشأها</th><th>الإنشاء (UTC)</th><th>ينتهي (UTC)</th><th>الاستخدام (UTC)</th><th>الحالة</th></tr>{% for r in rows %}<tr><td>{{ r['display_code'] }}</td><td>{{ r['target_label'] }}</td><td>{{ r['created_by'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['expires_at'] }}</td><td>{{ r['used_at'] or '—' }}</td><td>{{ r['status'] }}</td></tr>{% endfor %}</table></div>""", rows=rows)
+
 
 @app.post("/api/v1/session-report")
 def ingest_session_report():
