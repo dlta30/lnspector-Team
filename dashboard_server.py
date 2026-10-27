@@ -291,6 +291,19 @@ def users_page():
                                 (1 if request.form.get("can_view") else 0,1 if request.form.get("can_ingest") and target["role"]=="inspector" else 0,uid))
                     log_action(actor["username"],"updated permissions for "+target["username"])
                     flash("Permissions updated.")
+        elif action=="role":
+            uid=request.form.get("user_id","")
+            role=request.form.get("role","viewer")
+            if role not in ("inspector","viewer"):
+                flash("Invalid role.")
+            else:
+                with db() as con:
+                    target=con.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
+                    if target and target["role"]!="owner":
+                        con.execute("UPDATE users SET role=?,can_ingest=CASE WHEN ?='inspector' THEN can_ingest ELSE 0 END WHERE id=?",
+                                    (role,role,uid))
+                        log_action(actor["username"],"changed role for "+target["username"]+" to "+role)
+                        flash("Role updated.")
         elif action=="delete":
             uid=request.form.get("user_id","")
             with db() as con:
@@ -301,7 +314,7 @@ def users_page():
                     flash("Staff account deleted.")
         return redirect(url_for("users_page"))
     with db() as con: users=con.execute("SELECT * FROM users ORDER BY role,username").fetchall()
-    return page("""<div class="card"><h2>Create staff account</h2><form method="post"><input type="hidden" name="action" value="create"><label>Username</label><input name="username" minlength="3" required><label>Temporary password (12+ characters)</label><input name="password" type="password" minlength="12" required><label>Role</label><select name="role"><option value="inspector">Inspector</option><option value="viewer">Viewer</option></select><label><input style="width:auto" type="checkbox" name="can_view" checked> View reports</label><label><input style="width:auto" type="checkbox" name="can_ingest"> Permission flag: submit reports (inspector role only)</label><button class="btn">Create account</button></form></div><div class="card"><h2>Accounts & permissions</h2>{% for u in users %}<form method="post" class="card"><input type="hidden" name="user_id" value="{{ u['id'] }}"><b>{{ u['username'] }}</b> · {{ u['role'] }} {% if u['role']=='owner' %}<p class="muted">Owner permissions are fixed.</p>{% else %}<input type="hidden" name="action" value="permissions"><label><input style="width:auto" type="checkbox" name="can_view" {% if u['can_view'] %}checked{% endif %}> View reports</label><label><input style="width:auto" type="checkbox" name="can_ingest" {% if u['can_ingest'] %}checked{% endif %}> Submit reports (future authenticated client accounts)</label><button class="btn">Save permissions</button></form><form method="post"><input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}"><button class="btn danger">Delete account</button></form>{% endif %}</form>{% endfor %}</div>""",users=users)
+    return page("""<div class="card"><h2>Create staff account</h2><form method="post"><input type="hidden" name="action" value="create"><label>Username</label><input name="username" minlength="3" required><label>Temporary password (12+ characters)</label><input name="password" type="password" minlength="12" required><label>Role</label><select name="role"><option value="inspector">Inspector</option><option value="viewer">Viewer</option></select><label><input style="width:auto" type="checkbox" name="can_view" checked> View reports</label><label><input style="width:auto" type="checkbox" name="can_ingest"> Permission flag: submit reports (inspector role only)</label><button class="btn">Create account</button></form></div><div class="card"><h2>Accounts & permissions</h2>{% for u in users %}<form method="post" class="card"><input type="hidden" name="user_id" value="{{ u['id'] }}"><b>{{ u['username'] }}</b> · {{ u['role'] }} {% if u['role']=='owner' %}<p class="muted">Owner permissions are fixed.</p>{% else %}<label>Role</label><select name="role" form="role-{{ u['id'] }}"><option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>Viewer</option><option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>Inspector (can create sessions)</option></select><input type="hidden" name="action" value="permissions"><label><input style="width:auto" type="checkbox" name="can_view" {% if u['can_view'] %}checked{% endif %}> View reports</label><label><input style="width:auto" type="checkbox" name="can_ingest" {% if u['can_ingest'] %}checked{% endif %}> Submit reports (future authenticated client accounts)</label><button class="btn">Save permissions</button></form><form method="post" id="role-{{ u['id'] }}"><input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{ u['id'] }}"><label>Change role</label><select name="role"><option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>Viewer</option><option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>Inspector</option></select><button class="btn">Save role</button></form><form method="post"><input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}"><button class="btn danger">Delete account</button></form>{% endif %}</form>{% endfor %}</div>""",users=users)
 
 @app.route("/events")
 @login_required
