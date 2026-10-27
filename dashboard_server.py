@@ -18,6 +18,7 @@ import json
 import os
 import secrets
 import sqlite3
+import urllib.request
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
@@ -98,6 +99,20 @@ def init_db():
             else:
                 con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
                             (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
+
+
+def notify_discord(report_id, session_code, computer, summary):
+    webhook = os.environ.get('DISCORD_WEBHOOK_URL', '').strip()
+    if not webhook.startswith('https://discord.com/api/webhooks/') and not webhook.startswith('https://discordapp.com/api/webhooks/'):
+        return False
+    message = {'username': '3eN Inspector Team', 'embeds': [{'title': 'New inspection report', 'description': (summary or 'Report received')[:1000], 'color': 16076879, 'fields': [{'name': 'Report ID', 'value': str(report_id), 'inline': True}, {'name': 'Session', 'value': str(session_code)[:100], 'inline': True}, {'name': 'Device', 'value': str(computer)[:100], 'inline': True}], 'footer': {'text': '3eN INSPECTOR TEAM'}}], 'allowed_mentions': {'parse': []}}
+    req = urllib.request.Request(webhook, data=json.dumps(message).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=8) as response:
+            return 200 <= response.status < 300
+    except Exception as exc:
+        print('Discord notification failed:', type(exc).__name__)
+        return False
 
 def log_action(actor, action):
     with db() as con:
@@ -242,7 +257,8 @@ def ingest_session_report():
         report_id = cur.lastrowid
         con.execute("UPDATE inspection_sessions SET status='used',used_at=? WHERE id=?", (now(), session_row["id"]))
     log_action("session:" + session_row["display_code"], "received report #" + str(report_id))
-    return {"ok": True, "report_id": report_id}, 201
+    notified = notify_discord(report_id, session_row["display_code"], label, summary)
+    return {"ok": True, "report_id": report_id, "discord_notified": notified}, 201
 
 @app.route("/reports")
 @login_required
