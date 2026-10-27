@@ -32,7 +32,8 @@ app.secret_key = os.environ.get("INSPECTOR_SECRET_KEY") or secrets.token_hex(32)
 API_KEY = os.environ.get("INSPECTOR_API_KEY", "")
 OWNER_USER = os.environ.get("INSPECTOR_OWNER_USER", "owner")
 OWNER_PASSWORD = os.environ.get("INSPECTOR_OWNER_PASSWORD", "")
-STAFF_JOIN_PASSWORD = os.environ.get("INSPECTOR_STAFF_JOIN_PASSWORD", "")
+DEPUTY_PASSWORD = os.environ.get("INSPECTOR_DEPUTY_PASSWORD", "")
+TEAM_PASSWORD = os.environ.get("INSPECTOR_TEAM_PASSWORD", "")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -163,10 +164,11 @@ def login():
                             (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
                 user = con.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
             if not user and 2 <= len(username) <= 64:
-                role_passwords = [("owner", OWNER_PASSWORD), ("deputy", os.environ.get("INSPECTOR_DEPUTY_PASSWORD", "")), ("team", os.environ.get("INSPECTOR_TEAM_PASSWORD", ""))]
+                role_passwords = [("deputy", DEPUTY_PASSWORD), ("team", TEAM_PASSWORD)]
                 matched_role = next((role for role, secret in role_passwords if secret and hmac.compare_digest(password, secret)), None)
                 safe_name = username.replace(" ", "_")
-                if matched_role and (matched_role != "owner" or safe_name == OWNER_USER):
+                # Owner is provisioned only from the configured owner account/password.
+                if matched_role:
                     try:
                         con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)", (safe_name, generate_password_hash(password), matched_role, 1 if matched_role in ("owner","deputy") else 0, 1 if matched_role == "owner" else 0, now()))
                         user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
@@ -193,8 +195,9 @@ def logout():
 def home():
     user=current_user()
     with db() as con:
-        count=con.execute("SELECT COUNT(*) n FROM reports").fetchone()["n"]
-        recent=con.execute("SELECT id,session_id,computer_label,created_at,summary FROM reports ORDER BY id DESC LIMIT 8").fetchall()
+        can_see_reports = user["role"] in ("owner", "deputy", "inspector") or bool(user["can_view"])
+        count=con.execute("SELECT COUNT(*) n FROM reports").fetchone()["n"] if can_see_reports else 0
+        recent=con.execute("SELECT id,session_id,computer_label,created_at,summary FROM reports ORDER BY id DESC LIMIT 8").fetchall() if can_see_reports else []
         staff=con.execute("SELECT COUNT(*) n FROM users").fetchone()["n"] if user["role"]=="owner" else None
     return page("""<div class="grid"><div class="card"><div class="muted">Saved reports</div><div class="metric">{{ count }}</div></div><div class="card"><div class="muted">Signed in as</div><div class="metric" style="font-size:20px">{{ user['username'] }}</div><div>{{ user['role'] }}</div></div>{% if staff is not none %}<div class="card"><div class="muted">Staff accounts</div><div class="metric">{{ staff }}</div></div>{% endif %}</div><div class="card"><h2>Recent reports</h2>{% if recent %}<table><tr><th>ID</th><th>Session</th><th>Computer label</th><th>Received (UTC)</th><th>Summary</th></tr>{% for r in recent %}<tr><td><a class="btn" href="{{ url_for('report_detail', report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td></tr>{% endfor %}</table>{% else %}<p class="muted">No reports received yet. Configure the desktop client to send an explicitly approved report.</p>{% endif %}</div>""",count=count,user=user,staff=staff,recent=recent)
 
