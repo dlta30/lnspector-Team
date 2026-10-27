@@ -345,8 +345,14 @@ def download_session_build(code):
             if not data or not data.startswith(b"PK"):
                 raise RuntimeError("Downloaded artifact was empty or not a ZIP archive")
             from io import BytesIO
+            import zipfile
             from flask import send_file
-            return send_file(BytesIO(data), mimetype="application/zip", as_attachment=True, download_name="3eN-Inspector-"+code.upper()+".zip")
+            with zipfile.ZipFile(BytesIO(data)) as archive:
+                exe_names = [name for name in archive.namelist() if name.lower().endswith(".exe") and not name.startswith("__MACOSX/")]
+                if not exe_names:
+                    raise RuntimeError("Artifact ZIP contains no EXE file")
+                exe_data = archive.read(exe_names[0])
+            return send_file(BytesIO(exe_data), mimetype="application/vnd.microsoft.portable-executable", as_attachment=True, download_name="3eN-INCEPTOR-"+code.upper()+".exe")
     except Exception as exc:
         detail = str(exc)[:240]
         print("Artifact download failed:", type(exc).__name__, detail)
