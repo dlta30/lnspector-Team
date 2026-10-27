@@ -427,9 +427,85 @@ def report_detail(report_id):
     with db() as con:
         r=con.execute("SELECT * FROM reports WHERE id=?",(report_id,)).fetchone()
     if not r: abort(404)
-    try: payload=json.dumps(json.loads(r["payload"]),indent=2,ensure_ascii=False)
-    except Exception: payload=r["payload"]
-    return page("""<div class="card"><h2>التقرير رقم{{ r['id'] }}</h2><p><b>الجلسة:</b> {{ r['session_id'] }} · <b>الجهاز:</b> {{ r['computer_label'] }}</p><p><b>وقت الاستلام:</b> {{ r['created_at'] }} UTC</p><p>{{ r['summary'] }}</p><pre>{{ payload }}</pre><a class="btn" href="{{ url_for('reports') }}">رجوع</a></div>""",r=r,payload=payload)
+    try:
+        report_data = json.loads(r["payload"])
+        if not isinstance(report_data, dict):
+            report_data = {"raw_result": report_data}
+    except Exception:
+        report_data = {"raw_result": str(r["payload"])}
+    processes = report_data.get("processes", []) if isinstance(report_data.get("processes", []), list) else []
+    findings = [p for p in processes if isinstance(p, dict) and p.get("indicator_matches")]
+    startup = report_data.get("startup_entries", []) if isinstance(report_data.get("startup_entries", []), list) else []
+    match_count = int(report_data.get("indicator_match_count", len(findings)) or 0)
+    process_count = int(report_data.get("process_count", len(processes)) or 0)
+    if match_count:
+        status_title, status_class = ("مؤشرات تحتاج مراجعة", "warn")
+        status_detail = "تم العثور على تطابقات مع مؤشرات محددة. هذا ليس تأكيدًا بوجود هاك؛ راجع التفاصيل أدناه."
+    else:
+        status_title, status_class = ("لم تُرصد مؤشرات مطابقة", "good")
+        status_detail = "لم يظهر تطابق مع قائمة المؤشرات الحالية، وهذا لا يضمن خلو الجهاز من كل المخاطر."
+    return page("""
+    <style>
+      .report-hero{padding:26px;border-radius:16px;background:linear-gradient(120deg,#21121b,#11131d);border:1px solid #ffffff14;margin-bottom:16px}
+      .report-status{display:inline-block;padding:8px 13px;border-radius:99px;font-weight:800;font-size:13px}
+      .report-status.warn{background:#492916;color:#ffc078;border:1px solid #70451e}
+      .report-status.good{background:#10372c;color:#75e0b4;border:1px solid #205b47}
+      .report-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
+      .report-metric{background:#10121b;border:1px solid #ffffff12;border-radius:13px;padding:16px}
+      .report-metric strong{display:block;font-size:28px;margin-top:8px;color:#ff6379}
+      .finding{background:#11131c;border:1px solid #713044;border-radius:13px;padding:17px;margin:12px 0;overflow-wrap:anywhere}
+      .finding h3{margin:0 0 10px;font-size:16px;color:#ffb2bd}
+      .finding .field{margin:7px 0;color:#d6d8e2;font-size:12px;line-height:1.7}
+      .field b{color:#ff8094}.tag{display:inline-block;border:1px solid #67404b;background:#29151d;border-radius:7px;padding:4px 7px;margin:3px;color:#ffc0ca;font-size:11px}
+      details{margin-top:12px}summary{cursor:pointer;color:#ff8b9d;font-weight:700}
+      .empty-state{padding:22px;text-align:center;border:1px solid #235341;background:#10251f;border-radius:13px;color:#8be1b8}
+      @media(max-width:600px){.report-hero{padding:17px}.report-metric strong{font-size:23px}}
+    </style>
+    <div class="card">
+      <a class="btn" href="{{ url_for('reports') }}">← رجوع للتقارير</a>
+      <div class="report-hero">
+        <div class="muted">3eN INCEPTOR · تقرير فحص #{{ r['id'] }}</div>
+        <h2 style="margin-top:10px">نتيجة فحص الجهاز</h2>
+        <span class="report-status {{ status_class }}">{{ status_title }}</span>
+        <p>{{ status_detail }}</p>
+        <p class="muted">الجهاز: {{ r['computer_label'] }} · الجلسة: {{ r['session_id'] }}</p>
+        <p class="muted">وقت الاستلام: {{ r['created_at'] }} UTC</p>
+      </div>
+      <div class="report-metrics">
+        <div class="report-metric">العمليات المفحوصة<strong>{{ process_count }}</strong></div>
+        <div class="report-metric">مؤشرات المطابقة<strong>{{ match_count }}</strong></div>
+        <div class="report-metric">عناصر بدء التشغيل<strong>{{ startup|length }}</strong></div>
+      </div>
+      <div class="card"><h2>النتيجة والتوصية</h2><p>{{ status_detail }}</p><p class="muted">{{ report_data.get('note', 'النتائج الآلية مؤشرات أولية وتحتاج إلى مراجعة بشرية.') }}</p></div>
+      <div class="card"><h2>العناصر التي تحتاج مراجعة</h2>
+        {% if findings %}
+          {% for item in findings %}
+            <div class="finding">
+              <h3>⚠️ {{ item.get('process_name', 'اسم غير متاح') }} <span class="muted">· PID {{ item.get('pid', '—') }}</span></h3>
+              <div class="field"><b>سبب الاشتباه:</b> تطابق مع مؤشر أو أكثر من قائمة الفحص.</div>
+              <div class="field"><b>المؤشرات:</b>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</div>
+              <div class="field"><b>مسار الملف:</b> {{ item.get('executable_path') or 'غير متاح' }}</div>
+              <div class="field"><b>SHA-256:</b> {{ item.get('sha256') or 'غير متاح' }}</div>
+              <div class="field"><b>التقييم:</b> يحتاج مراجعة يدوية؛ الاسم وحده لا يثبت وجود هاك.</div>
+            </div>
+          {% endfor %}
+        {% else %}
+          <div class="empty-state">✓ لا توجد عمليات مطابقة لقائمة المؤشرات الحالية.</div>
+        {% endif %}
+      </div>
+      <div class="card"><h2>عناصر بدء التشغيل</h2>
+        {% if startup %}
+          {% for item in startup %}
+            <details><summary>{{ item.get('name', 'عنصر غير معروف') }} · {{ item.get('source', 'المصدر غير معروف') }}</summary>
+              <div class="field"><b>الأمر:</b> {{ item.get('command', 'غير متاح') }}</div>
+            </details>
+          {% endfor %}
+        {% else %}<p class="muted">لا توجد بيانات لعناصر بدء التشغيل في هذا التقرير.</p>{% endif %}
+      </div>
+      <details class="card"><summary>عرض البيانات الخام (للمختصين فقط)</summary><pre>{{ raw_payload }}</pre></details>
+      <a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">تحميل PDF</a>
+    </div>
+    """,r=r,report_data=report_data,raw_payload=json.dumps(report_data,indent=2,ensure_ascii=False),process_count=process_count,match_count=match_count,startup=startup,findings=findings,status_title=status_title,status_class=status_class,status_detail=status_detail)
 
 @app.route("/reports/<int:report_id>/pdf")
 @login_required
