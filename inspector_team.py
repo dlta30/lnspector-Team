@@ -350,8 +350,7 @@ class InspectorApp:
 
         footer = tk.Frame(self.main_page, bg=BG); footer.pack(fill="x", padx=22, pady=(0, 14))
         tk.Button(footer, text="تنزيل تقرير PDF", command=self.export_pdf, bg=RED, fg="white", relief="flat", padx=12, pady=7).pack(side="right")
-        tk.Button(footer, text="حفظ التقرير", command=self.save_report_copy, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="right", padx=8)
-        tk.Button(footer, text="تصدير CSV", command=self.export_csv, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="right", padx=8)
+        tk.Button(footer, text="حفظ التقرير PDF", command=self.save_report_copy, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="right", padx=8)
         tk.Button(footer, text="إعدادات Webhook", command=self.webhook_settings, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="left", padx=(0, 8))
         tk.Button(footer, text="إرسال التقرير إلى Discord", command=self.send_discord, bg="#5865F2", fg="white", relief="flat", padx=12, pady=7).pack(side="left", padx=(0, 8))
         tk.Button(footer, text="فتح مجلد التقارير", command=self.open_reports, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="left")
@@ -381,7 +380,7 @@ class InspectorApp:
         self.pages.add(self.reports_page, text="▤  التقارير")
         tk.Label(self.reports_page, text="التقارير المتاحة", bg=BG, fg=TEXT,
                  font=("Segoe UI", 16, "bold")).pack(anchor="w", padx=18, pady=(18, 8))
-        tk.Label(self.reports_page, text="اختر تقريرًا من صفحة الجلسات أو شغّل فحصًا جديدًا لإنشاء PDF وJSON.",
+        tk.Label(self.reports_page, text="اختر تقريرًا من صفحة الجلسات أو شغّل فحصًا جديدًا لإنشاء تقرير PDF.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 10)).pack(anchor="w", padx=18, pady=4)
         tk.Button(self.reports_page, text="فتح مجلد التقارير", command=self.open_reports,
                   bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=8).pack(anchor="w", padx=18, pady=12)
@@ -575,15 +574,22 @@ class InspectorApp:
             messagebox.showinfo('تم الحفظ', 'تم حفظ نسخة PDF في المسار المحدد.')
 
     def save_report_copy(self):
-        if not self.report or not self.report_path or not self.pdf_path:
+        if not self.report or not self.pdf_path or not self.pdf_path.exists():
             messagebox.showinfo('لا يوجد تقرير', 'شغّل الفحص أولًا.')
             return
-        dest = filedialog.askdirectory(title='اختر مجلد حفظ التقرير')
+        dest = filedialog.asksaveasfilename(
+            title='حفظ تقرير الفحص بصيغة PDF',
+            defaultextension='.pdf',
+            initialfile=self.pdf_path.name,
+            filetypes=[('ملف PDF', '*.pdf')]
+        )
         if dest:
             import shutil
-            shutil.copy2(self.pdf_path, Path(dest) / self.pdf_path.name)
-            shutil.copy2(self.report_path, Path(dest) / self.report_path.name)
-            messagebox.showinfo('تم الحفظ', 'حُفظت نسختا PDF وJSON.')
+            try:
+                shutil.copy2(self.pdf_path, dest)
+                messagebox.showinfo('تم الحفظ', 'تم حفظ تقرير الفحص بصيغة PDF فقط.')
+            except OSError as exc:
+                messagebox.showerror('تعذر الحفظ', f'لم يتم حفظ التقرير.\\n{exc}')
 
     def export_csv(self):
         if not self.results:
