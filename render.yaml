@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: 3en-inceptor-dashboard
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn dashboard_server:app --bind 0.0.0.0:$PORT
+    healthCheckPath: /login
+    disk:
+      name: inceptor-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: INSPECTOR_DB
+        value: /var/data/inspector_dashboard.sqlite3
+      - key: INSPECTOR_SECRET_KEY
+        generateValue: true
+      - key: INSPECTOR_OWNER_USER
+        value: owner
+      - key: INSPECTOR_OWNER_PASSWORD
+        sync: false
+      - key: INSPECTOR_API_KEY
+        generateValue: true
+      - key: GITHUB_REPOSITORY
+        value: dlta30/lnspector-Team
+      - key: GITHUB_ACTIONS_TOKEN
+        sync: false
+      - key: PUBLIC_DASHBOARD_URL
+        sync: false
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
