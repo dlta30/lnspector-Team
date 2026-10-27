@@ -19,9 +19,47 @@ try:
 except ImportError:
     SESSION_CODE = ""
 SUSPICIOUS_TERMS = (
-    "cheat", "cheatengine", "injector", "trainer", "modmenu",
+    "cheat", "cheatengine", "cheat engine", "injector", "trainer", "modmenu",
     "aimbot", "wallhack", "processhacker", "xenos", "extreme injector",
+    "silent aim", "aimware", "redengine", "eulen", "skript", "lynx",
+    "phantom", "rewasd", "macro recorder",
 )
+GAME_PROCESS_TERMS = {
+    "FiveM": ("fivem.exe", "citizenfx", "gta5.exe", "gta process"),
+    "Fortnite": ("fortniteclient", "easyanticheat", "epicgameslauncher"),
+}
+
+def classify_game_context(process_name, executable_path):
+    text = (str(process_name or "") + " " + str(executable_path or "")).lower()
+    return [game for game, terms in GAME_PROCESS_TERMS.items() if any(term in text for term in terms)]
+
+def collect_startup_entries():
+    """Collect startup entry names and command paths on Windows only; never execute anything."""
+    entries = []
+    if platform.system() != "Windows":
+        return entries
+    try:
+        import winreg
+        locations = (
+            (winreg.HKEY_CURRENT_USER, r"Software\\Microsoft\\Windows\\CurrentVersion\\Run", "HKCU Run"),
+            (winreg.HKEY_LOCAL_MACHINE, r"Software\\Microsoft\\Windows\\CurrentVersion\\Run", "HKLM Run"),
+            (winreg.HKEY_LOCAL_MACHINE, r"Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run", "HKLM Run 32-bit"),
+        )
+        for hive, key_path, label in locations:
+            try:
+                with winreg.OpenKey(hive, key_path) as key:
+                    count = winreg.QueryInfoKey(key)[1]
+                    for index in range(min(count, 250)):
+                        try:
+                            name, value, _kind = winreg.EnumValue(key, index)
+                            entries.append({"source": label, "name": str(name)[:160], "command": str(value)[:1000]})
+                        except OSError:
+                            continue
+            except OSError:
+                continue
+    except ImportError:
+        pass
+    return entries[:500]
 
 def sha256_file(path):
     try:
@@ -54,6 +92,7 @@ def collect_processes(progress):
                 "executable_path": exe or None,
                 "sha256": digest,
                 "indicator_matches": matches,
+                "game_context": classify_game_context(name, exe),
                 "assessment": "review" if matches else "no_name_match",
             })
         except (psutil.Error, OSError):
@@ -136,7 +175,7 @@ class InspectorApp(tk.Tk):
         self.output.pack(fill="both", expand=True)
         self.output.insert("end", "SYSTEM READY\n\nYour scan has not started yet.\n\nAfter completion, the detailed report is intended for the administrator dashboard.\n")
         self.output.insert("end", "• Confirm authorization and press START SCAN.\n")
-        self.output.insert("end", "• Current scan scope: running process metadata and readable executable hashes.\n")
+        self.output.insert("end", "• Scope: running process metadata, readable executable hashes, and Windows startup entry names/commands.\n")
         self.output.insert("end", "• A flag is only a lead for administrator review, not proof of cheating.\n")
         tk.Label(self, text="3eN INSPECTOR TEAM     •     NO STEALTH COLLECTION", bg="#11131c", fg="#747d91", font=("Segoe UI", 8, "bold"), pady=10).pack(fill="x")
 
@@ -166,9 +205,12 @@ class InspectorApp(tk.Tk):
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "running process metadata and readable executable SHA-256 only",
+                "scan_scope": "running process metadata, readable executable SHA-256, and Windows startup entry names/commands",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
+                "startup_entry_count": len(collect_startup_entries()),
+                "startup_entries": collect_startup_entries(),
+                "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
                 "note": "Name-based indicators are not proof of cheating. Manual review is required.",
                 "processes": processes,
             }
@@ -178,7 +220,6 @@ class InspectorApp(tk.Tk):
             self.update_progress(0, "Scan failed. Check dependencies and permissions.")
 
     def _show_report(self):
-        matches = [p for p in self.report["processes"] if p["indicator_matches"]]
         self.metric_processes.set(str(self.report["process_count"]))
         self.metric_flags.set("READY")
         self.metric_state.set("COMPLETE")
@@ -254,7 +295,7 @@ class InspectorApp(tk.Tk):
             if not messagebox.askyesno(APP, "Send the inspected process metadata to your inspector dashboard?", parent=dialog):
                 return
             payload = {"session_code": code, "computer_label": self.report["device_label"],
-                       "summary": f"{self.report['indicator_match_count']} name-based lead(s) for manual review",
+                       "summary": f"{self.report['indicator_match_count']} name-based lead(s); {self.report.get('startup_entry_count', 0)} startup entries collected for manual review",
                        "report": self.report}
             request_data = urllib.request.Request(base + "/api/v1/session-report",
                 data=json.dumps(payload).encode("utf-8"),
