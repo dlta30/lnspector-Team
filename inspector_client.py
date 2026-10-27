@@ -4,19 +4,20 @@ Scans running process metadata only (name, executable path, SHA-256 where readab
 It does not read personal documents, browser data, credentials, or memory.
 Run: python inspector_client.py
 """
-import csv
 import hashlib
 import json
 import os
 import platform
-import re
 import threading
-import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from datetime import datetime, timezone
 
 APP = "3eN Inspector Team"
+try:
+    from session_config import SESSION_CODE
+except ImportError:
+    SESSION_CODE = ""
 SUSPICIOUS_TERMS = (
     "cheat", "cheatengine", "injector", "trainer", "modmenu",
     "aimbot", "wallhack", "processhacker", "xenos", "extreme injector",
@@ -100,8 +101,7 @@ class InspectorApp(tk.Tk):
         buttons = tk.Frame(body, bg="#090a10")
         buttons.pack(fill="x", pady=16)
         ttk.Button(buttons, text="START INSPECTION", command=self.start).pack(side="left", padx=(0, 8))
-        ttk.Button(buttons, text="Export JSON", command=lambda: self.export("json")).pack(side="left", padx=4)
-        ttk.Button(buttons, text="Export CSV", command=lambda: self.export("csv")).pack(side="left", padx=4)
+        ttk.Button(buttons, text="Export PDF", command=self.export_pdf).pack(side="left", padx=4)
         ttk.Button(buttons, text="Submit to dashboard", command=self.submit).pack(side="left", padx=4)
         self.output = tk.Text(body, bg="#10121a", fg="#dce0ec", insertbackground="white",
                               relief="flat", font=("Consolas", 9), wrap="word", padx=12, pady=12)
@@ -157,31 +157,43 @@ class InspectorApp(tk.Tk):
             self.output.insert("end", "No configured process-name indicators matched. This does not guarantee the device is clean.\n")
         self.status.set("Inspection complete — export or submit only after reviewing the results.")
 
-    def export(self, kind):
+    def export_pdf(self):
         if not self.report:
             messagebox.showinfo(APP, "Run an inspection first.")
             return
-        ext = "json" if kind == "json" else "csv"
-        path = filedialog.asksaveasfilename(defaultextension="." + ext,
-                    filetypes=[("JSON report", "*.json")] if ext == "json" else [("CSV process list", "*.csv")])
+        path = filedialog.asksaveasfilename(defaultextension=".pdf",
+                    filetypes=[("PDF report", "*.pdf")], initialfile="3eN-inspection-report.pdf")
         if not path:
             return
         try:
-            if ext == "json":
-                with open(path, "w", encoding="utf-8") as f:
-                    json.dump(self.report, f, indent=2, ensure_ascii=False)
+            from reportlab.lib import colors
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            from reportlab.lib.units import mm
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+            styles = getSampleStyleSheet()
+            styles.add(ParagraphStyle(name="RedTitle", parent=styles["Title"], textColor=colors.HexColor("#d92345")))
+            doc = SimpleDocTemplate(path, pagesize=A4, rightMargin=16*mm, leftMargin=16*mm, topMargin=16*mm, bottomMargin=16*mm)
+            story = [Paragraph("3eN INSPECTOR TEAM", styles["RedTitle"]), Paragraph("Security inspection report - by:ROITH", styles["Normal"]), Spacer(1, 8*mm)]
+            summary = [["Device", str(self.report["device_label"])], ["Created (UTC)", str(self.report["created_at"])], ["Platform", str(self.report["platform"])], ["Processes reviewed", str(self.report["process_count"])], ["Name-based leads", str(self.report["indicator_match_count"])]]
+            table = Table(summary, colWidths=[42*mm, 120*mm])
+            table.setStyle(TableStyle([("BACKGROUND",(0,0),(0,-1),colors.HexColor("#fbe7eb")),("TEXTCOLOR",(0,0),(0,-1),colors.HexColor("#86152b")),("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#dddddd")),("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),7)]))
+            story.extend([table, Spacer(1, 7*mm), Paragraph("Review findings", styles["Heading2"])])
+            findings = [p for p in self.report["processes"] if p["indicator_matches"]]
+            if not findings:
+                story.append(Paragraph("No configured process-name indicators matched. This does not guarantee the device is clean.", styles["BodyText"]))
             else:
-                with open(path, "w", newline="", encoding="utf-8-sig") as f:
-                    fields = ["pid", "process_name", "executable_path", "sha256", "indicator_matches", "assessment"]
-                    writer = csv.DictWriter(f, fieldnames=fields)
-                    writer.writeheader()
-                    for row in self.report["processes"]:
-                        row = dict(row)
-                        row["indicator_matches"] = "; ".join(row["indicator_matches"])
-                        writer.writerow({k: row.get(k) for k in fields})
-            messagebox.showinfo(APP, "Report exported successfully.")
-        except OSError as exc:
-            messagebox.showerror(APP, str(exc))
+                data = [["PID", "Process", "Indicators", "SHA-256"]]
+                for item in findings:
+                    data.append([str(item.get("pid") or ""), str(item["process_name"])[:50], ", ".join(item["indicator_matches"]), str(item.get("sha256") or "unavailable")[:64]])
+                t = Table(data, repeatRows=1, colWidths=[14*mm, 42*mm, 40*mm, 66*mm])
+                t.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#25111a")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#cccccc")),("FONTSIZE",(0,0),(-1,-1),7),("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),5)]))
+                story.append(t)
+            story.extend([Spacer(1, 7*mm), Paragraph("Important: name-based indicators are leads for manual review, not proof of cheating. Scope: running process metadata and readable executable SHA-256 only.", styles["Italic"])])
+            doc.build(story)
+            messagebox.showinfo(APP, "PDF report exported successfully.")
+        except Exception as exc:
+            messagebox.showerror(APP, "PDF export failed: " + str(exc))
 
     def submit(self):
         if not self.report:
@@ -197,11 +209,14 @@ class InspectorApp(tk.Tk):
         tk.Label(dialog, text="One-time session code", bg="#10121a", fg="white").pack(anchor="w", padx=18)
         code_entry = tk.Entry(dialog, bg="#08090e", fg="white", insertbackground="white")
         code_entry.pack(fill="x", padx=18, pady=5)
+        if SESSION_CODE:
+            code_entry.insert(0, SESSION_CODE)
+            code_entry.configure(state="readonly")
         def send():
             import urllib.request
             import urllib.error
             base = url_entry.get().strip().rstrip("/")
-            code = code_entry.get().strip().upper()
+            code = (SESSION_CODE or code_entry.get()).strip().upper()
             if not base.startswith("https://") or not code:
                 messagebox.showwarning(APP, "Use an HTTPS dashboard URL and a session code.", parent=dialog)
                 return
