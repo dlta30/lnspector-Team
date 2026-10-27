@@ -261,7 +261,7 @@ def reports():
         abort(403)
     with db() as con:
         rows=con.execute("SELECT id,session_id,computer_label,created_at,summary,submitted_by FROM reports ORDER BY id DESC LIMIT 250").fetchall()
-    return page("""<div class="card"><h2>Reports</h2><table><tr><th>ID</th><th>Session</th><th>Computer</th><th>UTC time</th><th>Summary</th><th>Submitted by</th></tr>{% for r in rows %}<tr><td><a href="{{ url_for('report_detail',report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td><td>{{ r['submitted_by'] }}</td></tr>{% endfor %}</table></div>""",rows=rows)
+    return page("""<div class="card"><h2>Reports</h2><table><tr><th>ID</th><th>Session</th><th>Computer</th><th>UTC time</th><th>Summary</th><th>Submitted by</th>{% if current_user()['role']=='owner' %}<th>Action</th>{% endif %}</tr>{% for r in rows %}<tr><td><a href="{{ url_for('report_detail',report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td><td>{{ r['submitted_by'] }}</td>{% if current_user()['role']=='owner' %}<td><form method="post" action="{{ url_for('delete_report',report_id=r['id']) }}" onsubmit="return confirm('Delete this report permanently?')"><button class="btn danger" type="submit">Delete</button></form></td>{% endif %}</tr>{% endfor %}</table></div>""",rows=rows)
 
 @app.post("/reports/<int:report_id>/delete")
 @login_required
