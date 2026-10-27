@@ -143,6 +143,12 @@ def trigger_session_build(code):
         print("GitHub build dispatch failed:", type(exc).__name__)
         return False, "تعذر الاتصال بخدمة بناء ملف الفحص."
 
+def github_api_json(path):
+    if not GITHUB_ACTIONS_TOKEN: return None
+    url = "https://api.github.com/repos/" + GITHUB_REPOSITORY + path
+    req = urllib.request.Request(url, headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+GITHUB_ACTIONS_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"3eN-Inceptor-Dashboard"})
+    with urllib.request.urlopen(req, timeout=12) as response: return json.loads(response.read().decode("utf-8"))
+
 def log_action(actor, action):
     with db() as con:
         con.execute("INSERT INTO audit(actor,action,created_at) VALUES(?,?,?)", (actor, action[:240], now()))
@@ -275,6 +281,56 @@ def sessions_page():
         rows = con.execute("SELECT display_code,target_label,created_by,created_at,expires_at,used_at,status FROM inspection_sessions ORDER BY id DESC LIMIT 100").fetchall()
     return page("""<div class="card"><h2>جلسات الفحص</h2><p class="muted">أنشئ كوداً مؤقتاً لفحص بموافقة صاحب الجهاز. يلزم أخذ موافقة صاحب الجهاز قبل التشغيل.</p><form method="post"><label>اسم الشخص أو معرّفه</label><input name="target_label" minlength="2" maxlength="120" required placeholder="اسم المستخدم أو ID"><button class="btn">إنشاء جلسة وملف فحص</button></form></div><div class="card"><table><tr><th>الكود</th><th>الشخص</th><th>أنشأها</th><th>الإنشاء (UTC)</th><th>ينتهي (UTC)</th><th>الاستخدام (UTC)</th><th>الحالة</th></tr>{% for r in rows %}<tr><td>{{ r['display_code'] }}</td><td>{{ r['target_label'] }}</td><td>{{ r['created_by'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['expires_at'] }}</td><td>{{ r['used_at'] or '—' }}</td><td>{{ r['status'] }}</td></tr>{% endfor %}</table></div>""", rows=rows)
 
+
+@app.get("/api/session-build/<code>")
+@login_required
+def session_build_status(code):
+    if current_user()["role"] not in ("owner", "deputy", "inspector"): abort(403)
+    with db() as con:
+        row = con.execute("SELECT created_at FROM inspection_sessions WHERE display_code=?", (code.upper(),)).fetchone()
+    if not row: return {"state":"missing"}, 404
+    if not GITHUB_ACTIONS_TOKEN: return {"state":"needs_setup","message":"اضبط GITHUB_ACTIONS_TOKEN في Render."}
+    try:
+        runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?event=workflow_dispatch&per_page=20") or {}
+        created = datetime.fromisoformat(row["created_at"].replace("Z","+00:00"))
+        for run in runs.get("workflow_runs",[]):
+            if not run.get("created_at") or datetime.fromisoformat(run["created_at"].replace("Z","+00:00")) < created: continue
+            arts = github_api_json("/actions/runs/" + str(run["id"]) + "/artifacts") or {}
+            expected = "3eN-Inspector-" + code.upper()
+            artifact = next((a for a in arts.get("artifacts",[]) if a.get("name")==expected and not a.get("expired")),None)
+            if artifact: return {"state":"ready","download_url":url_for("download_session_build",code=code.upper())}
+            if run.get("status") != "completed": return {"state":"building","message":"يتم تجهيز الملف…"}
+            if run.get("conclusion") != "success": return {"state":"failed","message":"فشل البناء؛ راجع إعدادات GitHub Actions."}
+        return {"state":"building","message":"بانتظار بدء البناء…"}
+    except Exception as exc:
+        print("Build status lookup failed:", type(exc).__name__)
+        return {"state":"checking","message":"جارٍ التحقق من حالة البناء…"}
+
+@app.get("/sessions/<code>/download")
+@login_required
+def download_session_build(code):
+    if current_user()["role"] not in ("owner", "deputy", "inspector"): abort(403)
+    if not GITHUB_ACTIONS_TOKEN: abort(503, "GitHub build token is not configured.")
+    with db() as con:
+        row = con.execute("SELECT created_at FROM inspection_sessions WHERE display_code=?", (code.upper(),)).fetchone()
+    if not row: abort(404)
+    created = datetime.fromisoformat(row["created_at"].replace("Z","+00:00"))
+    try:
+        runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?event=workflow_dispatch&per_page=20") or {}
+        for run in runs.get("workflow_runs",[]):
+            if not run.get("created_at") or datetime.fromisoformat(run["created_at"].replace("Z","+00:00")) < created: continue
+            arts = github_api_json("/actions/runs/" + str(run["id"]) + "/artifacts") or {}
+            artifact = next((a for a in arts.get("artifacts",[]) if a.get("name")=="3eN-Inspector-"+code.upper() and not a.get("expired")),None)
+            if not artifact: continue
+            req = urllib.request.Request(artifact["archive_download_url"], headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+GITHUB_ACTIONS_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"3eN-Inceptor-Dashboard"})
+            with urllib.request.urlopen(req, timeout=45) as response: data = response.read()
+            from io import BytesIO
+            from flask import send_file
+            return send_file(BytesIO(data), mimetype="application/zip", as_attachment=True, download_name="3eN-Inspector-"+code.upper()+".zip")
+    except Exception as exc:
+        print("Artifact download failed:", type(exc).__name__)
+        abort(502, "Artifact download failed.")
+    abort(404, "Build artifact not found yet.")
 
 @app.post("/api/v1/session-report")
 def ingest_session_report():
