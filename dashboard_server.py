@@ -322,14 +322,33 @@ def download_session_build(code):
             arts = github_api_json("/actions/runs/" + str(run["id"]) + "/artifacts") or {}
             artifact = next((a for a in arts.get("artifacts",[]) if a.get("name")=="3eN-Inspector-"+code.upper() and not a.get("expired")),None)
             if not artifact: continue
+            # GitHub first responds with a short-lived signed storage URL.
+            # Fetch the redirect with the token, then download the ZIP from storage
+            # without forwarding the GitHub Authorization header to another host.
             req = urllib.request.Request(artifact["archive_download_url"], headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+GITHUB_ACTIONS_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"3eN-Inceptor-Dashboard"})
-            with urllib.request.urlopen(req, timeout=45) as response: data = response.read()
+            opener = urllib.request.build_opener(urllib.request.HTTPHandler())
+            try:
+                with opener.open(req, timeout=20) as response:
+                    data = response.read()
+            except urllib.error.HTTPError as exc:
+                if exc.code not in (301, 302, 303, 307, 308):
+                    raise
+                signed_url = exc.headers.get("Location")
+                if not signed_url:
+                    raise RuntimeError("GitHub did not provide a download redirect")
+                storage_req = urllib.request.Request(signed_url, headers={"User-Agent":"3eN-Inceptor-Dashboard"})
+                with urllib.request.urlopen(storage_req, timeout=90) as response:
+                    data = response.read()
+            if not data or not data.startswith(b"PK"):
+                raise RuntimeError("Downloaded artifact was empty or not a ZIP archive")
             from io import BytesIO
             from flask import send_file
             return send_file(BytesIO(data), mimetype="application/zip", as_attachment=True, download_name="3eN-Inspector-"+code.upper()+".zip")
     except Exception as exc:
-        print("Artifact download failed:", type(exc).__name__)
-        abort(502, "Artifact download failed.")
+        detail = str(exc)[:240]
+        print("Artifact download failed:", type(exc).__name__, detail)
+        abort(502, "تعذر تنزيل الملف من GitHub. أعد المحاولة بعد قليل، وإذا تكررت المشكلة أرسل سجل Render.")
+
     abort(404, "Build artifact not found yet.")
 
 @app.post("/api/v1/session-report")
