@@ -448,20 +448,24 @@ def report_detail(report_id):
         status_detail = "لم تتطابق العمليات مع قائمة المؤشرات الحالية. النتيجة لا تضمن اكتشاف كل أنواع الهاكات."
     return page("""
     <style>
-      .report-hero{padding:26px;border-radius:16px;background:linear-gradient(120deg,#21121b,#11131d);border:1px solid #ffffff14;margin-bottom:16px}
-      .report-status{display:inline-block;padding:8px 13px;border-radius:99px;font-weight:800;font-size:13px}
-      .report-status.warn{background:#492916;color:#ffc078;border:1px solid #70451e}
-      .report-status.good{background:#10372c;color:#75e0b4;border:1px solid #205b47}
-      .report-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0}
-      .report-metric{background:#10121b;border:1px solid #ffffff12;border-radius:13px;padding:16px}
-      .report-metric strong{display:block;font-size:28px;margin-top:8px;color:#ff6379}
-      .finding{background:#11131c;border:1px solid #713044;border-radius:13px;padding:17px;margin:12px 0;overflow-wrap:anywhere}
-      .finding h3{margin:0 0 10px;font-size:16px;color:#ffb2bd}
-      .finding .field{margin:7px 0;color:#d6d8e2;font-size:12px;line-height:1.7}
-      .field b{color:#ff8094}.tag{display:inline-block;border:1px solid #67404b;background:#29151d;border-radius:7px;padding:4px 7px;margin:3px;color:#ffc0ca;font-size:11px}
-      details{margin-top:12px}summary{cursor:pointer;color:#ff8b9d;font-weight:700}
-      .empty-state{padding:22px;text-align:center;border:1px solid #235341;background:#10251f;border-radius:13px;color:#8be1b8}
-      @media(max-width:600px){.report-hero{padding:17px}.report-metric strong{font-size:23px}}
+      .report-hero{position:relative;isolation:isolate;overflow:hidden;padding:clamp(22px,4vw,38px);border-radius:22px;background:radial-gradient(ellipse at 95% 0%,#7f1d3b55,transparent 42%),linear-gradient(135deg,#17131f 0%,#10121c 55%,#0c0e14 100%);border:1px solid #ff49652b;margin-bottom:20px;box-shadow:0 18px 55px #0005}
+      .report-hero:after{content:"3eN";position:absolute;z-index:-1;left:18px;bottom:-35px;font-size:clamp(76px,14vw,150px);font-weight:900;letter-spacing:-8px;color:#ffffff06;direction:ltr}
+      .report-status{display:inline-flex;align-items:center;gap:8px;padding:10px 15px;border-radius:11px;font-weight:900;font-size:14px;margin:4px 0;border:1px solid transparent}
+      .report-status.warn{background:linear-gradient(120deg,#4b201d,#2a171a);color:#ffc078;border-color:#ff9d3b45}
+      .report-status.good{background:linear-gradient(120deg,#10372c,#10251f);color:#75e0b4;border-color:#42d99b45}
+      .report-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:13px;margin:18px 0}
+      .report-metric{position:relative;background:linear-gradient(145deg,#171a25,#0e1017);border:1px solid #ffffff12;border-radius:17px;padding:20px;min-height:112px;color:#aeb3c5;font-size:12px;box-shadow:0 10px 30px #0002}
+      .report-metric strong{display:block;font-size:34px;line-height:1.2;margin-top:12px;color:#f5f6fb;font-weight:900;font-variant-numeric:tabular-nums}
+      .report-metric:nth-child(2) strong{color:#ff7b91}
+      .finding{background:linear-gradient(145deg,#21151d,#12131b);border:1px solid #ff637933;border-radius:15px;padding:clamp(15px,3vw,22px);margin:13px 0;overflow-wrap:anywhere;box-shadow:0 10px 28px #0002}
+      .finding h3{margin:0 0 14px;font-size:16px;color:#ffb2bd;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+      .finding .field{margin:10px 0;color:#d6d8e2;font-size:12px;line-height:1.85}
+      .field b{color:#ff8094}.tag{display:inline-block;border:1px solid #67404b;background:#29151d;border-radius:7px;padding:5px 9px;margin:3px;color:#ffc0ca;font-size:11px;direction:ltr}
+      details{margin-top:12px;background:#0e1017;border:1px solid #ffffff10;border-radius:11px;padding:13px;overflow-wrap:anywhere}summary{cursor:pointer;color:#ff9aaa;font-weight:800;line-height:1.8}
+      .empty-state{padding:28px 18px;text-align:center;border:1px solid #235341;background:radial-gradient(ellipse at top,#17433266,transparent 75%),#10201c;border-radius:15px;color:#8be1b8;line-height:1.9}
+      .card:has(.report-hero){border:0;background:transparent;box-shadow:none;padding:0}
+      .card:has(.report-hero)>.card{background:linear-gradient(145deg,#151722,#0e1017);border:1px solid #ffffff12;border-radius:18px}
+      @media(max-width:600px){.report-hero{padding:20px;border-radius:16px}.report-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.report-metric{padding:14px;min-width:0}.report-metric strong{font-size:26px}}
     </style>
     <div class="card">
       <a class="btn" href="{{ url_for('reports') }}">← رجوع للتقارير</a>
