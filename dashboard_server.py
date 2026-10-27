@@ -32,6 +32,7 @@ app.secret_key = os.environ.get("INSPECTOR_SECRET_KEY") or secrets.token_hex(32)
 API_KEY = os.environ.get("INSPECTOR_API_KEY", "")
 OWNER_USER = os.environ.get("INSPECTOR_OWNER_USER", "owner")
 OWNER_PASSWORD = os.environ.get("INSPECTOR_OWNER_PASSWORD", "")
+STAFF_JOIN_PASSWORD = os.environ.get("INSPECTOR_STAFF_JOIN_PASSWORD", "")
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
@@ -155,7 +156,17 @@ def login():
                 con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
                             (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
                 user = con.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-            if user and check_password_hash(user["password_hash"], password):
+            if not user and STAFF_JOIN_PASSWORD and hmac.compare_digest(password, STAFF_JOIN_PASSWORD) and 2 <= len(username) <= 64:
+                safe_name = username.replace(" ", "_")
+                try:
+                    con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
+                                (safe_name, generate_password_hash(secrets.token_urlsafe(32)), "viewer", 0, 0, now()))
+                    user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
+                    log_action(safe_name, "created pending staff account")
+                except sqlite3.IntegrityError:
+                    user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
+            join_login = bool(user and user["role"] != "owner" and STAFF_JOIN_PASSWORD and hmac.compare_digest(password, STAFF_JOIN_PASSWORD))
+            if user and (check_password_hash(user["password_hash"], password) or join_login):
                 session.clear()
                 session["username"] = user["username"]
                 log_action(username, "login")
