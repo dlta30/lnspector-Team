@@ -465,6 +465,7 @@ def report_detail(report_id):
       <a class="btn" href="{{ url_for('reports') }}">← رجوع للتقارير</a>
       <div class="report-hero">
         <div class="muted">3eN INCEPTOR · تقرير فحص #{{ r['id'] }}</div>
+        <div class="muted" style="margin-top:5px;font-size:12px;letter-spacing:1px">by:ROITH</div>
         <h2 style="margin-top:10px">نتيجة فحص الجهاز</h2>
         <span class="report-status {{ status_class }}">{{ status_title }}</span>
         <p>{{ status_detail }}</p>
