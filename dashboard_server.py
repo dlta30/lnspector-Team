@@ -28,7 +28,12 @@ from flask import Flask, abort, flash, redirect, render_template_string, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
 APP_DIR = Path(__file__).resolve().parent
-DB_PATH = Path(os.environ.get("INSPECTOR_DB", APP_DIR / "inspector_dashboard.sqlite3"))
+# Hosted platforms may use an ephemeral app filesystem. Prefer a mounted
+# persistent disk when available (Render convention: /var/data).
+# INSPECTOR_DB can override this path; local development uses APP_DIR.
+PERSISTENT_DATA_DIR = Path('/var/data')
+DEFAULT_DB_PATH = (PERSISTENT_DATA_DIR / 'inspector_dashboard.sqlite3') if PERSISTENT_DATA_DIR.is_dir() else (APP_DIR / 'inspector_dashboard.sqlite3')
+DB_PATH = Path(os.environ.get('INSPECTOR_DB', str(DEFAULT_DB_PATH)))
 app = Flask(__name__)
 app.secret_key = os.environ.get("INSPECTOR_SECRET_KEY") or secrets.token_hex(32)
 API_KEY = os.environ.get("INSPECTOR_API_KEY", "")
