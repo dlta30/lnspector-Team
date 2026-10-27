@@ -64,7 +64,7 @@ def collect_processes(progress):
 class InspectorApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(APP + " | by:ROITH")
+        self.title(APP)
         self.geometry("900x650")
         self.minsize(760, 560)
         self.configure(bg="#090a10")
@@ -95,7 +95,7 @@ class InspectorApp(tk.Tk):
         brand = tk.Frame(brandrow, bg=PANEL)
         brand.pack(side="left", fill="x", expand=True)
         tk.Label(brand, text="3eN INSPECTOR TEAM", bg=PANEL, fg=WHITE, font=("Segoe UI", 19, "bold")).pack(anchor="w")
-        tk.Label(brand, text="SECURITY OPERATIONS  /  by:ROITH", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(3, 0))
+        tk.Label(brand, text="SECURITY OPERATIONS  /  INSPECTION CLIENT", bg=PANEL, fg=MUTED, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(3, 0))
         tk.Label(brandrow, text="●  SESSION CLIENT", bg="#25131b", fg="#ff7084", font=("Segoe UI", 9, "bold"), padx=12, pady=8).pack(side="right", anchor="center")
         body = tk.Frame(self, bg=BG, padx=24, pady=22)
         body.pack(fill="both", expand=True)
@@ -139,7 +139,7 @@ class InspectorApp(tk.Tk):
         self.output.insert("end", "• Press START INSPECTION after confirming authorization.\n")
         self.output.insert("end", "• The scan reviews process metadata and readable executable hashes only.\n")
         self.output.insert("end", "• A name-based indicator is not proof of cheating; review findings manually.\n")
-        tk.Label(self, text="3eN INSPECTOR TEAM     •     NO STEALTH COLLECTION     •     by:ROITH", bg="#11131c", fg="#747d91", font=("Segoe UI", 8, "bold"), pady=10).pack(fill="x")
+        tk.Label(self, text="3eN INSPECTOR TEAM     •     NO STEALTH COLLECTION", bg="#11131c", fg="#747d91", font=("Segoe UI", 8, "bold"), pady=10).pack(fill="x")
 
     def update_progress(self, value, text):
         self.after(0, lambda: (self.progress.configure(value=value), self.status.set(text)))
@@ -152,6 +152,8 @@ class InspectorApp(tk.Tk):
             return
         self.output.delete("1.0", "end")
         self.metric_state.set("SCANNING")
+        self.metric_processes.set("…")
+        self.metric_flags.set("…")
         self.status.set("Inspection running…")
         threading.Thread(target=self._scan_worker, daemon=True).start()
 
@@ -161,7 +163,7 @@ class InspectorApp(tk.Tk):
             matches = [p for p in processes if p["indicator_matches"]]
             self.report = {
                 "product": APP,
-                "signature": "by:ROITH",
+                "signature": "3eN INSPECTOR TEAM",
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
@@ -178,6 +180,9 @@ class InspectorApp(tk.Tk):
 
     def _show_report(self):
         matches = [p for p in self.report["processes"] if p["indicator_matches"]]
+        self.metric_processes.set(str(self.report["process_count"]))
+        self.metric_flags.set(str(len(matches)))
+        self.metric_state.set("COMPLETE")
         self.output.insert("end", f"Completed: {self.report['process_count']} process entries\n")
         self.output.insert("end", f"Name-based leads for review: {len(matches)}\n\n")
         if matches:
