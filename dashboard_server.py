@@ -223,7 +223,7 @@ def logout():
 @login_required
 def home():
     user = current_user()
-    can_see_reports = user["role"] in ("owner", "deputy", "inspector")
+    can_see_reports = user["role"] == "owner"
     with db() as con:
         total_sessions = con.execute("SELECT COUNT(*) n FROM inspection_sessions").fetchone()["n"]
         pending_sessions = con.execute("SELECT COUNT(*) n FROM inspection_sessions WHERE status='open' AND expires_at>?", (now(),)).fetchone()["n"]
@@ -238,7 +238,7 @@ def home():
       <div class="card"><div class="muted">التقارير المكتملة</div><div class="metric">{{ completed_reports }}</div><div class="muted">تقارير وصلت إلى اللوحة</div></div>
       {% if staff_count is not none %}<div class="card"><div class="muted">أعضاء الفريق</div><div class="metric">{{ staff_count }}</div><div class="muted">حسابات الفريق المسجلة</div></div>{% endif %}
     </div>
-    {% if can_see_reports %}<div class="card"><h2>آخر التقارير</h2>{% if recent_reports %}<table><tr><th>رقم التقرير</th><th>الجلسة</th><th>الجهاز</th><th>وقت الاستلام (UTC)</th><th>الملخص</th></tr>{% for r in recent_reports %}<tr><td><a class="btn" href="{{ url_for('report_detail', report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td></tr>{% endfor %}</table>{% else %}<p class="muted">لا توجد تقارير حتى الآن. أنشئ جلسة وشارك ملف الفحص بعد موافقة صاحب الجهاز.</p>{% endif %}</div>{% endif %}
+    {% if can_see_reports %}<div class="card"><h2>آخر التقارير</h2>{% if recent_reports %}<table><tr><th>رقم التقرير</th><th>الجلسة</th><th>الجهاز</th><th>وقت الاستلام (UTC)</th><th>الملخص</th></tr>{% for r in recent_reports %}<tr><td><a class="btn" href="{{ url_for('report_detail', report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['target_label'] or '—' }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td></tr>{% endfor %}</table>{% else %}<p class="muted">لا توجد تقارير حتى الآن. أنشئ جلسة وشارك ملف الفحص بعد موافقة صاحب الجهاز.</p>{% endif %}</div>{% endif %}
     {% if recent_sessions %}<div class="card"><h2>آخر الجلسات</h2><table><tr><th>كود الجلسة</th><th>أنشأها</th><th>وقت الإنشاء</th><th>الانتهاء</th><th>الحالة</th></tr>{% for s in recent_sessions %}<tr><td>{{ s['display_code'] }}</td><td>{{ s['created_by'] }}</td><td>{{ s['created_at'] }}</td><td>{{ s['expires_at'] }}</td><td>{% if s['status']=='open' %}<span style="color:#ffb454">بانتظار التقرير</span>{% elif s['status']=='used' %}<span style="color:#62d6a7">مكتملة</span>{% else %}<span class="danger">{{ s['status'] }}</span>{% endif %}</td></tr>{% endfor %}</table></div>{% endif %}""", total_sessions=total_sessions, pending_sessions=pending_sessions, completed_reports=completed_reports, recent_reports=recent_reports, recent_sessions=recent_sessions, staff_count=staff_count, can_see_reports=can_see_reports)
  
 @app.route("/sessions", methods=["GET", "POST"])
@@ -309,11 +309,11 @@ def ingest_session_report():
 @app.route("/report")
 @login_required
 def reports():
-    if current_user()["role"] not in ("owner", "deputy", "inspector"):
+    if current_user()["role"] != "owner":
         abort(403)
     with db() as con:
-        rows=con.execute("SELECT id,session_id,computer_label,created_at,summary,submitted_by FROM reports ORDER BY id DESC LIMIT 250").fetchall()
-    return page("""<div class="card"><h2>التقارير</h2><table><tr><th>ID</th><th>Session</th><th>الجهاز</th><th>الوقت (UTC)</th><th>الملخص</th><th>أُرسل بواسطة</th><th>PDF</th>{% if is_owner %}<th>Action</th>{% endif %}</tr>{% for r in rows %}<tr><td><a href="{{ url_for('report_detail',report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td><td>{{ r['submitted_by'] }}</td><td><a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">تحميل PDF</a></td>{% if is_owner %}<td><form method="post" action="{{ url_for('delete_report',report_id=r['id']) }}" onsubmit="return confirm('حذف this report permanently?')"><button class="btn danger" type="submit">حذف</button></form></td>{% endif %}</tr>{% endfor %}</table></div>""",rows=rows,is_owner=current_user()["role"]=="owner")
+        rows=con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,r.submitted_by,s.target_label FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id ORDER BY r.id DESC LIMIT 250").fetchall()
+    return page("""<div class="card"><h2>التقارير</h2><table><tr><th>رقم</th><th>الجلسة</th><th>الشخص</th><th>الجهاز</th><th>الوقت (UTC)</th><th>الملخص</th><th>أُرسل بواسطة</th><th>PDF</th>{% if is_owner %}<th>Action</th>{% endif %}</tr>{% for r in rows %}<tr><td><a href="{{ url_for('report_detail',report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td><td>{{ r['submitted_by'] }}</td><td><a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">تحميل PDF</a></td>{% if is_owner %}<td><form method="post" action="{{ url_for('delete_report',report_id=r['id']) }}" onsubmit="return confirm('حذف this report permanently?')"><button class="btn danger" type="submit">حذف</button></form></td>{% endif %}</tr>{% endfor %}</table></div>""",rows=rows,is_owner=current_user()["role"]=="owner")
 
 @app.post("/reports/<int:report_id>/delete")
 @login_required
@@ -333,7 +333,7 @@ def delete_report(report_id):
 @app.route("/reports/<int:report_id>")
 @login_required
 def report_detail(report_id):
-    if current_user()["role"] not in ("owner", "deputy", "inspector") and not current_user()["can_view"]:
+    if current_user()["role"] != "owner":
         abort(403)
     with db() as con:
         r=con.execute("SELECT * FROM reports WHERE id=?",(report_id,)).fetchone()
@@ -346,7 +346,7 @@ def report_detail(report_id):
 @login_required
 def report_pdf(report_id):
     actor = current_user()
-    if actor["role"] not in ("owner", "deputy", "inspector") and not actor["can_view"]:
+    if actor["role"] != "owner":
         abort(403)
     with db() as con:
         r = con.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
@@ -392,15 +392,16 @@ def report_pdf(report_id):
 @login_required
 def users_page():
     actor=current_user()
-    if actor["role"]!="owner": abort(403)
+    if actor["role"] not in ("owner","deputy"): abort(403)
     if request.method=="POST":
         action=request.form.get("action")
         if action=="create":
             username=request.form.get("username","").strip()
             password=request.form.get("password","")
             role=request.form.get("role","viewer")
-            if len(username)<3 or len(password)<12 or role not in ("deputy","team","inspector","viewer"):
-                flash("Use username >= 3 chars, password >= 12 chars, and a valid non-owner role.")
+            allowed_roles = ("inspector", "viewer", "deputy") if actor["role"] == "owner" else ("inspector",)
+            if len(username)<3 or len(password)<8 or role not in allowed_roles:
+                flash("اسم المستخدم 3 خانات على الأقل، وكلمة المرور 8 خانات على الأقل، والرتبة حسب صلاحيتك.")
             else:
                 try:
                     with db() as con:
@@ -410,6 +411,7 @@ def users_page():
                     flash("Staff account created.")
                 except sqlite3.IntegrityError: flash("That username already exists.")
         elif action=="permissions":
+            if actor["role"] != "owner": abort(403)
             uid=request.form.get("user_id","")
             with db() as con:
                 target=con.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
@@ -419,9 +421,10 @@ def users_page():
                     log_action(actor["username"],"updated permissions for "+target["username"])
                     flash("Permissions updated.")
         elif action=="role":
+            if actor["role"] != "owner": abort(403)
             uid=request.form.get("user_id","")
             role=request.form.get("role","viewer")
-            if role not in ("deputy","team","inspector","viewer"):
+            if role not in ("deputy","inspector","viewer"):
                 flash("Invalid role.")
             else:
                 with db() as con:
@@ -432,6 +435,7 @@ def users_page():
                         log_action(actor["username"],"changed role for "+target["username"]+" to "+role)
                         flash("Role updated.")
         elif action=="delete":
+            if actor["role"] != "owner": abort(403)
             uid=request.form.get("user_id","")
             with db() as con:
                 target=con.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
@@ -441,14 +445,14 @@ def users_page():
                     flash("Staff account deleted.")
         return redirect(url_for("users_page"))
     with db() as con: users=con.execute("SELECT * FROM users ORDER BY role,username").fetchall()
-    return page("""<div class="card"><h2>Create staff account</h2><form method="post"><input type="hidden" name="action" value="create"><label>Username</label><input name="username" minlength="3" required><label>Temporary password (12+ characters)</label><input name="password" type="password" minlength="12" required><label>Role</label><select name="role"><option value="deputy">Deputy / نائب</option><option value="team">Team</option><option value="inspector">Inspector</option><option value="viewer">Viewer</option></select><label><input style="width:auto" type="checkbox" name="can_view" checked> View reports</label><label><input style="width:auto" type="checkbox" name="can_ingest"> Permission flag: submit reports (inspector role only)</label><button class="btn">Create account</button></form></div><div class="card"><h2>Accounts & permissions</h2>{% for u in users %}<form method="post" class="card"><input type="hidden" name="user_id" value="{{ u['id'] }}"><b>{{ u['username'] }}</b> · {{ u['role'] }} {% if u['role']=='owner' %}<p class="muted">Owner permissions are fixed.</p>{% else %}<label>Role</label><select name="role" form="role-{{ u['id'] }}"><option value="deputy" {% if u['role']=='deputy' %}selected{% endif %}>Deputy / نائب</option><option value="team" {% if u['role']=='team' %}selected{% endif %}>Team</option><option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>Viewer</option><option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>Inspector (can create sessions)</option></select><input type="hidden" name="action" value="permissions"><label><input style="width:auto" type="checkbox" name="can_view" {% if u['can_view'] %}checked{% endif %}> View reports</label><label><input style="width:auto" type="checkbox" name="can_ingest" {% if u['can_ingest'] %}checked{% endif %}> Submit reports (future authenticated client accounts)</label><button class="btn">Save permissions</button></form><form method="post" id="role-{{ u['id'] }}"><input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{ u['id'] }}"><label>Change role</label><select name="role"><option value="deputy" {% if u['role']=='deputy' %}selected{% endif %}>Deputy / نائب</option><option value="team" {% if u['role']=='team' %}selected{% endif %}>Team</option><option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>Viewer</option><option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>Inspector</option></select><button class="btn">Save role</button></form><form method="post"><input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}"><button class="btn danger">حذف account</button></form>{% endif %}</form>{% endfor %}</div>""",users=users)
+    return page("""<div class="card"><h2>إنشاء حساب موظف</h2><form method="post"><input type="hidden" name="action" value="create"><label>Username</label><input name="username" minlength="3" required><label>Temporary password (12+ characters)</label><input name="password" type="password" minlength="8" required><label>Role</label><select name="role"><option value="deputy">Deputy / نائب</option><option value="inspector">Inspector</option><option value="viewer">Viewer</option></select><label><input style="width:auto" type="checkbox" name="can_view" checked> View reports</label><label><input style="width:auto" type="checkbox" name="can_ingest"> Permission flag: submit reports (inspector role only)</label><button class="btn">Create account</button></form></div><div class="card"><h2>الحسابات والصلاحيات</h2>{% for u in users %}<form method="post" class="card"><input type="hidden" name="user_id" value="{{ u['id'] }}"><b>{{ u['username'] }}</b> · {{ u['role'] }} {% if u['role']=='owner' %}<p class="muted">Owner permissions are fixed.</p>{% else %}<label>Role</label><select name="role" form="role-{{ u['id'] }}"><option value="deputy" {% if u['role']=='deputy' %}selected{% endif %}>Deputy / نائب</option><option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>Viewer</option><option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>Inspector (can create sessions)</option></select><input type="hidden" name="action" value="permissions"><label><input style="width:auto" type="checkbox" name="can_view" {% if u['can_view'] %}checked{% endif %}> View reports</label><label><input style="width:auto" type="checkbox" name="can_ingest" {% if u['can_ingest'] %}checked{% endif %}> Submit reports (future authenticated client accounts)</label><button class="btn">Save permissions</button></form><form method="post" id="role-{{ u['id'] }}"><input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{ u['id'] }}"><label>Change role</label><select name="role"><option value="deputy" {% if u['role']=='deputy' %}selected{% endif %}>Deputy / نائب</option><option value="team" {% if u['role']=='team' %}selected{% endif %}>Team</option><option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>Viewer</option><option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>Inspector</option></select><button class="btn">Save role</button></form><form method="post"><input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}"><button class="btn danger">حذف account</button></form>{% endif %}</form>{% endfor %}</div>""",users=users)
 
 @app.route("/events")
 @login_required
 def audit_page():
     if current_user()["role"]!="owner": abort(403)
     with db() as con: rows=con.execute("SELECT * FROM audit ORDER BY id DESC LIMIT 300").fetchall()
-    return page("""<div class="card"><h2>Owner event log</h2><table><tr><th>الوقت (UTC)</th><th>Actor</th><th>Action</th></tr>{% for r in rows %}<tr><td>{{ r['created_at'] }}</td><td>{{ r['actor'] }}</td><td>{{ r['action'] }}</td></tr>{% endfor %}</table></div>""",rows=rows)
+    return page("""<div class="card"><h2>سجل الأحداث</h2><table><tr><th>الوقت (UTC)</th><th>Actor</th><th>Action</th></tr>{% for r in rows %}<tr><td>{{ r['created_at'] }}</td><td>{{ r['actor'] }}</td><td>{{ r['action'] }}</td></tr>{% endfor %}</table></div>""",rows=rows)
 
 @app.post("/api/v1/reports")
 def ingest_report():
