@@ -133,18 +133,8 @@ def permission_required(field):
 BASE = """
 <!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>3EN INSPECTOR TEAM</title>
-<style>
-:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#090909;color:#eee;font:15px Segoe UI,Arial,sans-serif}
-header{padding:22px 5vw;background:#111;border-bottom:1px solid #6f171d;display:flex;justify-content:space-between;gap:16px;align-items:center}
-h1{margin:0;color:#ff3948;font-size:22px}small,.muted{color:#aaa}.wrap{max-width:1180px;margin:28px auto;padding:0 18px}
-nav a,.btn{color:#fff;text-decoration:none;background:#6f171d;border:0;border-radius:7px;padding:9px 13px;display:inline-block;margin:3px;cursor:pointer}
-.card{background:#141414;border:1px solid #292929;border-radius:12px;padding:18px;margin:12px 0;overflow:auto}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}.metric{font-size:27px;color:#ff5260;font-weight:700}
-input,select,textarea{background:#090909;border:1px solid #444;color:#fff;border-radius:6px;padding:10px;margin:5px 0;width:100%}
-label{display:block;color:#bbb;margin-top:8px}table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:10px;border-bottom:1px solid #303030;vertical-align:top}th{color:#ff6a74}
-.notice{padding:10px;background:#2a1517;border-radius:7px;margin:10px 0}.danger{color:#ff727c}pre{white-space:pre-wrap;overflow-wrap:anywhere}
-</style><header><div><h1>3EN INSPECTOR TEAM</h1><small>Central reports dashboard · by ROITH</small></div>
-<nav>{% if user %}<a href="{{ url_for('home') }}">Dashboard</a><a href="{{ url_for('reports') }}">Reports</a>{% if user['role'] in ('owner','deputy','team','inspector') %}<a href="{{ url_for('sessions_page') }}">Sessions</a>{% endif %}{% if user['role']=='owner' %}<a href="{{ url_for('users_page') }}">Staff & permissions</a><a href="{{ url_for('audit_page') }}">Event log</a>{% endif %}<a href="{{ url_for('logout') }}">Logout</a>{% endif %}</nav></header>
+<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');:root{color-scheme:dark;--red:#ff304f;--muted:#9ca3b5}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 10% 0%,#30101d,transparent 38%),radial-gradient(ellipse at 100% 20%,#151d38,transparent 34%),#08090e;color:#f5f6fb;font:14px Inter,Segoe UI,Arial,sans-serif}header{position:sticky;top:0;z-index:5;padding:18px 4vw;background:rgba(8,9,14,.9);backdrop-filter:blur(16px);border-bottom:1px solid #49202b;display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}h1{margin:0;color:#fff;font-size:20px;font-weight:900;letter-spacing:1.5px}h1:before{content:'◈';color:var(--red);margin-right:10px}small,.muted{color:var(--muted)}.wrap{max-width:1240px;margin:30px auto;padding:0 20px}nav{display:flex;gap:6px;flex-wrap:wrap}nav a,.btn{color:#fff;text-decoration:none;background:linear-gradient(135deg,#b71f3b,#6e1427);border:1px solid #ffffff19;border-radius:10px;padding:10px 14px;display:inline-block;margin:3px;cursor:pointer;font:600 12px Inter,Arial;transition:.15s}nav a:hover,.btn:hover{filter:brightness(1.2);transform:translateY(-1px)}.card{background:linear-gradient(145deg,#181a24f5,#0d0e15f5);border:1px solid #ffffff12;border-radius:18px;padding:22px;margin:14px 0;overflow:auto;box-shadow:0 12px 36px #0003}h2{margin:0 0 14px;font-size:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}.metric{font-size:32px;color:#ff4965;font-weight:900;margin:8px 0}input,select,textarea{background:#0b0c12;border:1px solid #343746;color:#fff;border-radius:10px;padding:12px;margin:6px 0;width:100%;outline:none}input:focus,select:focus,textarea:focus{border-color:#ff4965;box-shadow:0 0 0 3px #ff49651f}label{display:block;color:#c0c4d2;margin-top:10px}table{width:100%;border-collapse:collapse;min-width:620px}th,td{text-align:left;padding:13px;border-bottom:1px solid #ffffff12;vertical-align:top}th{color:#ff7084;font-size:11px;text-transform:uppercase;letter-spacing:.7px}.notice{padding:13px 16px;background:#9d163033;border:1px solid #ff49652e;border-radius:12px;margin:12px 0}.danger{color:#ff727c}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b0c12;padding:16px;border-radius:12px;border:1px solid #ffffff12}a{color:#ff8091}@media(max-width:650px){header{padding:16px}.wrap{padding:0 12px;margin:18px auto}.card{padding:16px}h1{font-size:16px}}</style><header><div><h1>3EN INSPECTOR TEAM</h1><small>Central reports dashboard · by ROITH</small></div>
+<nav>{% if user %}<a href="{{ url_for('home') }}">Dashboard</a>{% if user['role'] in ('owner','deputy','inspector') %}<a href="{{ url_for('reports') }}">Reports</a>{% endif %}{% if user['role'] in ('owner','deputy','team','inspector') %}<a href="{{ url_for('sessions_page') }}">Sessions</a>{% endif %}{% if user['role']=='owner' %}<a href="{{ url_for('users_page') }}">Staff & permissions</a><a href="{{ url_for('audit_page') }}">Event log</a>{% endif %}<a href="{{ url_for('logout') }}">Logout</a>{% endif %}</nav></header>
 <div class="wrap">{% for msg in get_flashed_messages() %}<div class="notice">{{ msg }}</div>{% endfor %}{{ body|safe }}</div></html>
 """
 
@@ -195,7 +185,7 @@ def logout():
 def home():
     user=current_user()
     with db() as con:
-        can_see_reports = user["role"] in ("owner", "deputy", "inspector") or bool(user["can_view"])
+        can_see_reports = user["role"] in ("owner", "deputy", "inspector")
         count=con.execute("SELECT COUNT(*) n FROM reports").fetchone()["n"] if can_see_reports else 0
         recent=con.execute("SELECT id,session_id,computer_label,created_at,summary FROM reports ORDER BY id DESC LIMIT 8").fetchall() if can_see_reports else []
         staff=con.execute("SELECT COUNT(*) n FROM users").fetchone()["n"] if user["role"]=="owner" else None
@@ -257,7 +247,7 @@ def ingest_session_report():
 @app.route("/reports")
 @login_required
 def reports():
-    if current_user()["role"] not in ("owner", "deputy", "inspector") and not current_user()["can_view"]:
+    if current_user()["role"] not in ("owner", "deputy", "inspector"):
         abort(403)
     with db() as con:
         rows=con.execute("SELECT id,session_id,computer_label,created_at,summary,submitted_by FROM reports ORDER BY id DESC LIMIT 250").fetchall()
