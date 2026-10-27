@@ -428,22 +428,24 @@ def report_detail(report_id):
         r=con.execute("SELECT * FROM reports WHERE id=?",(report_id,)).fetchone()
     if not r: abort(404)
     try:
-        report_data = json.loads(r["payload"])
-        if not isinstance(report_data, dict):
-            report_data = {"raw_result": report_data}
+        envelope = json.loads(r["payload"])
+        if not isinstance(envelope, dict):
+            envelope = {"raw_result": envelope}
     except Exception:
-        report_data = {"raw_result": str(r["payload"])}
+        envelope = {"raw_result": str(r["payload"])}
+    # Unwrap actual scan data if it is nested in the submitted report envelope.
+    report_data = envelope.get("report") if isinstance(envelope.get("report"), dict) else envelope
     processes = report_data.get("processes", []) if isinstance(report_data.get("processes", []), list) else []
     findings = [p for p in processes if isinstance(p, dict) and p.get("indicator_matches")]
     startup = report_data.get("startup_entries", []) if isinstance(report_data.get("startup_entries", []), list) else []
     match_count = int(report_data.get("indicator_match_count", len(findings)) or 0)
     process_count = int(report_data.get("process_count", len(processes)) or 0)
-    if match_count:
-        status_title, status_class = ("مؤشرات تحتاج مراجعة", "warn")
-        status_detail = "تم العثور على تطابقات مع مؤشرات محددة. هذا ليس تأكيدًا بوجود هاك؛ راجع التفاصيل أدناه."
+    if findings or match_count:
+        status_title, status_class = ("⚠️ فيه عناصر مشتبه فيها", "warn")
+        status_detail = "الفحص وجد مؤشرات مطابقة تستحق المراجعة. هذا اشتباه وليس تأكيدًا نهائيًا بوجود هاك."
     else:
-        status_title, status_class = ("لم تُرصد مؤشرات مطابقة", "good")
-        status_detail = "لم يظهر تطابق مع قائمة المؤشرات الحالية، وهذا لا يضمن خلو الجهاز من كل المخاطر."
+        status_title, status_class = ("✅ ما ظهرت مؤشرات هاك معروفة", "good")
+        status_detail = "لم تتطابق العمليات مع قائمة المؤشرات الحالية. النتيجة لا تضمن اكتشاف كل أنواع الهاكات."
     return page("""
     <style>
       .report-hero{padding:26px;border-radius:16px;background:linear-gradient(120deg,#21121b,#11131d);border:1px solid #ffffff14;margin-bottom:16px}
