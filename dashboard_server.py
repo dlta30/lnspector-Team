@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS users (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
  username TEXT UNIQUE NOT NULL,
  password_hash TEXT NOT NULL,
- role TEXT NOT NULL CHECK(role IN ('owner','inspector','viewer')),
+ role TEXT NOT NULL CHECK(role IN ('owner','deputy','team','inspector','viewer')),
  can_view INTEGER NOT NULL DEFAULT 1,
  can_ingest INTEGER NOT NULL DEFAULT 0,
  created_at TEXT NOT NULL
@@ -83,6 +83,12 @@ def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with db() as con:
         con.executescript(SCHEMA)
+        schema = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+        if schema and "'deputy'" not in (schema['sql'] or ''):
+            con.execute('ALTER TABLE users RENAME TO users_old')
+            con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','deputy','team','inspector','viewer')), can_view INTEGER NOT NULL DEFAULT 1, can_ingest INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)")
+            con.execute('INSERT INTO users SELECT id,username,password_hash,role,can_view,can_ingest,created_at FROM users_old')
+            con.execute('DROP TABLE users_old')
         row = con.execute("SELECT id FROM users WHERE role='owner' LIMIT 1").fetchone()
         if not row:
             if not OWNER_PASSWORD:
@@ -156,19 +162,18 @@ def login():
                 con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
                             (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
                 user = con.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-            pending_created = False
-            if not user and STAFF_JOIN_PASSWORD and hmac.compare_digest(password, STAFF_JOIN_PASSWORD) and 2 <= len(username) <= 64:
+            if not user and 2 <= len(username) <= 64:
+                role_passwords = [("owner", OWNER_PASSWORD), ("deputy", os.environ.get("INSPECTOR_DEPUTY_PASSWORD", "")), ("team", os.environ.get("INSPECTOR_TEAM_PASSWORD", ""))]
+                matched_role = next((role for role, secret in role_passwords if secret and hmac.compare_digest(password, secret)), None)
                 safe_name = username.replace(" ", "_")
-                try:
-                    con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
-                                (safe_name, generate_password_hash(secrets.token_urlsafe(32)), "viewer", 0, 0, now()))
-                    user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
-                    pending_created = True
-                    log_action(safe_name, "created pending staff account")
-                except sqlite3.IntegrityError:
-                    user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
-            join_login = bool(pending_created and user and user["role"] == "viewer" and STAFF_JOIN_PASSWORD and hmac.compare_digest(password, STAFF_JOIN_PASSWORD))
-            if user and (check_password_hash(user["password_hash"], password) or join_login):
+                if matched_role and (matched_role != "owner" or safe_name == OWNER_USER):
+                    try:
+                        con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)", (safe_name, generate_password_hash(password), matched_role, 1 if matched_role in ("owner","deputy") else 0, 1 if matched_role == "owner" else 0, now()))
+                        user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
+                        log_action(safe_name, "created account with role " + matched_role)
+                    except sqlite3.IntegrityError:
+                        user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
+            if user and check_password_hash(user["password_hash"], password):
                 session.clear()
                 session["username"] = user["username"]
                 log_action(username, "login")
@@ -197,7 +202,7 @@ def home():
 @login_required
 def sessions_page():
     user = current_user()
-    if user["role"] not in ("owner", "inspector"):
+    if user["role"] not in ("owner", "deputy", "team", "inspector"):
         abort(403)
     if request.method == "POST":
         code = secrets.token_urlsafe(6).replace("-", "").replace("_", "")[:8].upper()
@@ -211,7 +216,7 @@ def sessions_page():
         log_action(user["username"], "created two-hour inspection session")
         return page("""<div class="card"><h2>Session created</h2><p>Give this code to the device owner to enter in the desktop app:</p><div class="metric">{{ code }}</div><p class="muted">One report can be submitted with this code. It expires in two hours. Keep it private.</p><a class="btn" href="{{ url_for('sessions_page') }}">Back to sessions</a></div>""", code=code)
     with db() as con:
-        rows = con.execute("SELECT display_code,created_by,created_at,expires_at,used_at,status FROM inspection_sessions ORDER BY id DESC LIMIT 100").fetchall()
+        rows = con.execute("SELECT display_code,created_by,created_at,expires_at,used_at,status FROM inspection_sessions WHERE created_by=? ORDER BY id DESC LIMIT 100", (user["username"],)).fetchall() if user["role"] == "team" else con.execute("SELECT display_code,created_by,created_at,expires_at,used_at,status FROM inspection_sessions ORDER BY id DESC LIMIT 100").fetchall()
     return page("""<div class="card"><h2>Inspection sessions</h2><p class="muted">Create a short-lived code for a consent-based scan. The code permits one report only.</p><form method="post"><button class="btn">Create session code (2 hours)</button></form></div><div class="card"><table><tr><th>Code</th><th>Created by</th><th>Created (UTC)</th><th>Expires (UTC)</th><th>Used (UTC)</th><th>Status</th></tr>{% for r in rows %}<tr><td>{{ r['display_code'] }}</td><td>{{ r['created_by'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['expires_at'] }}</td><td>{{ r['used_at'] or '—' }}</td><td>{{ r['status'] }}</td></tr>{% endfor %}</table></div>""", rows=rows)
 
 @app.post("/api/v1/session-report")
@@ -247,15 +252,34 @@ def ingest_session_report():
     return {"ok": True, "report_id": report_id}, 201
 
 @app.route("/reports")
-@permission_required("can_view")
+@login_required
 def reports():
+    if current_user()["role"] not in ("owner", "deputy", "inspector") and not current_user()["can_view"]:
+        abort(403)
     with db() as con:
         rows=con.execute("SELECT id,session_id,computer_label,created_at,summary,submitted_by FROM reports ORDER BY id DESC LIMIT 250").fetchall()
     return page("""<div class="card"><h2>Reports</h2><table><tr><th>ID</th><th>Session</th><th>Computer</th><th>UTC time</th><th>Summary</th><th>Submitted by</th></tr>{% for r in rows %}<tr><td><a href="{{ url_for('report_detail',report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td><td>{{ r['submitted_by'] }}</td></tr>{% endfor %}</table></div>""",rows=rows)
 
+@app.post("/reports/<int:report_id>/delete")
+@login_required
+def delete_report(report_id):
+    actor = current_user()
+    if actor["role"] != "owner":
+        abort(403)
+    with db() as con:
+        row = con.execute("SELECT id FROM reports WHERE id=?", (report_id,)).fetchone()
+        if not row:
+            abort(404)
+        con.execute("DELETE FROM reports WHERE id=?", (report_id,))
+    log_action(actor["username"], "deleted report #" + str(report_id))
+    flash("Report deleted.")
+    return redirect(url_for("reports"))
+
 @app.route("/reports/<int:report_id>")
-@permission_required("can_view")
+@login_required
 def report_detail(report_id):
+    if current_user()["role"] not in ("owner", "deputy", "inspector") and not current_user()["can_view"]:
+        abort(403)
     with db() as con:
         r=con.execute("SELECT * FROM reports WHERE id=?",(report_id,)).fetchone()
     if not r: abort(404)
