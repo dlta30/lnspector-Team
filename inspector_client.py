@@ -106,7 +106,7 @@ class InspectorApp(tk.Tk):
         self.metric_processes = tk.StringVar(value="—")
         self.metric_flags = tk.StringVar(value="—")
         self.metric_state = tk.StringVar(value="READY")
-        for title, var, accent in [("ITEMS CHECKED", self.metric_processes, RED), ("REVIEW FLAGS", self.metric_flags, "#ffb454"), ("STATUS", self.metric_state, "#62d6a7")]:
+        for title, var, accent in [("ITEMS CHECKED", self.metric_processes, RED), ("REPORT STATUS", self.metric_flags, "#ffb454"), ("STATUS", self.metric_state, "#62d6a7")]:
             card = tk.Frame(cards, bg=PANEL, highlightbackground="#292c3a", highlightthickness=1, padx=16, pady=14)
             card.pack(side="left", fill="both", expand=True, padx=(0, 10))
             tk.Label(card, text=title, bg=PANEL, fg=MUTED, font=("Segoe UI", 8, "bold")).pack(anchor="w")
@@ -180,7 +180,7 @@ class InspectorApp(tk.Tk):
     def _show_report(self):
         matches = [p for p in self.report["processes"] if p["indicator_matches"]]
         self.metric_processes.set(str(self.report["process_count"]))
-        self.metric_flags.set(str(len(matches)))
+        self.metric_flags.set("READY")
         self.metric_state.set("COMPLETE")
         self.output.insert("end", "SCAN COMPLETED\n\n")
         self.output.insert("end", f"Items checked: {self.report['process_count']}\n")
