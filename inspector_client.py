@@ -216,6 +216,21 @@ class InspectorApp(tk.Tk):
                 "note": "Name-based indicators are not proof of cheating. Manual review is required.",
                 "processes": processes,
             }
+            self.delivery_status = "not_configured"
+            if DASHBOARD_URL and SESSION_CODE:
+                try:
+                    import urllib.request
+                    endpoint = DASHBOARD_URL.rstrip("/") + "/api/v1/session-report"
+                    payload = {"session_code": SESSION_CODE, "computer_label": self.report["device_label"],
+                               "summary": f"{self.report['indicator_match_count']} name-based leads; {self.report.get('startup_entry_count', 0)} startup entries for review",
+                               "report": self.report}
+                    req = urllib.request.Request(endpoint, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
+                    with urllib.request.urlopen(req, timeout=20) as response:
+                        result = json.loads(response.read().decode("utf-8"))
+                    self.delivery_status = "sent"
+                    self.report["dashboard_report_id"] = result.get("report_id")
+                except Exception as send_error:
+                    self.delivery_status = "failed: " + type(send_error).__name__
             self.after(0, self._show_report)
         except Exception as exc:
             self.after(0, lambda: messagebox.showerror(APP, str(exc)))
@@ -223,13 +238,22 @@ class InspectorApp(tk.Tk):
 
     def _show_report(self):
         self.metric_processes.set(str(self.report["process_count"]))
-        self.metric_flags.set("READY")
-        self.metric_state.set("COMPLETE")
+        self.metric_flags.set(str(self.report["indicator_match_count"]))
+        self.metric_state.set("SENT" if getattr(self, "delivery_status", "") == "sent" else ("COMPLETE" if getattr(self, "delivery_status", "") == "not_configured" else "REVIEW"))
         self.output.insert("end", "SCAN COMPLETED\n\n")
         self.output.insert("end", f"Items checked: {self.report['process_count']}\n")
         self.output.insert("end", "Detailed findings are not displayed in this window.\n")
         self.output.insert("end", "Submit the report to the administrator dashboard for review.\n")
-        self.status.set("COMPLETE • Send report to administrator.")
+        delivery = getattr(self, "delivery_status", "not_configured")
+        if delivery == "sent":
+            self.output.insert("end", f"Report automatically submitted. Report ID: {self.report.get('dashboard_report_id')}\n")
+            self.status.set("COMPLETE • Report sent to dashboard.")
+        elif delivery.startswith("failed:"):
+            self.output.insert("end", "Automatic submission failed: " + delivery + "\nUse the manual submit button to retry.\n")
+            self.status.set("COMPLETE • Submission needs retry.")
+        else:
+            self.output.insert("end", "No session configuration found; report was not uploaded.\n")
+            self.status.set("COMPLETE • No session configured.")
 
     def export_pdf(self):
         if not self.report:
