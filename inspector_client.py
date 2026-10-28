@@ -72,13 +72,19 @@ def sha256_file(path):
     except (OSError, PermissionError):
         return None
 
+def utc_timestamp(value):
+    try:
+        return datetime.fromtimestamp(float(value), timezone.utc).isoformat(timespec="seconds")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
+
 def collect_processes(progress):
     try:
         import psutil
     except ImportError as exc:
         raise RuntimeError("Missing dependency: install requirements with: pip install -r requirements.txt") from exc
     rows = []
-    processes = list(psutil.process_iter(["pid", "name", "exe", "username", "cmdline"]))
+    processes = list(psutil.process_iter(["pid", "name", "exe", "username", "cmdline", "create_time"]))
     total = max(len(processes), 1)
     for i, proc in enumerate(processes, 1):
         try:
@@ -86,11 +92,34 @@ def collect_processes(progress):
             name = str(info.get("name") or "Unknown")[:180]
             exe = str(info.get("exe") or "")[:1000]
             matches = [term for term in SUSPICIOUS_TERMS if term in (name + " " + exe).lower()]
-            digest = sha256_file(exe) if exe and os.path.isfile(exe) else None
+            exists = bool(exe and os.path.isfile(exe))
+            digest = sha256_file(exe) if exists else None
+            file_created = file_modified = None
+            download_mark = False
+            if exists:
+                try:
+                    stat = os.stat(exe)
+                    file_created = utc_timestamp(stat.st_ctime)
+                    file_modified = utc_timestamp(stat.st_mtime)
+                except OSError:
+                    pass
+                # Windows Mark-of-the-Web indicates a file marked as downloaded,
+                # but does not establish an exact download timestamp.
+                try:
+                    with open(exe + ":Zone.Identifier", "r", encoding="utf-8", errors="ignore") as zone:
+                        zone_data = zone.read(4096)
+                    download_mark = "ZoneId=3" in zone_data or "ZoneId=4" in zone_data
+                except OSError:
+                    download_mark = False
             rows.append({
                 "pid": info.get("pid"),
                 "process_name": name,
+                "file_name": os.path.basename(exe) if exe else name,
                 "executable_path": exe or None,
+                "process_started_at": utc_timestamp(info.get("create_time")),
+                "file_created_at": file_created,
+                "file_modified_at": file_modified,
+                "download_mark": bool(download_mark),
                 "command_line": " ".join(str(part) for part in (info.get("cmdline") or []))[:2000] or None,
                 "sha256": digest,
                 "indicator_matches": matches,
