@@ -78,7 +78,7 @@ def collect_processes(progress):
     except ImportError as exc:
         raise RuntimeError("Missing dependency: install requirements with: pip install -r requirements.txt") from exc
     rows = []
-    processes = list(psutil.process_iter(["pid", "name", "exe", "username"]))
+    processes = list(psutil.process_iter(["pid", "name", "exe", "username", "cmdline"]))
     total = max(len(processes), 1)
     for i, proc in enumerate(processes, 1):
         try:
@@ -91,6 +91,7 @@ def collect_processes(progress):
                 "pid": info.get("pid"),
                 "process_name": name,
                 "executable_path": exe or None,
+                "command_line": " ".join(str(part) for part in (info.get("cmdline") or []))[:2000] or None,
                 "sha256": digest,
                 "indicator_matches": matches,
                 "game_context": classify_game_context(name, exe),
