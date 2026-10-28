@@ -398,8 +398,110 @@ def reports():
     if current_user()["role"] != "owner":
         abort(403)
     with db() as con:
-        rows=con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,r.submitted_by,s.target_label FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id ORDER BY r.id DESC LIMIT 250").fetchall()
-    return page("""<div class="card"><h2>التقارير</h2><table><tr><th>رقم التقرير</th><th>كود الجلسة</th><th>اسم الشخص</th><th>اسم الجهاز</th><th>وقت التقرير (UTC)</th><th>ملخص الفحص</th><th>مصدر الإرسال</th><th>PDF</th>{% if is_owner %}<th>إجراء</th>{% endif %}</tr>{% for r in rows %}<tr><td><a class="btn" href="{{ url_for('report_detail',report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['target_label'] or '—' }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td><td>{{ r['submitted_by'] }}</td><td><a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">تحميل PDF</a></td>{% if is_owner %}<td><form method="post" action="{{ url_for('delete_report',report_id=r['id']) }}" onsubmit="return confirm('حذف التقرير نهائياً؟')"><button class="btn danger" type="submit">حذف</button></form></td>{% endif %}</tr>{% endfor %}</table></div>""",rows=rows,is_owner=current_user()["role"]=="owner")
+        rows=con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,r.submitted_by,s.target_label,r.payload FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id ORDER BY r.id DESC LIMIT 250").fetchall()
+    report_rows = []
+    for row in rows:
+        item = dict(row)
+        try:
+            envelope = json.loads(item.get("payload") or "{}")
+            data = envelope.get("report") if isinstance(envelope, dict) and isinstance(envelope.get("report"), dict) else envelope
+            if not isinstance(data, dict): data = {}
+        except Exception:
+            data = {}
+        matches = data.get("indicator_match_count", 0)
+        processes = data.get("processes", [])
+        if not isinstance(processes, list): processes = []
+        findings = [p for p in processes if isinstance(p, dict) and p.get("indicator_matches")]
+        try: matches = max(int(matches or 0), len(findings))
+        except (ValueError, TypeError): matches = len(findings)
+        item["match_count"] = matches
+        item["process_count"] = data.get("process_count", len(processes))
+        item["status_label"] = "تحتاج مراجعة" if matches else "لم تظهر مؤشرات"
+        item["status_class"] = "warn" if matches else "good"
+        report_rows.append(item)
+    total = len(report_rows)
+    flagged = sum(1 for item in report_rows if item["match_count"])
+    clean = total - flagged
+    return page("""
+    <style>
+      .reports-wrap{max-width:1280px;margin:0 auto}
+      .reports-head{position:relative;overflow:hidden;padding:28px;border-radius:22px;background:radial-gradient(ellipse at 100% 0%,#92233f55,transparent 45%),linear-gradient(135deg,#171722,#0c0d13);border:1px solid #ff496526;margin-bottom:18px}
+      .reports-kicker{font-size:11px;letter-spacing:2px;color:#ff8296;font-weight:900;direction:ltr;text-align:right}
+      .reports-head h2{font-size:27px;margin:8px 0}.reports-head p{color:#aeb3c5;line-height:1.8;margin:0}
+      .reports-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:12px;margin:16px 0}
+      .reports-stat{padding:17px;border:1px solid #ffffff12;background:linear-gradient(145deg,#171923,#0e1017);border-radius:15px;color:#aeb3c5;font-size:12px}
+      .reports-stat strong{display:block;font-size:28px;margin-top:7px;color:#f4f5fa}
+      .reports-stat.flagged strong{color:#ff8296}.reports-stat.clean strong{color:#70dfb2}
+      .reports-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:15px 0}
+      .reports-tools input,.reports-tools select{min-width:180px;flex:1;background:#0b0c12;color:#f4f5fa;border:1px solid #ffffff20;border-radius:10px;padding:12px;outline:none}
+      .report-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:14px}
+      .report-item{min-width:0;background:linear-gradient(145deg,#171923,#0e1017);border:1px solid #ffffff12;border-radius:17px;padding:18px;box-shadow:0 12px 30px #0002}
+      .report-item:hover{border-color:#ff637955}
+      .report-item-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+      .report-id{font-weight:900;color:#f7f7fb;font-size:16px}.report-chip{display:inline-flex;padding:6px 9px;border-radius:8px;font-size:11px;font-weight:800}
+      .report-chip.warn{background:#48221e;color:#ffc078;border:1px solid #ffad4a33}.report-chip.good{background:#10372c;color:#75e0b4;border:1px solid #42d99b33}
+      .report-person{font-size:19px;font-weight:900;margin:4px 0 3px;overflow-wrap:anywhere}.report-device{color:#aeb3c5;font-size:12px;overflow-wrap:anywhere;direction:ltr;text-align:right}
+      .report-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin:15px 0}
+      .report-meta>div{background:#0b0d13;border:1px solid #ffffff0c;border-radius:10px;padding:10px;min-width:0}
+      .report-meta small{display:block;color:#969caf;font-size:10px;margin-bottom:5px}.report-meta span{display:block;font-size:12px;color:#e4e6ee;overflow-wrap:anywhere}
+      .report-summary{color:#c4c8d5;font-size:12px;line-height:1.8;margin:10px 0;overflow-wrap:anywhere}
+      .report-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:15px}.report-actions .btn{margin:0}
+      .reports-empty{padding:35px;text-align:center;border:1px dashed #ffffff24;border-radius:16px;color:#aeb3c5}
+      @media(max-width:560px){.reports-head{padding:20px}.reports-meta{grid-template-columns:1fr}.report-meta{grid-template-columns:1fr}.report-item{padding:14px}}
+    </style>
+    <div class="reports-wrap">
+      <div class="reports-head">
+        <div class="reports-kicker">3eN INCEPTOR · SECURITY CENTER</div>
+        <h2>مركز التقارير</h2>
+        <p>سجل منظم لنتائج الفحص، مع بيانات الجهاز والجلسة وحالة المؤشرات وتصدير PDF لكل تقرير.</p>
+      </div>
+      <div class="reports-stats">
+        <div class="reports-stat"><span>إجمالي التقارير المعروضة</span><strong>{{ total }}</strong></div>
+        <div class="reports-stat flagged"><span>تقارير تحتاج مراجعة</span><strong>{{ flagged }}</strong></div>
+        <div class="reports-stat clean"><span>لم تظهر مؤشرات مطابقة</span><strong>{{ clean }}</strong></div>
+      </div>
+      <div class="reports-tools">
+        <input id="report-search" type="search" placeholder="ابحث باسم الشخص أو الجهاز أو كود الجلسة…" aria-label="بحث في التقارير">
+        <select id="report-filter" aria-label="تصفية حسب الحالة"><option value="all">كل الحالات</option><option value="warn">تحتاج مراجعة</option><option value="good">لم تظهر مؤشرات</option></select>
+        <a class="btn" href="{{ url_for('reports') }}">تحديث</a>
+      </div>
+      {% if report_rows %}
+      <div class="report-list" id="report-list">
+      {% for r in report_rows %}
+        <article class="report-item" data-search="{{ (r['target_label'] or '') ~ ' ' ~ r['computer_label'] ~ ' ' ~ r['session_id'] ~ ' ' ~ r['summary'] ~ ' ' ~ r['created_at'] }}" data-status="{{ r['status_class'] }}">
+          <div class="report-item-top"><span class="report-id">تقرير #{{ r['id'] }}</span><span class="report-chip {{ r['status_class'] }}">{{ r['status_label'] }}</span></div>
+          <div class="report-person">{{ r['target_label'] or 'اسم الشخص غير مسجل' }}</div>
+          <div class="report-device">DEVICE · {{ r['computer_label'] or 'غير معروف' }}</div>
+          <div class="report-meta">
+            <div><small>كود الجلسة</small><span>{{ r['session_id'] }}</span></div>
+            <div><small>وقت الاستلام (UTC)</small><span>{{ r['created_at'] }}</span></div>
+            <div><small>العمليات المفحوصة</small><span>{{ r['process_count'] }}</span></div>
+            <div><small>المؤشرات المطابقة</small><span>{{ r['match_count'] }}</span></div>
+            <div><small>مصدر التقرير</small><span>{{ r['submitted_by'] }}</span></div>
+          </div>
+          <div class="report-summary">{{ r['summary'] or 'لم يرسل البرنامج ملخصًا نصيًا.' }}</div>
+          <div class="report-actions">
+            <a class="btn" href="{{ url_for('report_detail',report_id=r['id']) }}">عرض التقرير الكامل</a>
+            <a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">⬇ تصدير PDF</a>
+            {% if is_owner %}<form method="post" action="{{ url_for('delete_report',report_id=r['id']) }}" onsubmit="return confirm('هل تريد حذف هذا التقرير نهائيًا؟')"><button class="btn danger" type="submit">حذف</button></form>{% endif %}
+          </div>
+        </article>
+      {% endfor %}
+      </div>
+      <div class="reports-empty" id="report-none" style="display:none">لا توجد تقارير تطابق البحث الحالي.</div>
+      {% else %}
+      <div class="reports-empty">لا توجد تقارير محفوظة حتى الآن. بعد إرسال أول فحص ستظهر النتائج هنا.</div>
+      {% endif %}
+    </div>
+    <script>
+      (function(){
+        const search=document.getElementById('report-search'),filter=document.getElementById('report-filter'),items=Array.from(document.querySelectorAll('.report-item')),none=document.getElementById('report-none');
+        if(!search||!filter)return;
+        function apply(){const q=search.value.trim().toLocaleLowerCase();let shown=0;items.forEach(el=>{const ok=el.dataset.search.toLocaleLowerCase().includes(q)&&(filter.value==='all'||el.dataset.status===filter.value);el.style.display=ok?'block':'none';if(ok)shown++;});if(none)none.style.display=shown?'none':'block';}
+        search.addEventListener('input',apply);filter.addEventListener('change',apply);
+      })();
+    </script>
+    """,report_rows=report_rows,total=total,flagged=flagged,clean=clean,is_owner=current_user()["role"]=="owner")
 
 @app.post("/reports/<int:report_id>/delete")
 @login_required
