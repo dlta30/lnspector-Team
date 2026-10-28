@@ -309,53 +309,53 @@ def download_session_build(code):
     if current_user()["role"] not in ("owner", "deputy", "inspector"): abort(403)
     if not GITHUB_ACTIONS_TOKEN: abort(503, "GitHub build token is not configured.")
     with db() as con:
-        row = con.execute("SELECT created_at FROM inspection_sessions WHERE display_code=?", (code.upper(),)).fetchone()
+        row = con.execute("SELECT id FROM inspection_sessions WHERE display_code=?", (code.upper(),)).fetchone()
     if not row: abort(404)
-    created = datetime.fromisoformat(row["created_at"].replace("Z","+00:00"))
     try:
-        runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?event=workflow_dispatch&per_page=20") or {}
-        for run in runs.get("workflow_runs",[]):
-            if not run.get("created_at") or datetime.fromisoformat(run["created_at"].replace("Z","+00:00")) < created: continue
+        # Use the latest reusable generic build; no per-session compile or wait.
+        runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?status=success&per_page=30") or {}
+        artifact = None
+        for run in runs.get("workflow_runs", []):
+            if run.get("status") != "completed" or run.get("conclusion") != "success":
+                continue
             arts = github_api_json("/actions/runs/" + str(run["id"]) + "/artifacts") or {}
-            artifact = next((a for a in arts.get("artifacts",[]) if a.get("name")=="3eN-Inspector-"+code.upper() and not a.get("expired")),None)
-            if not artifact: continue
-            # GitHub first responds with a short-lived signed storage URL.
-            # Fetch the redirect with the token, then download the ZIP from storage
-            # without forwarding the GitHub Authorization header to another host.
-            req = urllib.request.Request(artifact["archive_download_url"], headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+GITHUB_ACTIONS_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"3eN-Inceptor-Dashboard"})
-            class _NoRedirect(urllib.request.HTTPRedirectHandler):
-                def redirect_request(self, req, fp, code, msg, headers, newurl):
-                    return None
-            opener = urllib.request.build_opener(_NoRedirect())
-            try:
-                with opener.open(req, timeout=20) as response:
-                    data = response.read()
-            except urllib.error.HTTPError as exc:
-                if exc.code not in (301, 302, 303, 307, 308):
-                    raise
-                signed_url = exc.headers.get("Location")
-                if not signed_url:
-                    raise RuntimeError("GitHub did not provide a download redirect")
-                storage_req = urllib.request.Request(signed_url, headers={"User-Agent":"3eN-Inceptor-Dashboard"})
-                with urllib.request.urlopen(storage_req, timeout=90) as response:
-                    data = response.read()
-            if not data or not data.startswith(b"PK"):
-                raise RuntimeError("Downloaded artifact was empty or not a ZIP archive")
-            from io import BytesIO
-            import zipfile
-            from flask import send_file
-            with zipfile.ZipFile(BytesIO(data)) as archive:
-                exe_names = [name for name in archive.namelist() if name.lower().endswith(".exe") and not name.startswith("__MACOSX/")]
-                if not exe_names:
-                    raise RuntimeError("Artifact ZIP contains no EXE file")
-                exe_data = archive.read(exe_names[0])
-            return send_file(BytesIO(exe_data), mimetype="application/vnd.microsoft.portable-executable", as_attachment=True, download_name="3eN-INCEPTOR-"+code.upper()+".exe")
+            artifact = next((a for a in arts.get("artifacts", []) if a.get("name") == "3eN-Inspector-Generic" and not a.get("expired")), None)
+            if artifact:
+                break
+        if not artifact:
+            abort(503, "لا توجد نسخة عامة جاهزة بعد. شغّل بناء GitHub Actions مرة واحدة.")
+        req = urllib.request.Request(artifact["archive_download_url"], headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+GITHUB_ACTIONS_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"3eN-Inceptor-Dashboard"})
+        class _NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+        opener = urllib.request.build_opener(_NoRedirect())
+        try:
+            with opener.open(req, timeout=20) as response:
+                data = response.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code not in (301, 302, 303, 307, 308):
+                raise
+            signed_url = exc.headers.get("Location")
+            if not signed_url:
+                raise RuntimeError("GitHub did not provide a download redirect")
+            with urllib.request.urlopen(urllib.request.Request(signed_url, headers={"User-Agent":"3eN-Inceptor-Dashboard"}), timeout=90) as response:
+                data = response.read()
+        if not data or not data.startswith(b"PK"):
+            raise RuntimeError("Downloaded artifact was empty or not a ZIP archive")
+        from io import BytesIO
+        import zipfile
+        from flask import send_file
+        with zipfile.ZipFile(BytesIO(data)) as archive:
+            exe_names = [name for name in archive.namelist() if name.lower().endswith(".exe") and not name.startswith("__MACOSX/")]
+            if not exe_names:
+                raise RuntimeError("Artifact ZIP contains no EXE file")
+            exe_data = archive.read(exe_names[0])
+        return send_file(BytesIO(exe_data), mimetype="application/vnd.microsoft.portable-executable", as_attachment=True, download_name="3eN-INCEPTOR-" + code.upper() + ".exe")
     except Exception as exc:
-        detail = str(exc)[:240]
-        print("Artifact download failed:", type(exc).__name__, detail)
-        abort(502, "تعذر تنزيل الملف من GitHub. أعد المحاولة بعد قليل، وإذا تكررت المشكلة أرسل سجل Render.")
-
-    abort(404, "Build artifact not found yet.")
+        if getattr(exc, "code", None) in (503, 404):
+            raise
+        print("Artifact download failed:", type(exc).__name__, str(exc)[:240])
+        abort(502, "تعذر تنزيل النسخة الجاهزة من GitHub. تحقق من صلاحيات التوكن وسجل Render.")
 
 @app.post("/api/v1/session-report")
 def ingest_session_report():
