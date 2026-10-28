@@ -443,7 +443,7 @@ def reports():
     if current_user()["role"] != "owner":
         abort(403)
     with db() as con:
-        rows=con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,r.submitted_by,s.target_label,r.payload FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id ORDER BY r.id DESC LIMIT 250").fetchall()
+        rows=con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,r.submitted_by,s.target_label,r.payload FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id ORDER BY r.id DESC").fetchall()
     report_rows = []
     for row in rows:
         item = dict(row)
@@ -459,8 +459,34 @@ def reports():
         findings = [p for p in processes if isinstance(p, dict) and p.get("indicator_matches")]
         try: matches = max(int(matches or 0), len(findings))
         except (ValueError, TypeError): matches = len(findings)
-        file_search = " ".join(str(p.get(k) or "") for p in processes if isinstance(p, dict) for k in ("process_name","file_name","executable_path","command_line"))
-        item["search_text"] = " ".join([str(item.get("target_label") or ""), str(item.get("computer_label") or ""), str(item.get("session_id") or ""), str(item.get("summary") or ""), str(item.get("created_at") or ""), file_search])[:20000]
+        file_search_parts = []
+        for proc in processes:
+            if not isinstance(proc, dict):
+                continue
+            file_search_parts.extend(str(proc.get(k) or "") for k in (
+                "process_name", "file_name", "executable_path", "command_line", "sha256",
+                "pid", "name", "source", "assessment"
+            ))
+            indicators = proc.get("indicator_matches", [])
+            if isinstance(indicators, list):
+                file_search_parts.extend(str(value) for value in indicators)
+            elif indicators:
+                file_search_parts.append(str(indicators))
+        startup = data.get("startup_entries", [])
+        if isinstance(startup, list):
+            for entry in startup:
+                if isinstance(entry, dict):
+                    file_search_parts.extend(str(entry.get(k) or "") for k in ("name", "command", "source", "path"))
+                else:
+                    file_search_parts.append(str(entry))
+        file_search = " ".join(file_search_parts)
+        item["search_text"] = " ".join([
+            str(item.get("id") or ""), str(item.get("target_label") or ""),
+            str(item.get("computer_label") or ""), str(item.get("session_id") or ""),
+            str(item.get("summary") or ""), str(item.get("created_at") or ""),
+            str(item.get("submitted_by") or ""), str(data.get("platform") or ""),
+            file_search
+        ])
         item["match_count"] = matches
         item["process_count"] = data.get("process_count", len(processes))
         item["status_label"] = "تحتاج مراجعة" if matches else "لم تظهر مؤشرات"
@@ -508,7 +534,7 @@ def reports():
         <div class="reports-stat clean"><span>لم تظهر مؤشرات مطابقة</span><strong>{{ clean }}</strong></div>
       </div>
       <div class="reports-tools">
-        <input id="report-search" type="search" placeholder="ابحث باسم الشخص أو الجهاز أو كود الجلسة…" aria-label="بحث في التقارير">
+        <input id="report-search" type="search" placeholder="ابحث برقم التقرير أو الشخص أو الجهاز أو الجلسة أو اسم الملف أو مساره أو الأمر…" aria-label="بحث في التقارير">
         <select id="report-filter" aria-label="تصفية حسب الحالة"><option value="all">كل الحالات</option><option value="warn">تحتاج مراجعة</option><option value="good">لم تظهر مؤشرات</option></select>
         <a class="btn" href="{{ url_for('reports') }}">تحديث</a>
       </div>
@@ -894,6 +920,9 @@ def health():
 def forbidden(_): return page('<div class="card"><h2 class="danger">Access denied</h2><p>Your account does not have permission for this page.</p></div>'),403
 
 init_db()
+print("Dashboard database path:", str(DB_PATH))
+if os.environ.get("RENDER") and not Path("/var/data").is_mount():
+    print("WARNING: /var/data is not detected as a mounted persistent disk. Accounts, sessions, and reports may be lost after redeploy. Mount a Render persistent disk at /var/data and set INSPECTOR_DB=/var/data/inspector_dashboard.sqlite3.")
 
 if __name__ == "__main__":
     if not OWNER_PASSWORD:
