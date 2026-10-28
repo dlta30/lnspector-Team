@@ -605,7 +605,11 @@ def report_detail(report_id):
       @media(max-width:600px){.report-hero{padding:20px;border-radius:16px}.report-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.report-metric{padding:14px;min-width:0}.report-metric strong{font-size:26px}}
     </style>
     <div class="card">
-      <a class="btn" href="{{ url_for('reports') }}">← رجوع للتقارير</a>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
+        <a class="btn" href="{{ url_for('reports') }}">← رجوع للتقارير</a>
+        <a class="btn" href="{{ url_for('report_pdf', report_id=r['id']) }}" style="background:linear-gradient(120deg,#e72f53,#8f1737);color:#fff;border-color:#ff5b78;font-weight:800">⬇ تنزيل التقرير PDF</a>
+        <a class="btn" href="#process-list">▤ عرض بطاقات العمليات</a>
+      </div>
       <div class="report-hero">
         <div class="muted">3eN INCEPTOR · تقرير فحص #{{ r['id'] }}</div>
         <div class="muted" style="margin-top:5px;font-size:12px;letter-spacing:1px">by:ROITH</div>
@@ -621,7 +625,7 @@ def report_detail(report_id):
         <div class="report-metric">العمليات المعروضة<strong>{{ processes|length }}</strong></div>
       </div>
       <div class="card"><h2>النتيجة والتوصية</h2><p>{{ status_detail }}</p><p class="muted">{{ report_data.get('note', 'النتائج الآلية مؤشرات أولية وتحتاج إلى مراجعة بشرية.') }}</p></div>
-      <div class="card"><h2>العمليات الجارية على الجهاز</h2>
+      <div class="card" id="process-list"><h2>العمليات الجارية على الجهاز</h2>
         <p class="muted">كل عملية تظهر بشكل مستقل: اسم العملية، اسم الملف، المسار الكامل، وسطر الأوامر. مؤشرات الاشتباه إشارة للمراجعة وليست إثباتًا.</p>
         {% if processes %}
           {% for item in processes %}
