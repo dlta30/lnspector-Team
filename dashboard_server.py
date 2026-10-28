@@ -643,12 +643,6 @@ def report_detail(report_id):
             </div>
           {% endfor %}
         {% else %}
-                <div class="field"><b>حالة المراجعة:</b> لا يوجد تطابق مع مؤشرات الأسماء الحالية.</div>
-              {% endif %}
-              <div class="field"><b>SHA-256:</b> <span dir="ltr">{{ item.get('sha256') or 'غير متاح' }}</span></div>
-            </details>
-          {% endfor %}
-        {% else %}
           <div class="empty-state">لم تصل بيانات العمليات من برنامج الفحص.</div>
         {% endif %}
       </div>
