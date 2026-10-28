@@ -786,6 +786,7 @@ def users_page():
           {% if u['role']=='owner' %}
             <p class="muted">صلاحيات المالك محمية ولا يمكن تعديلها من هنا.</p>
           {% else %}
+            {% if actor_role == 'owner' %}
             <form method="post" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end">
               <input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <div><label>دور الموظف</label><select name="role">
@@ -798,6 +799,7 @@ def users_page():
             </form>
             {% if actor_role == 'owner' and u['username'] != actor_username %}
             <form method="post" onsubmit="return confirm('هل أنت متأكد من حذف هذا الحساب؟')" style="margin-top:12px"><input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}"><button class="btn danger">حذف الحساب</button></form>
+            {% endif %}
             {% endif %}
           {% endif %}
         </article>
