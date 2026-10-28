@@ -202,18 +202,13 @@ class InspectorApp(tk.Tk):
             return
         if not messagebox.askyesno(APP, "Start a visible scan of running process metadata on this device?"):
             return
-        self.active_session_code = SESSION_CODE
-        self.active_dashboard_url = DASHBOARD_URL
-        if not self.active_session_code:
-            self.active_session_code = (simpledialog.askstring(APP, "أدخل كود الجلسة من لوحة التحكم:", parent=self) or "").strip().upper()
-            if not self.active_session_code:
-                messagebox.showwarning(APP, "يلزم إدخال كود الجلسة لربط التقرير.")
-                return
-        if not self.active_dashboard_url:
-            self.active_dashboard_url = (simpledialog.askstring(APP, "أدخل رابط لوحة التحكم الكامل (HTTPS):", parent=self) or "").strip().rstrip("/")
-            if not self.active_dashboard_url.startswith("https://"):
-                messagebox.showwarning(APP, "أدخل رابط لوحة التحكم الذي يبدأ بـ https://")
-                return
+        # Session-specific builds contain the session code and dashboard URL.
+        # Never prompt the scanned person to enter either value.
+        self.active_session_code = str(SESSION_CODE or "").strip().upper()
+        self.active_dashboard_url = str(DASHBOARD_URL or "").strip().rstrip("/")
+        if not self.active_session_code or not self.active_dashboard_url.startswith("https://"):
+            messagebox.showerror(APP, "هذا الملف غير مرتبط بجلسة فحص. اطلب من المسؤول إنشاء جلسة وتنزيل ملفها المخصص.")
+            return
         self.output.delete("1.0", "end")
         self.metric_state.set("SCANNING")
         self.metric_processes.set("…")
