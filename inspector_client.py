@@ -220,35 +220,6 @@ class InspectorApp(tk.Tk):
         tk.Label(controls, text="سيتم إرسال التقرير تلقائيًا عند نجاح الفحص والجلسة.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left", padx=5)
 
-        # Output log
-        results = tk.Frame(body, bg=PANEL, highlightbackground=LINE, highlightthickness=1, padx=15, pady=12)
-        results.pack(fill="both", expand=True)
-        results_heading = tk.Frame(results, bg=PANEL)
-        results_heading.pack(fill="x", pady=(0, 9))
-        tk.Label(results_heading, text="03  /  سجل الفحص", bg=PANEL, fg=WHITE,
-                 font=("Segoe UI", 10, "bold")).pack(side="left")
-        tk.Label(results_heading, text="LIVE SCAN LOG", bg=PANEL, fg=RED,
-                 font=("Segoe UI", 8, "bold")).pack(side="right")
-        logwrap = tk.Frame(results, bg="#090c13", highlightbackground="#242b3a", highlightthickness=1)
-        logwrap.pack(fill="both", expand=True)
-        self.output = tk.Text(logwrap, bg="#090c13", fg="#dce3f2", insertbackground="white",
-            relief="flat", font=("Consolas", 9), wrap="word", padx=14, pady=12,
-            selectbackground="#7d1b31", borderwidth=0, spacing1=3, spacing3=3)
-        scrollbar = ttk.Scrollbar(logwrap, orient="vertical", command=self.output.yview)
-        self.output.configure(yscrollcommand=scrollbar.set)
-        self.output.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        self.output.tag_configure("title", foreground=RED, font=("Segoe UI", 11, "bold"))
-        self.output.tag_configure("good", foreground=GREEN, font=("Segoe UI", 10, "bold"))
-        self.output.tag_configure("warn", foreground=AMBER, font=("Segoe UI", 10, "bold"))
-        self.output.tag_configure("muted", foreground=MUTED)
-        self.output.insert("end", "3eN  /  INCEPTOR SECURITY CONSOLE\n", "title")
-        self.output.insert("end", "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n", "muted")
-        self.output.insert("end", "النظام جاهز للفحص.\n", "good")
-        self.output.insert("end", "بعد انتهاء الفحص ستظهر هنا الخلاصة والنتائج.\n\n")
-        self.output.insert("end", "النطاق: بيانات العمليات الظاهرة، بصمات SHA-256 المتاحة، وأسماء وأوامر بدء التشغيل.\n", "muted")
-        self.output.insert("end", "تنبيه: مؤشرات الأسماء للمراجعة فقط ولا تثبت وجود مخالفة.\n", "warn")
-
         tk.Label(self, text="3eN INSPECTOR TEAM    •    by ROITH    •    فحص ظاهر وبموافقة المستخدم",
                  bg="#0d1018", fg="#7e899f", font=("Segoe UI", 8, "bold"), pady=9).pack(fill="x")
     def update_progress(self, value, text):
@@ -267,7 +238,6 @@ class InspectorApp(tk.Tk):
         if not self.active_session_code or not self.active_dashboard_url.startswith("https://"):
             messagebox.showerror(APP, "هذا الملف غير مرتبط بجلسة فحص. اطلب من المسؤول إنشاء جلسة وتنزيل ملفها المخصص.")
             return
-        self.output.delete("1.0", "end")
         self.metric_state.set("SCANNING")
         self.session_badge.configure(text="●  الفحص جارٍ", bg="#332616", fg="#ffbd69")
         self.start_button.configure(state="disabled")
@@ -319,37 +289,20 @@ class InspectorApp(tk.Tk):
     def _show_report(self):
         self.metric_processes.set(str(self.report["process_count"]))
         self.metric_flags.set(str(self.report["indicator_match_count"]))
-        self.metric_state.set("SENT" if getattr(self, "delivery_status", "") == "sent" else ("COMPLETE" if getattr(self, "delivery_status", "") == "not_configured" else "REVIEW"))
-        self.session_badge.configure(text="●  اكتمل الفحص", bg="#142b28" if getattr(self, "delivery_status", "") == "sent" else "#332616", fg="#62e0b0" if getattr(self, "delivery_status", "") == "sent" else "#ffbd69")
-        self.start_button.configure(state="normal")
-        self.output.insert("end", "3eN  /  INCEPTOR  •  SCAN SUMMARY\n", "title")
-        self.output.insert("end", "════════════════════════════════════════════\n", "muted")
-        self.output.insert("end", f"اكتمل الفحص  •  العناصر المفحوصة: {self.report['process_count']}\n", "good")
-        self.output.insert("end", f"مؤشرات تحتاج مراجعة: {self.report['indicator_match_count']}\n", "warn" if self.report["indicator_match_count"] else "good")
-        self.output.insert("end", f"عناصر بدء التشغيل: {self.report.get('startup_entry_count', 0)}\n\n")
-        findings = [p for p in self.report["processes"] if p.get("indicator_matches")]
-        if findings:
-            self.output.insert("end", "تفاصيل العناصر المطابقة\n", "title")
-            self.output.insert("end", "────────────────────────────────────────────\n", "muted")
-            for idx, item in enumerate(findings, 1):
-                self.output.insert("end", f"\n{idx}. {item.get('process_name', 'Unknown')}  •  PID {item.get('pid') or '—'}\n", "warn")
-                self.output.insert("end", "المسار: " + str(item.get("executable_path") or "المسار غير متاح") + "\n")
-                self.output.insert("end", "المؤشرات: " + ", ".join(item.get("indicator_matches", [])) + "\n")
-                self.output.insert("end", "SHA-256: " + str(item.get("sha256") or "غير متاح") + "\n", "muted")
-                self.output.insert("end", "التقييم: يحتاج مراجعة يدوية؛ تطابق الاسم وحده لا يثبت وجود غش.\n", "muted")
-        else:
-            self.output.insert("end", "\nلم يظهر تطابق مع مؤشرات أسماء العمليات المحددة. هذا لا يضمن خلو الجهاز من كل المخاطر.\n", "good")
-        self.output.insert("end", "\n────────────────────────────────────────────\n", "muted")
         delivery = getattr(self, "delivery_status", "not_configured")
+        self.start_button.configure(state="normal")
         if delivery == "sent":
-            self.output.insert("end", f"✓ أُرسل التقرير تلقائيًا إلى لوحة التحكم • رقم التقرير: {self.report.get('dashboard_report_id')}\n", "good")
-            self.status.set("اكتمل الفحص • تم إرسال التقرير.")
+            self.metric_state.set("SENT")
+            self.session_badge.configure(text="●  اكتمل وأُرسل", bg="#142b28", fg="#62e0b0")
+            self.status.set("اكتمل الفحص وتم إرسال التقرير إلى لوحة التحكم.")
         elif delivery.startswith("failed:"):
-            self.output.insert("end", "تعذر إرسال التقرير تلقائيًا: " + delivery + "\nأنشئ جلسة جديدة وتأكد من اتصال الإنترنت وإعدادات الجلسة.\n", "warn")
-            self.status.set("اكتمل الفحص • الإرسال يحتاج إعادة المحاولة.")
+            self.metric_state.set("REVIEW")
+            self.session_badge.configure(text="●  تعذر الإرسال", bg="#351521", fg="#ff8093")
+            self.status.set("اكتمل الفحص، لكن تعذر إرسال التقرير. تحقق من الاتصال والجلسة.")
         else:
-            self.output.insert("end", "لم يُضبط اتصال الجلسة؛ لم يتم رفع التقرير.\n", "warn")
-            self.status.set("اكتمل الفحص • لا توجد جلسة مرتبطة.")
+            self.metric_state.set("COMPLETE")
+            self.session_badge.configure(text="●  اكتمل الفحص", bg="#332616", fg="#ffbd69")
+            self.status.set("اكتمل الفحص، لكن لا توجد جلسة مرتبطة لإرسال التقرير.")
 
     def export_pdf(self):
         if not self.report:
