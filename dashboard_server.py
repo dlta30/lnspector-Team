@@ -585,11 +585,21 @@ def report_detail(report_id):
       .report-metric{position:relative;background:linear-gradient(145deg,#171a25,#0e1017);border:1px solid #ffffff12;border-radius:17px;padding:20px;min-height:112px;color:#aeb3c5;font-size:12px;box-shadow:0 10px 30px #0002}
       .report-metric strong{display:block;font-size:34px;line-height:1.2;margin-top:12px;color:#f5f6fb;font-weight:900;font-variant-numeric:tabular-nums}
       .report-metric:nth-child(2) strong{color:#ff7b91}
-      .finding{background:linear-gradient(145deg,#21151d,#12131b);border:1px solid #ff637933;border-radius:15px;padding:clamp(15px,3vw,22px);margin:13px 0;overflow-wrap:anywhere;box-shadow:0 10px 28px #0002}
-      .finding h3{margin:0 0 14px;font-size:16px;color:#ffb2bd;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-      .finding .field{margin:10px 0;color:#d6d8e2;font-size:12px;line-height:1.85}
-      .field b{color:#ff8094}.tag{display:inline-block;border:1px solid #67404b;background:#29151d;border-radius:7px;padding:5px 9px;margin:3px;color:#ffc0ca;font-size:11px;direction:ltr}
-      details{margin-top:12px;background:#0e1017;border:1px solid #ffffff10;border-radius:11px;padding:13px;overflow-wrap:anywhere}summary{cursor:pointer;color:#ff9aaa;font-weight:800;line-height:1.8}
+      .finding{background:linear-gradient(145deg,#171923,#0d0f16);border:1px solid #ffffff16;border-radius:16px;padding:0;margin:13px 0;overflow:hidden;box-shadow:0 10px 28px #0003}
+      .finding[open]{border-color:#ff63794d}
+      .finding summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:16px 18px;color:#f4f5fb;font-weight:800;line-height:1.8}
+      .finding summary::-webkit-details-marker{display:none}
+      .finding summary:after{content:"＋";margin-right:auto;color:#ff8ca0;font-size:18px}
+      .finding[open] summary:after{content:"−"}
+      .finding .field{margin:0;padding:12px 16px;border-top:1px solid #ffffff0d;color:#d6d8e2;font-size:12px;line-height:1.9;display:grid;grid-template-columns:minmax(115px,170px) minmax(0,1fr);gap:12px;align-items:start}
+      .finding .field b{color:#ff9aaa}
+      .finding .field span[dir="ltr"]{text-align:left;unicode-bidi:plaintext;overflow-wrap:anywhere;word-break:break-word;color:#dbe1ef}
+      .finding .field .tag{justify-self:start}
+      .tag{display:inline-block;border:1px solid #67404b;background:#29151d;border-radius:7px;padding:5px 9px;margin:3px;color:#ffc0ca;font-size:11px;direction:ltr;overflow-wrap:anywhere}
+      details:not(.finding){margin-top:12px;background:#0e1017;border:1px solid #ffffff10;border-radius:11px;padding:13px;overflow-wrap:anywhere}
+      details:not(.finding) summary{cursor:pointer;color:#ff9aaa;font-weight:800;line-height:1.8}
+      .raw-report{max-height:0;overflow:hidden}
+      @media(max-width:600px){.finding .field{grid-template-columns:1fr;gap:4px}}
       .empty-state{padding:28px 18px;text-align:center;border:1px solid #235341;background:radial-gradient(ellipse at top,#17433266,transparent 75%),#10201c;border-radius:15px;color:#8be1b8;line-height:1.9}
       .card:has(.report-hero){border:0;background:transparent;box-shadow:none;padding:0}
       .card:has(.report-hero)>.card{background:linear-gradient(145deg,#151722,#0e1017);border:1px solid #ffffff12;border-radius:18px}
@@ -635,8 +645,10 @@ def report_detail(report_id):
           <div class="empty-state">لم تصل بيانات العمليات من برنامج الفحص.</div>
         {% endif %}
       </div>
-      <details class="card"><summary>عرض البيانات الخام (للمختصين فقط)</summary><pre>{{ raw_payload }}</pre></details>
-      <a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">تحميل PDF</a>
+      <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div><h2 style="margin:0 0 5px">ملخص التقرير</h2><p class="muted" style="margin:0">عرض منظم على شكل بطاقات، بدون إغراق الصفحة ببيانات JSON.</p></div>
+        <a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">تحميل PDF</a>
+      </div>
     </div>
     """,r=r,report_data=report_data,raw_payload=json.dumps(report_data,indent=2,ensure_ascii=False),process_count=process_count,match_count=match_count,startup=startup,findings=findings,status_title=status_title,status_class=status_class,status_detail=status_detail)
 
