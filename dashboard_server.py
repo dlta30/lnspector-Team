@@ -133,7 +133,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None):
     findings = [p for p in processes if isinstance(p, dict) and p.get('indicator_matches')]
     details = []
     for item in findings[:8]:
-        name = str(item.get('name') or 'Unknown')[:100]
+        name = str(item.get('process_name') or item.get('file_name') or item.get('name') or 'Unknown')[:100]
         pid = str(item.get('pid') or '?')[:20]
         matches = item.get('indicator_matches', [])
         if not isinstance(matches, list):
@@ -583,6 +583,8 @@ def report_detail(report_id):
     report_data = envelope.get("report") if isinstance(envelope.get("report"), dict) else envelope
     processes = report_data.get("processes", []) if isinstance(report_data.get("processes", []), list) else []
     findings = [p for p in processes if isinstance(p, dict) and p.get("indicator_matches")]
+    # Put processes with name-based indicators first, then show all remaining processes.
+    processes.sort(key=lambda item: bool(item.get("indicator_matches")), reverse=True)
     # Prepare every running process, not just processes that matched a heuristic.
     for item in processes:
         path = str(item.get("executable_path") or "")
