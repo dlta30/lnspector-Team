@@ -739,7 +739,72 @@ def users_page():
                     flash("Staff account deleted.")
         return redirect(url_for("users_page"))
     with db() as con: users=con.execute("SELECT * FROM users ORDER BY role,username").fetchall()
-    return page("""<div class="card"><h2>إنشاء حساب موظف</h2><form method="post"><input type="hidden" name="action" value="create"><label>Username</label><input name="username" minlength="3" required><label>كلمة المرور (8 خانات أو أكثر)</label><input name="password" type="password" minlength="8" required><label>Role</label><select name="role"><option value="deputy">Deputy / نائب</option><option value="inspector">Inspector</option><option value="viewer">Viewer</option></select><label><input style="width:auto" type="checkbox" name="can_view" checked> View reports</label><label><input style="width:auto" type="checkbox" name="can_ingest"> Permission flag: submit reports (inspector role only)</label><button class="btn">Create account</button></form></div><div class="card"><h2>الحسابات والصلاحيات</h2>{% for u in users %}<form method="post" class="card"><input type="hidden" name="user_id" value="{{ u['id'] }}"><b>{{ u['username'] }}</b> · {{ u['role'] }} {% if u['role']=='owner' %}<p class="muted">Owner permissions are fixed.</p>{% else %}<label>Role</label><select name="role" form="role-{{ u['id'] }}"><option value="deputy" {% if u['role']=='deputy' %}selected{% endif %}>Deputy / نائب</option><option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>Viewer</option><option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>Inspector (can create sessions)</option></select><input type="hidden" name="action" value="permissions"><label><input style="width:auto" type="checkbox" name="can_view" {% if u['can_view'] %}checked{% endif %}> View reports</label><label><input style="width:auto" type="checkbox" name="can_ingest" {% if u['can_ingest'] %}checked{% endif %}> Submit reports (future authenticated client accounts)</label><button class="btn">Save permissions</button></form><form method="post" id="role-{{ u['id'] }}"><input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{ u['id'] }}"><label>Change role</label><select name="role"><option value="deputy" {% if u['role']=='deputy' %}selected{% endif %}>Deputy / نائب</option><option <option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>Viewer</option><option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>Inspector</option></select><button class="btn">Save role</button></form><form method="post"><input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}"><button class="btn danger">حذف account</button></form>{% endif %}</form>{% endfor %}</div>""",users=users)
+    return page("""
+    <section class="card" style="border-color:#512332;background:linear-gradient(135deg,#17111a,#10131d);padding:26px">
+      <div class="eyebrow">TEAM ACCESS / ADMINISTRATION</div>
+      <h2 style="font-size:24px;margin:8px 0">إدارة حسابات الموظفين</h2>
+      <p class="muted" style="margin:0 0 22px">أنشئ حسابًا جديدًا، حدّد صلاحياته، وراجع أعضاء الفريق من مكان واحد.</p>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px">
+        <div style="background:#0b0d14;border:1px solid #303443;border-radius:14px;padding:20px">
+          <h3 style="margin:0 0 5px">＋ إنشاء حساب جديد</h3>
+          <p class="muted" style="margin:0 0 18px">اسم مستخدم فريد وكلمة مرور لا تقل عن 8 خانات.</p>
+          <form method="post" style="display:grid;gap:10px">
+            <input type="hidden" name="action" value="create">
+            <label>اسم المستخدم</label><input name="username" minlength="3" maxlength="64" autocomplete="off" placeholder="مثال: staff_roith" required>
+            <label>كلمة المرور</label><input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="8 خانات أو أكثر" required>
+            <label>دور الموظف</label>
+            <select name="role">
+              {% if actor_role == 'owner' %}<option value="deputy">نائب الإدارة</option>{% endif %}
+              <option value="inspector">موظف فحص</option>
+              {% if actor_role == 'owner' %}<option value="viewer">مشاهدة فقط</option>{% endif %}
+            </select>
+            <label style="display:flex;gap:9px;align-items:center"><input style="width:auto;margin:0" type="checkbox" name="can_view" checked> السماح بمشاهدة التقارير</label>
+            <label style="display:flex;gap:9px;align-items:center"><input style="width:auto;margin:0" type="checkbox" name="can_ingest"> السماح باستقبال التقارير (للموظف المختص فقط)</label>
+            <button class="btn" style="margin-top:8px">إنشاء حساب الموظف</button>
+          </form>
+        </div>
+        <div style="background:#0b0d14;border:1px solid #303443;border-radius:14px;padding:20px">
+          <h3 style="margin:0 0 12px">مستويات الصلاحيات</h3>
+          <div style="padding:12px;border:1px solid #303443;border-radius:10px;margin-bottom:9px"><b style="color:#ff8093">نائب الإدارة</b><p class="muted" style="margin:5px 0 0">إدارة الجلسات وإنشاء حسابات موظفي الفحص.</p></div>
+          <div style="padding:12px;border:1px solid #303443;border-radius:10px;margin-bottom:9px"><b style="color:#ffb454">موظف فحص</b><p class="muted" style="margin:5px 0 0">إنشاء جلسات الفحص ومتابعة المهام المسموحة.</p></div>
+          <div style="padding:12px;border:1px solid #303443;border-radius:10px"><b style="color:#62d6a7">مشاهدة فقط</b><p class="muted" style="margin:5px 0 0">وصول محدود حسب الصلاحيات الممنوحة للحساب.</p></div>
+        </div>
+      </div>
+    </section>
+    <section class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div><h2 style="margin:0">حسابات الفريق</h2><p class="muted" style="margin:6px 0 0">تعديل الأدوار والصلاحيات أو حذف الحسابات غير المطلوبة.</p></div>
+        <span class="badge">{{ users|length }} حساب</span>
+      </div>
+      <div style="display:grid;gap:14px;margin-top:18px">
+      {% for u in users %}
+        <article style="border:1px solid #303443;border-radius:13px;background:#0b0d14;padding:17px">
+          <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+            <div><b style="font-size:16px">{{ u['username'] }}</b><div class="muted" style="margin-top:5px">تم إنشاء الحساب: {{ u['created_at'][:10] }}</div></div>
+            <span class="badge">{% if u['role']=='owner' %}مالك النظام{% elif u['role']=='deputy' %}نائب الإدارة{% elif u['role']=='inspector' %}موظف فحص{% elif u['role']=='viewer' %}مشاهدة فقط{% else %}{{ u['role'] }}{% endif %}</span>
+          </div>
+          {% if u['role']=='owner' %}
+            <p class="muted">صلاحيات المالك محمية ولا يمكن تعديلها من هنا.</p>
+          {% else %}
+            <form method="post" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end">
+              <input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{ u['id'] }}">
+              <div><label>دور الموظف</label><select name="role">
+                {% if actor_role == 'owner' %}<option value="deputy" {% if u['role']=='deputy' %}selected{% endif %}>نائب الإدارة</option>{% endif %}
+                <option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>موظف فحص</option>
+                {% if actor_role == 'owner' %}<option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>مشاهدة فقط</option>{% endif %}
+              </select></div>
+              <div style="display:flex;flex-direction:column;gap:10px"><label style="display:flex;gap:8px;align-items:center"><input style="width:auto;margin:0" type="checkbox" name="can_view" {% if u['can_view'] %}checked{% endif %}> مشاهدة التقارير</label><label style="display:flex;gap:8px;align-items:center"><input style="width:auto;margin:0" type="checkbox" name="can_ingest" {% if u['can_ingest'] %}checked{% endif %}> استقبال التقارير</label></div>
+              <button class="btn">حفظ التغييرات</button>
+            </form>
+            {% if actor_role == 'owner' and u['username'] != actor_username %}
+            <form method="post" onsubmit="return confirm('هل أنت متأكد من حذف هذا الحساب؟')" style="margin-top:12px"><input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}"><button class="btn danger">حذف الحساب</button></form>
+            {% endif %}
+          {% endif %}
+        </article>
+      {% else %}<p class="muted">لا توجد حسابات حتى الآن.</p>{% endfor %}
+      </div>
+    </section>
+    """,users=users,actor_role=actor["role"],actor_username=actor["username"])
 
 @app.route("/events")
 @login_required
