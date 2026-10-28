@@ -811,9 +811,10 @@ def users_page():
         <div><h2 style="margin:0">حسابات الفريق</h2><p class="muted" style="margin:6px 0 0">تعديل الأدوار والصلاحيات أو حذف الحسابات غير المطلوبة.</p></div>
         <span class="badge">{{ users|length }} حساب</span>
       </div>
-      <div style="display:grid;gap:14px;margin-top:18px">
+      <input id="staff-search" type="search" placeholder="ابحث باسم الموظف أو رتبته…" aria-label="بحث في حسابات الموظفين">
+      <div id="staff-list" style="display:grid;gap:14px;margin-top:18px">
       {% for u in users %}
-        <article style="border:1px solid #303443;border-radius:13px;background:#0b0d14;padding:17px">
+        <article class="staff-item" data-staff-search="{{ (u['username'] ~ ' ' ~ u['role'])|e }}" style="border:1px solid #303443;border-radius:13px;background:#0b0d14;padding:17px">
           <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
             <div><b style="font-size:16px">{{ u['username'] }}</b><div class="muted" style="margin-top:5px">تم إنشاء الحساب: {{ u['created_at'][:10] }}</div></div>
             <span class="badge">{% if u['role']=='owner' %}مالك النظام{% elif u['role']=='deputy' %}نائب الإدارة{% elif u['role']=='inspector' %}موظف فحص{% elif u['role']=='viewer' %}مشاهدة فقط{% else %}{{ u['role'] }}{% endif %}</span>
@@ -840,6 +841,8 @@ def users_page():
         </article>
       {% else %}<p class="muted">لا توجد حسابات حتى الآن.</p>{% endfor %}
       </div>
+      <p id="staff-none" class="muted" style="display:none;text-align:center;padding:20px">ما فيه حسابات تطابق البحث.</p>
+      <script>(function(){const input=document.getElementById('staff-search'),items=Array.from(document.querySelectorAll('.staff-item')),none=document.getElementById('staff-none');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase();let n=0;items.forEach(el=>{const ok=el.dataset.staffSearch.toLocaleLowerCase().includes(q);el.style.display=ok?'block':'none';if(ok)n++;});if(none)none.style.display=n?'none':'block';});})();</script>
     </section>
     """,users=users,actor_role=actor["role"],actor_username=actor["username"])
 
