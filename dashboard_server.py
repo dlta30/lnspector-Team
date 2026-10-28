@@ -313,7 +313,7 @@ def download_session_build(code):
     if not row: abort(404)
     try:
         # Use the latest reusable generic build; no per-session compile or wait.
-        runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?status=success&per_page=30") or {}
+        runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?per_page=30") or {}
         artifact = None
         for run in runs.get("workflow_runs", []):
             if run.get("status") != "completed" or run.get("conclusion") != "success":
