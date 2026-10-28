@@ -65,6 +65,7 @@ CREATE TABLE IF NOT EXISTS inspection_sessions (
  created_at TEXT NOT NULL,
  expires_at TEXT NOT NULL,
  used_at TEXT,
+ downloaded_at TEXT,
  status TEXT NOT NULL DEFAULT 'open'
 );
 CREATE TABLE IF NOT EXISTS reports (
@@ -102,6 +103,8 @@ def init_db():
         session_columns = {row["name"] for row in con.execute("PRAGMA table_info(inspection_sessions)").fetchall()}
         if "target_label" not in session_columns:
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN target_label TEXT NOT NULL DEFAULT ''")
+        if "downloaded_at" not in session_columns:
+            con.execute("ALTER TABLE inspection_sessions ADD COLUMN downloaded_at TEXT")
         schema = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
         if schema and "'deputy'" not in (schema['sql'] or ''):
             con.execute('ALTER TABLE users RENAME TO users_old')
@@ -314,8 +317,8 @@ const state=document.getElementById('build-state'), download=document.getElement
 async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}');const d=await r.json();state.textContent=d.message||({'ready':'اكتمل تجهيز الملف.','building':'يتم تجهيز الملف المخصص…','checking':'جارٍ التحقق من البناء…','failed':'فشل بناء الملف. راجع إعدادات GitHub Actions.','needs_setup':'يلزم ضبط GITHUB_ACTIONS_TOKEN وPUBLIC_DASHBOARD_URL في Render.'}[d.state]||'جارٍ تجهيز الملف…');if(d.state==='ready'){download.style.display='inline-block';state.textContent='اكتمل تجهيز الملف المخصص لهذه الجلسة.';return;}if(d.state==='failed'||d.state==='needs_setup'||d.state==='missing')return;}catch(e){state.textContent='جارٍ التحقق من حالة البناء…';}setTimeout(checkBuild,5000)}checkBuild();
 </script>""", code=code, target_label=target_label, build_message=("بدأنا طلب بناء الملف المخصص." if build_started else build_message))
     with db() as con:
-        rows = con.execute("SELECT display_code,target_label,created_by,created_at,expires_at,used_at,status FROM inspection_sessions ORDER BY id DESC LIMIT 100").fetchall()
-    return page("""<div class="card"><h2>جلسات الفحص</h2><p class="muted">أنشئ كوداً مؤقتاً لفحص بموافقة صاحب الجهاز. يلزم أخذ موافقة صاحب الجهاز قبل التشغيل.</p><form method="post"><label>اسم الشخص أو معرّفه</label><input name="target_label" minlength="2" maxlength="120" required placeholder="اسم المستخدم أو ID"><button class="btn">إنشاء جلسة وملف فحص</button></form></div><div class="card"><table><tr><th>الكود</th><th>الشخص</th><th>أنشأها</th><th>الإنشاء (UTC)</th><th>ينتهي (UTC)</th><th>الاستخدام (UTC)</th><th>الحالة</th></tr>{% for r in rows %}<tr><td>{{ r['display_code'] }}</td><td>{{ r['target_label'] }}</td><td>{{ r['created_by'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['expires_at'] }}</td><td>{{ r['used_at'] or '—' }}</td><td>{{ r['status'] }}</td></tr>{% endfor %}</table></div>""", rows=rows)
+        rows = con.execute("SELECT display_code,target_label,created_by,created_at,expires_at,used_at,downloaded_at,status FROM inspection_sessions ORDER BY id DESC LIMIT 100").fetchall()
+    return page("""<div class="card"><h2>جلسات الفحص</h2><p class="muted">أنشئ كوداً مؤقتاً لفحص بموافقة صاحب الجهاز. يلزم أخذ موافقة صاحب الجهاز قبل التشغيل.</p><form method="post"><label>اسم الشخص أو معرّفه</label><input name="target_label" minlength="2" maxlength="120" required placeholder="اسم المستخدم أو ID"><button class="btn">إنشاء جلسة وملف فحص</button></form></div><div class="card"><table><tr><th>الكود</th><th>الشخص</th><th>أنشأها</th><th>الإنشاء (UTC)</th><th>ينتهي (UTC)</th><th>تحميل الملف (UTC)</th><th>استلام التقرير (UTC)</th><th>الحالة</th></tr>{% for r in rows %}<tr><td>{{ r['display_code'] }}</td><td>{{ r['target_label'] }}</td><td>{{ r['created_by'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['expires_at'] }}</td><td>{{ r['downloaded_at'] or '—' }}</td><td>{{ r['used_at'] or '—' }}</td><td>{{ r['status'] }}</td></tr>{% endfor %}</table></div>""", rows=rows)
 
 
 @app.get("/api/session-build/<code>")
@@ -389,6 +392,9 @@ def download_session_build(code):
             if not exe_names:
                 raise RuntimeError("Artifact ZIP contains no EXE file")
             exe_data = archive.read(exe_names[0])
+        with db() as con:
+            con.execute("UPDATE inspection_sessions SET downloaded_at=? WHERE display_code=?", (now(), code.upper()))
+        log_action("session-download", "downloaded inspection build for session " + code.upper())
         return send_file(BytesIO(exe_data), mimetype="application/vnd.microsoft.portable-executable", as_attachment=True, download_name="3eN-INCEPTOR-" + code.upper() + ".exe")
     except Exception as exc:
         if getattr(exc, "code", None) in (503, 404):
