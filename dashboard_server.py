@@ -625,34 +625,10 @@ def report_detail(report_id):
         <div class="report-metric">العمليات المعروضة<strong>{{ processes|length }}</strong></div>
       </div>
       <div class="card"><h2>النتيجة والتوصية</h2><p>{{ status_detail }}</p><p class="muted">{{ report_data.get('note', 'النتائج الآلية مؤشرات أولية وتحتاج إلى مراجعة بشرية.') }}</p></div>
-      <div class="card" id="process-list"><h2>العمليات الجارية على الجهاز</h2>
-        <p class="muted">كل عملية تظهر بشكل مستقل: اسم العملية، اسم الملف، المسار الكامل، وسطر الأوامر. مؤشرات الاشتباه إشارة للمراجعة وليست إثباتًا.</p>
-        {% if processes %}
-          {% for item in processes %}
-            <div class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}">
-              <div class="process-embed-head">
-                <span>{% if item.get('indicator_matches') %}⚠️{% else %}🧩{% endif %}</span>
-                <span class="process-embed-title">{{ item.get('process_name', 'اسم غير متاح') }}</span>
-                <span class="process-embed-meta">PID {{ item.get('pid', '—') }}</span>
-                {% if item.get('indicator_matches') %}<span class="tag">يحتاج مراجعة</span>{% else %}<span class="tag">تم الفحص</span>{% endif %}
-              </div>
-              <div class="field"><b>اسم العنصر</b><span class="tag">{{ item.get('process_name', 'غير متاح') }}</span></div>
-              <div class="field"><b>اسم الملف</b><span class="tag">{{ item.get('file_name', 'غير متاح') }}</span></div>
-              <div class="field"><b>مسار الملف الكامل</b><span dir="ltr">{{ item.get('executable_path') or 'غير متاح' }}</span></div>
-              <div class="field"><b>الأمر الكامل</b><span dir="ltr">{{ item.get('command_line', 'غير متاح') }}</span></div>
-              {% if item.get('indicator_matches') %}
-                <div class="field"><b>مؤشرات المطابقة</b><span>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>
-              {% endif %}
-              <div class="field"><b>SHA-256</b><span dir="ltr">{{ item.get('sha256') or 'غير متاح' }}</span></div>
-            </div>
-          {% endfor %}
-        {% else %}
-          <div class="empty-state">لم تصل بيانات العمليات من برنامج الفحص.</div>
-        {% endif %}
-      </div>
-      <div class="card" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-        <div><h2 style="margin:0 0 5px">ملخص التقرير</h2><p class="muted" style="margin:0">عرض منظم على شكل بطاقات، بدون إغراق الصفحة ببيانات JSON.</p></div>
-        <a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">تحميل PDF</a>
+      <div class="card">
+        <h2>بيانات التقرير الخام</h2>
+        <p class="muted">عرض البيانات الأصلية كما وصلت من برنامج الفحص.</p>
+        <pre style="direction:ltr;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-height:75vh;overflow:auto;background:#080a10;color:#e3e8f2;border:1px solid #2b3244;border-radius:12px;padding:18px;font:12px/1.8 Consolas,monospace">{{ raw_payload }}</pre>
       </div>
     </div>
     """,r=r,report_data=report_data,raw_payload=json.dumps(report_data,indent=2,ensure_ascii=False),process_count=process_count,match_count=match_count,startup=startup,findings=findings,status_title=status_title,status_class=status_class,status_detail=status_detail)
