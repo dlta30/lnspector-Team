@@ -144,28 +144,63 @@ def init_db():
 
 def notify_discord(report_id, session_code, computer, summary, report=None):
     webhook = os.environ.get('DISCORD_WEBHOOK_URL', '').strip()
-    if not webhook.startswith('https://discord.com/api/webhooks/') and not webhook.startswith('https://discordapp.com/api/webhooks/'):
+    if not webhook.startswith(('https://discord.com/api/webhooks/', 'https://discordapp.com/api/webhooks/')):
         print('Discord notification skipped: DISCORD_WEBHOOK_URL is missing or invalid')
         return False
+
     report = report if isinstance(report, dict) else {}
     processes = report.get('processes', [])
     if not isinstance(processes, list):
         processes = []
     findings = [p for p in processes if isinstance(p, dict) and p.get('indicator_matches')]
-    details = []
-    for item in findings[:8]:
-        name = str(item.get('process_name') or item.get('file_name') or item.get('name') or 'Unknown')[:100]
-        pid = str(item.get('pid') or '?')[:20]
+
+    def safe(value, limit=900):
+        return str(value or 'غير متاح').replace('\x00', '')[:limit]
+
+    fields = [
+        {'name': 'رقم التقرير', 'value': safe(report_id, 80), 'inline': True},
+        {'name': 'الجلسة', 'value': safe(session_code, 100), 'inline': True},
+        {'name': 'الجهاز', 'value': safe(computer, 100), 'inline': True},
+        {'name': 'العمليات المفحوصة', 'value': safe(report.get('process_count', len(processes)), 80), 'inline': True},
+        {'name': 'مؤشرات تحتاج مراجعة', 'value': safe(len(findings), 80), 'inline': True},
+    ]
+
+    # Include a few matched items directly in the Discord embed. A name match is
+    # only a review lead, never a definitive malware/cheat verdict.
+    for index, item in enumerate(findings[:5], 1):
         matches = item.get('indicator_matches', [])
         if not isinstance(matches, list):
-            matches = [str(matches)]
-        details.append('• ' + name + ' (PID ' + pid + ') — ' + ', '.join(str(x)[:80] for x in matches[:4]))
-    report_text = '\\n'.join(details) if details else 'No matching indicators were reported.'
-    if len(findings) > 8:
-        report_text += '\\n…and ' + str(len(findings) - 8) + ' more finding(s); see dashboard report.'
-    content = ('**New inspection report #' + str(report_id) + '**\\nSession: `' + str(session_code)[:80] + '`\\nDevice: `' + str(computer)[:80] + '`\\nSummary: ' + (summary or 'Report received')[:400] + '\\n\\n**Findings for review (' + str(len(findings)) + '):**\\n' + report_text)[:1900]
-    message = {'username': '3eN Inspector Team', 'content': content, 'embeds': [{'title': 'Inspection report received', 'description': 'The report is saved in the dashboard. Name matches are indicators for review, not proof of wrongdoing.', 'color': 16076879, 'fields': [{'name': 'Report ID', 'value': str(report_id), 'inline': True}, {'name': 'Session', 'value': str(session_code)[:100], 'inline': True}, {'name': 'Device', 'value': str(computer)[:100], 'inline': True}, {'name': 'Processes scanned', 'value': str(report.get('process_count', len(processes))), 'inline': True}, {'name': 'Indicators to review', 'value': str(len(findings)), 'inline': True}], 'footer': {'text': '3eN INSPECTOR TEAM'}}], 'allowed_mentions': {'parse': []}}
-    req = urllib.request.Request(webhook, data=json.dumps(message).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+            matches = [matches]
+        value = (
+            '**اسم العملية:** ' + safe(item.get('process_name') or item.get('name'), 180) + '\n'
+            + '**اسم الملف:** ' + safe(item.get('file_name'), 180) + '\n'
+            + '**PID:** ' + safe(item.get('pid'), 30) + '\n'
+            + '**المسار:** `' + safe(item.get('executable_path'), 300) + '`\n'
+            + '**المؤشرات:** ' + safe(', '.join(str(x) for x in matches[:4]), 250)
+        )
+        fields.append({'name': '⚠️ عنصر مشتبه للمراجعة ' + str(index), 'value': value[:1024], 'inline': False})
+
+    if len(findings) > 5:
+        fields.append({'name': 'بقية العناصر', 'value': str(len(findings) - 5) + ' عناصر إضافية — راجع التقرير الكامل في لوحة التحكم.', 'inline': False})
+
+    embed = {
+        'title': 'تم استلام تقرير فحص جديد',
+        'description': safe(summary or 'تم استلام التقرير وحفظه في لوحة التحكم.', 900),
+        'color': 16076879 if findings else 6475877,
+        'fields': fields[:25],
+        'footer': {'text': '3eN INSPECTOR TEAM • مؤشرات الأسماء تحتاج مراجعة يدوية ولا تثبت وحدها وجود هاك.'}
+    }
+    message = {
+        'username': '3eN Inspector Team',
+        'embeds': [embed],
+        'allowed_mentions': {'parse': []}
+    }
+    req = urllib.request.Request(
+        webhook,
+        data=json.dumps(message, ensure_ascii=False).encode('utf-8'),
+        headers={'Content-Type': 'application/json'},
+        method='POST'
+    )
     try:
         with urllib.request.urlopen(req, timeout=10) as response:
             ok = 200 <= response.status < 300
@@ -175,6 +210,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None):
     except Exception as exc:
         print('Discord notification failed:', type(exc).__name__, str(exc)[:200])
         return False
+
 def trigger_session_build(code):
     if not GITHUB_ACTIONS_TOKEN or not PUBLIC_DASHBOARD_URL.startswith("https://"):
         return False, "اضبط GITHUB_ACTIONS_TOKEN وPUBLIC_DASHBOARD_URL في إعدادات الاستضافة."
