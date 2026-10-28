@@ -172,7 +172,6 @@ class InspectorApp(tk.Tk):
         controls = tk.Frame(body, bg=BG)
         controls.pack(fill="x", pady=(0, 13))
         ttk.Button(controls, text="▶  بدء الفحص", command=self.start).pack(side="left", padx=(0, 8))
-        ttk.Button(controls, text="↗  إرسال التقرير للمسؤول", command=self.submit).pack(side="left", padx=4)
         results = tk.Frame(body, bg="#11141e", highlightbackground="#303443", highlightthickness=1, padx=17, pady=15)
         results.pack(fill="both", expand=True)
         results_heading = tk.Frame(results, bg="#11141e")
@@ -283,7 +282,7 @@ class InspectorApp(tk.Tk):
             self.output.insert("end", f"✓ أُرسل التقرير تلقائيًا إلى لوحة التحكم • رقم التقرير: {self.report.get('dashboard_report_id')}\n", "good")
             self.status.set("اكتمل الفحص • تم إرسال التقرير.")
         elif delivery.startswith("failed:"):
-            self.output.insert("end", "تعذر إرسال التقرير تلقائيًا: " + delivery + "\nاستخدم زر الإرسال لإعادة المحاولة.\n", "warn")
+            self.output.insert("end", "تعذر إرسال التقرير تلقائيًا: " + delivery + "\nأنشئ جلسة جديدة وتأكد من اتصال الإنترنت وإعدادات الجلسة.\n", "warn")
             self.status.set("اكتمل الفحص • الإرسال يحتاج إعادة المحاولة.")
         else:
             self.output.insert("end", "لم يُضبط اتصال الجلسة؛ لم يتم رفع التقرير.\n", "warn")
@@ -327,50 +326,6 @@ class InspectorApp(tk.Tk):
         except Exception as exc:
             messagebox.showerror(APP, "PDF export failed: " + str(exc))
 
-    def submit(self):
-        if not self.report:
-            messagebox.showinfo(APP, "ابدأ الفحص أولاً.")
-            return
-        dialog = tk.Toplevel(self)
-        dialog.title("Submit approved report")
-        dialog.configure(bg="#10121a")
-        dialog.geometry("520x250")
-        tk.Label(dialog, text="رابط لوحة التحكم (https://…)", bg="#10121a", fg="white").pack(anchor="w", padx=18, pady=(18, 0))
-        url_entry = tk.Entry(dialog, bg="#08090e", fg="white", insertbackground="white")
-        url_entry.pack(fill="x", padx=18, pady=5)
-        if DASHBOARD_URL:
-            url_entry.insert(0, DASHBOARD_URL)
-            url_entry.configure(state="readonly")
-        tk.Label(dialog, text="كود الجلسة لمرة واحدة", bg="#10121a", fg="white").pack(anchor="w", padx=18)
-        code_entry = tk.Entry(dialog, bg="#08090e", fg="white", insertbackground="white")
-        code_entry.pack(fill="x", padx=18, pady=5)
-        if SESSION_CODE:
-            code_entry.insert(0, SESSION_CODE)
-            code_entry.configure(state="readonly")
-        def send():
-            import urllib.request
-            import urllib.error
-            base = url_entry.get().strip().rstrip("/")
-            code = (SESSION_CODE or code_entry.get()).strip().upper()
-            if not base.startswith("https://") or not code:
-                messagebox.showwarning(APP, "Use an HTTPS dashboard URL and a session code.", parent=dialog)
-                return
-            if not messagebox.askyesno(APP, "Send the inspected process metadata to your inspector dashboard?", parent=dialog):
-                return
-            payload = {"session_code": code, "computer_label": self.report["device_label"],
-                       "summary": f"{self.report['indicator_match_count']} name-based lead(s); {self.report.get('startup_entry_count', 0)} startup entries collected for manual review",
-                       "report": self.report}
-            request_data = urllib.request.Request(base + "/api/v1/session-report",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"}, method="POST")
-            try:
-                with urllib.request.urlopen(request_data, timeout=15) as response:
-                    result = json.loads(response.read().decode("utf-8"))
-                messagebox.showinfo(APP, f"Report submitted. Report ID: {result.get('report_id')}", parent=dialog)
-                dialog.destroy()
-            except Exception as exc:
-                messagebox.showerror(APP, f"Could not submit report: {exc}", parent=dialog)
-        ttk.Button(dialog, text="إرسال التقرير", command=send).pack(pady=14)
 
 if __name__ == "__main__":
     InspectorApp().mainloop()
