@@ -399,7 +399,7 @@ def reports():
         abort(403)
     with db() as con:
         rows=con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,r.submitted_by,s.target_label FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id ORDER BY r.id DESC LIMIT 250").fetchall()
-    return page("""<div class="card"><h2>التقارير</h2><table><tr><th>رقم</th><th>الجلسة</th><th>الشخص</th><th>الجهاز</th><th>الوقت (UTC)</th><th>الملخص</th><th>أُرسل بواسطة</th><th>PDF</th>{% if is_owner %}<th>Action</th>{% endif %}</tr>{% for r in rows %}<tr><td><a href="{{ url_for('report_detail',report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td><td>{{ r['submitted_by'] }}</td><td><a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">تحميل PDF</a></td>{% if is_owner %}<td><form method="post" action="{{ url_for('delete_report',report_id=r['id']) }}" onsubmit="return confirm('حذف this report permanently?')"><button class="btn danger" type="submit">حذف</button></form></td>{% endif %}</tr>{% endfor %}</table></div>""",rows=rows,is_owner=current_user()["role"]=="owner")
+    return page("""<div class="card"><h2>التقارير</h2><table><tr><th>رقم التقرير</th><th>كود الجلسة</th><th>اسم الشخص</th><th>اسم الجهاز</th><th>وقت التقرير (UTC)</th><th>ملخص الفحص</th><th>مصدر الإرسال</th><th>PDF</th>{% if is_owner %}<th>إجراء</th>{% endif %}</tr>{% for r in rows %}<tr><td><a class="btn" href="{{ url_for('report_detail',report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['target_label'] or '—' }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td><td>{{ r['submitted_by'] }}</td><td><a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">تحميل PDF</a></td>{% if is_owner %}<td><form method="post" action="{{ url_for('delete_report',report_id=r['id']) }}" onsubmit="return confirm('حذف التقرير نهائياً؟')"><button class="btn danger" type="submit">حذف</button></form></td>{% endif %}</tr>{% endfor %}</table></div>""",rows=rows,is_owner=current_user()["role"]=="owner")
 
 @app.post("/reports/<int:report_id>/delete")
 @login_required
@@ -537,7 +537,7 @@ def report_pdf(report_id):
     doc = SimpleDocTemplate(output, pagesize=A4, rightMargin=18*mm, leftMargin=18*mm, topMargin=18*mm, bottomMargin=18*mm, title="3eN Inspector التقرير رقم" + str(report_id), author="3eN Inspector Team")
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="SmallMeta", parent=styles["BodyText"], fontSize=9, leading=13, textColor=colors.HexColor("#444444"), spaceAfter=5))
-    styles.add(ParagraphStyle(name="Payload", parent=styles["الكود"], fontName="Courier", fontSize=7, leading=9, wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="Payload", parent=styles["BodyText"], fontName="Courier", fontSize=7, leading=9, wordWrap="CJK"))
     story = [
         Paragraph("3eN INSPECTOR TEAM", styles["Title"]),
         Paragraph("Inspection التقرير رقم" + str(report_id), styles["Heading1"]),
