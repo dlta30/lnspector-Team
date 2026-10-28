@@ -105,8 +105,8 @@ def init_db():
         schema = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
         if schema and "'deputy'" not in (schema['sql'] or ''):
             con.execute('ALTER TABLE users RENAME TO users_old')
-            con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','deputy','team','inspector','viewer')), can_view INTEGER NOT NULL DEFAULT 1, can_ingest INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)")
-            con.execute('INSERT INTO users SELECT id,username,password_hash,role,can_view,can_ingest,created_at FROM users_old')
+            con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','deputy','team','inspector','viewer')), can_view INTEGER NOT NULL DEFAULT 1, can_ingest INTEGER NOT NULL DEFAULT 0, login_token TEXT, created_at TEXT NOT NULL)")
+            con.execute('INSERT INTO users(id,username,password_hash,role,can_view,can_ingest,created_at) SELECT id,username,password_hash,role,can_view,can_ingest,created_at FROM users_old')
             con.execute('DROP TABLE users_old')
         row = con.execute("SELECT id FROM users WHERE role='owner' LIMIT 1").fetchone()
         if not row:
@@ -759,8 +759,8 @@ def users_page():
                 with db() as con:
                     target=con.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
                     if target and target["role"]!="owner":
-                        con.execute("UPDATE users SET role=?,can_ingest=CASE WHEN ?='inspector' THEN can_ingest ELSE 0 END WHERE id=?",
-                                    (role,role,uid))
+                        con.execute("UPDATE users SET role=?,can_view=?,can_ingest=? WHERE id=?",
+                                    (role, 1 if request.form.get("can_view") else 0, 1 if request.form.get("can_ingest") and role=="inspector" else 0, uid))
                         log_action(actor["username"],"changed role for "+target["username"]+" to "+role)
                         flash("Role updated.")
         elif action=="delete":
