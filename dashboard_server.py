@@ -559,17 +559,13 @@ def report_detail(report_id):
     report_data = envelope.get("report") if isinstance(envelope.get("report"), dict) else envelope
     processes = report_data.get("processes", []) if isinstance(report_data.get("processes", []), list) else []
     findings = [p for p in processes if isinstance(p, dict) and p.get("indicator_matches")]
-    # Add readable file names alongside full paths in the report.
-    for item in findings:
-        path = str(item.get("executable_path") or "").replace(chr(92), "/")
-        item["file_name"] = path.rsplit("/", 1)[-1] if path else str(item.get("process_name") or "غير متاح")
-    startup = report_data.get("startup_entries", []) if isinstance(report_data.get("startup_entries", []), list) else []
-    for item in startup:
-        command = str(item.get("command") or "").strip()
-        startup_path = command.split(chr(34))[1] if command.startswith(chr(34)) and chr(34) in command[1:] else (command.split(" ", 1)[0] if command else "")
-        normalized_path = startup_path.replace(chr(92), "/")
-        item["file_name"] = normalized_path.rsplit("/", 1)[-1] if normalized_path else "غير متاح"
-        item["file_path"] = startup_path
+    # Prepare every running process, not just processes that matched a heuristic.
+    for item in processes:
+        path = str(item.get("executable_path") or "")
+        normalized_path = path.replace(chr(92), "/")
+        item["file_name"] = normalized_path.rsplit("/", 1)[-1] if normalized_path else str(item.get("process_name") or "غير متاح")
+        item["command_line"] = str(item.get("command_line") or "").strip() or "سطر الأوامر غير متاح في بيانات هذا الفحص."
+    startup = []
     match_count = int(report_data.get("indicator_match_count", len(findings)) or 0)
     process_count = int(report_data.get("process_count", len(processes)) or 0)
     if findings or match_count:
@@ -613,36 +609,31 @@ def report_detail(report_id):
       <div class="report-metrics">
         <div class="report-metric">العمليات المفحوصة<strong>{{ process_count }}</strong></div>
         <div class="report-metric">مؤشرات المطابقة<strong>{{ match_count }}</strong></div>
-        <div class="report-metric">عناصر بدء التشغيل<strong>{{ startup|length }}</strong></div>
+        <div class="report-metric">العمليات المعروضة<strong>{{ processes|length }}</strong></div>
       </div>
       <div class="card"><h2>النتيجة والتوصية</h2><p>{{ status_detail }}</p><p class="muted">{{ report_data.get('note', 'النتائج الآلية مؤشرات أولية وتحتاج إلى مراجعة بشرية.') }}</p></div>
-      <div class="card"><h2>العناصر التي تحتاج مراجعة</h2>
-        {% if findings %}
-          {% for item in findings %}
-            <div class="finding">
-              <h3>⚠️ {{ item.get('process_name', 'اسم غير متاح') }} <span class="muted">· PID {{ item.get('pid', '—') }}</span></h3>
-              <div class="field"><b>اسم الملف المفحوص:</b> <span class="tag">{{ item.get('file_name', item.get('process_name', 'غير متاح')) }}</span></div>
-              <div class="field"><b>سبب الاشتباه:</b> تطابق مع مؤشر أو أكثر من قائمة الفحص.</div>
-              <div class="field"><b>المؤشرات:</b>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</div>
-              <div class="field"><b>مسار الملف:</b> {{ item.get('executable_path') or 'غير متاح' }}</div>
-              <div class="field"><b>SHA-256:</b> {{ item.get('sha256') or 'غير متاح' }}</div>
-              <div class="field"><b>التقييم:</b> يحتاج مراجعة يدوية؛ الاسم وحده لا يثبت وجود هاك.</div>
-            </div>
-          {% endfor %}
-        {% else %}
-          <div class="empty-state">✓ لا توجد عمليات مطابقة لقائمة المؤشرات الحالية.</div>
-        {% endif %}
-      </div>
-      <div class="card"><h2>عناصر بدء التشغيل</h2>
-        {% if startup %}
-          {% for item in startup %}
-            <details><summary>{{ item.get('name', 'عنصر غير معروف') }} · {{ item.get('source', 'المصدر غير معروف') }}</summary>
+      <div class="card"><h2>العمليات الجارية على الجهاز</h2>
+        <p class="muted">كل عملية تظهر بشكل مستقل: اسم العملية، اسم الملف، المسار الكامل، وسطر الأوامر. مؤشرات الاشتباه إشارة للمراجعة وليست إثباتًا.</p>
+        {% if processes %}
+          {% for item in processes %}
+            <details class="finding" {% if item.get('indicator_matches') %}open{% endif %}>
+              <summary>{% if item.get('indicator_matches') %}⚠️{% else %}•{% endif %} {{ item.get('process_name', 'اسم غير متاح') }} · PID {{ item.get('pid', '—') }}</summary>
+              <div class="field"><b>اسم العنصر:</b> <span class="tag">{{ item.get('process_name', 'غير متاح') }}</span></div>
               <div class="field"><b>اسم الملف:</b> <span class="tag">{{ item.get('file_name', 'غير متاح') }}</span></div>
-              <div class="field"><b>مسار الملف:</b> {{ item.get('file_path', 'غير متاح') }}</div>
-              <div class="field"><b>الأمر الكامل:</b> {{ item.get('command', 'غير متاح') }}</div>
+              <div class="field"><b>مسار الملف الكامل:</b> <span dir="ltr">{{ item.get('executable_path') or 'غير متاح' }}</span></div>
+              <div class="field"><b>الأمر الكامل:</b> <span dir="ltr">{{ item.get('command_line', 'غير متاح') }}</span></div>
+              {% if item.get('indicator_matches') %}
+                <div class="field"><b>حالة المراجعة:</b> توجد مؤشرات مطابقة؛ يلزم تحقق يدوي.</div>
+                <div class="field"><b>المؤشرات:</b>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</div>
+              {% else %}
+                <div class="field"><b>حالة المراجعة:</b> لا يوجد تطابق مع مؤشرات الأسماء الحالية.</div>
+              {% endif %}
+              <div class="field"><b>SHA-256:</b> <span dir="ltr">{{ item.get('sha256') or 'غير متاح' }}</span></div>
             </details>
           {% endfor %}
-        {% else %}<p class="muted">لا توجد بيانات لعناصر بدء التشغيل في هذا التقرير.</p>{% endif %}
+        {% else %}
+          <div class="empty-state">لم تصل بيانات العمليات من برنامج الفحص.</div>
+        {% endif %}
       </div>
       <details class="card"><summary>عرض البيانات الخام (للمختصين فقط)</summary><pre>{{ raw_payload }}</pre></details>
       <a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">تحميل PDF</a>
