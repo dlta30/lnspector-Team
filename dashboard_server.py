@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS users (
  role TEXT NOT NULL CHECK(role IN ('owner','deputy','team','inspector','viewer')),
  can_view INTEGER NOT NULL DEFAULT 1,
  can_ingest INTEGER NOT NULL DEFAULT 0,
+ login_token TEXT,
  created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS inspection_sessions (
@@ -95,6 +96,9 @@ def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with db() as con:
         con.executescript(SCHEMA)
+        user_columns = {row["name"] for row in con.execute("PRAGMA table_info(users)").fetchall()}
+        if "login_token" not in user_columns:
+            con.execute("ALTER TABLE users ADD COLUMN login_token TEXT")
         session_columns = {row["name"] for row in con.execute("PRAGMA table_info(inspection_sessions)").fetchall()}
         if "target_label" not in session_columns:
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN target_label TEXT NOT NULL DEFAULT ''")
@@ -178,7 +182,11 @@ def current_user():
     if not name:
         return None
     with db() as con:
-        return con.execute("SELECT * FROM users WHERE username=?", (name,)).fetchone()
+        user = con.execute("SELECT * FROM users WHERE username=?", (name,)).fetchone()
+        if not user or not session.get("login_token") or not hmac.compare_digest(str(user["login_token"] or ""), str(session.get("login_token") or "")):
+            session.clear()
+            return None
+        return user
 
 def login_required(fn):
     @wraps(fn)
@@ -236,9 +244,13 @@ def login():
                     except sqlite3.IntegrityError:
                         user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
             if user and check_password_hash(user["password_hash"], password):
+                login_token = secrets.token_urlsafe(32)
+                with db() as con:
+                    con.execute("UPDATE users SET login_token=? WHERE id=?", (login_token, user["id"]))
                 session.clear()
                 session["username"] = user["username"]
-                log_action(username, "login")
+                session["login_token"] = login_token
+                log_action(username, "login (single active session; previous session invalidated)")
                 return redirect(request.args.get("next") or url_for("home"))
         flash("Login failed. Check credentials and server environment configuration.")
     return page("""<div class="login-shell"><section class="login-hero"><div><div class="eyebrow">SECURITY OPERATIONS PLATFORM</div><div class="hero-mark">3eN<span>.</span></div><h2>INCEPTOR</h2><p class="muted">جلسات الفحص, secure reports, and team access — in one place.</p></div><div class="status-pill"><i></i> PRIVATE TEAM ACCESS</div></section><section class="login-form"><div class="eyebrow">WELCOME BACK</div><h2>Sign in</h2><p class="muted">Use your team credentials to continue.</p><form method="post"><label>Username</label><input name="username" required autocomplete="username" placeholder="Enter username"><label>Password</label><input name="password" type="password" required autocomplete="current-password" placeholder="Enter password"><button class="btn">Sign in securely &rarr;</button></form><p class="muted" style="font-size:11px;margin-top:24px">Access is controlled by your assigned role.</p></section></div>""")
@@ -246,6 +258,10 @@ def login():
 @app.route("/logout")
 def logout():
     name = session.get("username","unknown")
+    token = session.get("login_token")
+    if name != "unknown" and token:
+        with db() as con:
+            con.execute("UPDATE users SET login_token=NULL WHERE username=? AND login_token=?", (name, token))
     session.clear()
     log_action(name, "logout")
     return redirect(url_for("login"))
@@ -437,6 +453,8 @@ def reports():
         findings = [p for p in processes if isinstance(p, dict) and p.get("indicator_matches")]
         try: matches = max(int(matches or 0), len(findings))
         except (ValueError, TypeError): matches = len(findings)
+        file_search = " ".join(str(p.get(k) or "") for p in processes if isinstance(p, dict) for k in ("process_name","file_name","executable_path","command_line"))
+        item["search_text"] = " ".join([str(item.get("target_label") or ""), str(item.get("computer_label") or ""), str(item.get("session_id") or ""), str(item.get("summary") or ""), str(item.get("created_at") or ""), file_search])[:20000]
         item["match_count"] = matches
         item["process_count"] = data.get("process_count", len(processes))
         item["status_label"] = "تحتاج مراجعة" if matches else "لم تظهر مؤشرات"
@@ -491,7 +509,7 @@ def reports():
       {% if report_rows %}
       <div class="report-list" id="report-list">
       {% for r in report_rows %}
-        <article class="report-item" data-search="{{ (r['target_label'] or '') ~ ' ' ~ r['computer_label'] ~ ' ' ~ r['session_id'] ~ ' ' ~ r['summary'] ~ ' ' ~ r['created_at'] }}" data-status="{{ r['status_class'] }}">
+        <article class="report-item" data-search="{{ r['search_text']|e }}" data-status="{{ r['status_class'] }}">
           <div class="report-item-top"><span class="report-id">تقرير #{{ r['id'] }}</span><span class="report-chip {{ r['status_class'] }}">{{ r['status_label'] }}</span></div>
           <div class="report-person">{{ r['target_label'] or 'اسم الشخص غير مسجل' }}</div>
           <div class="report-device">DEVICE · {{ r['computer_label'] or 'غير معروف' }}</div>
@@ -564,7 +582,11 @@ def report_detail(report_id):
         path = str(item.get("executable_path") or "")
         normalized_path = path.replace(chr(92), "/")
         item["file_name"] = normalized_path.rsplit("/", 1)[-1] if normalized_path else str(item.get("process_name") or "غير متاح")
-        item["command_line"] = str(item.get("command_line") or "").strip() or "سطر الأوامر غير متاح في بيانات هذا الفحص."
+        item["command_line"] = str(item.get("command_line") or "").strip() or "غير متاح"
+        item["file_created_at"] = str(item.get("file_created_at") or "غير متاح")
+        item["file_modified_at"] = str(item.get("file_modified_at") or "غير متاح")
+        item["process_started_at"] = str(item.get("process_started_at") or "غير متاح")
+        item["download_mark"] = bool(item.get("download_mark"))
     startup = []
     match_count = int(report_data.get("indicator_match_count", len(findings)) or 0)
     process_count = int(report_data.get("process_count", len(processes)) or 0)
@@ -625,13 +647,29 @@ def report_detail(report_id):
         <div class="report-metric">العمليات المعروضة<strong>{{ processes|length }}</strong></div>
       </div>
       <div class="card"><h2>النتيجة والتوصية</h2><p>{{ status_detail }}</p><p class="muted">{{ report_data.get('note', 'النتائج الآلية مؤشرات أولية وتحتاج إلى مراجعة بشرية.') }}</p></div>
-      <div class="card">
-        <h2>بيانات التقرير الخام</h2>
-        <p class="muted">عرض البيانات الأصلية كما وصلت من برنامج الفحص.</p>
-        <pre style="direction:ltr;text-align:left;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;max-height:75vh;overflow:auto;background:#080a10;color:#e3e8f2;border:1px solid #2b3244;border-radius:12px;padding:18px;font:12px/1.8 Consolas,monospace">{{ raw_payload }}</pre>
+      <div class="card" id="process-list">
+        <h2>الملفات والعمليات</h2>
+        <p class="muted">أسماء الملفات ومساراتها وأوقات التشغيل وتواريخ الملفات المتاحة. تاريخ إنشاء الملف لا يثبت وقت تنزيله بدقة.</p>
+        <input id="file-search" type="search" placeholder="ابحث باسم ملف أو مسار…" aria-label="بحث في ملفات التقرير">
+        <div id="file-list">
+        {% for item in processes %}
+          <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}" data-file-search="{{ (item.get('file_name','') ~ ' ' ~ item.get('process_name','') ~ ' ' ~ item.get('executable_path','') ~ ' ' ~ item.get('command_line',''))|e }}">
+            <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}📄{% endif %}</span><span class="process-embed-title">{{ item.get('file_name') or item.get('process_name') or 'ملف غير معروف' }}</span><span class="process-embed-meta">PID {{ item.get('pid') or '—' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">مشتبه به — يحتاج مراجعة</span>{% endif %}</div>
+            <div class="field"><b>اسم العملية</b><span dir="ltr">{{ item.get('process_name') or 'غير متاح' }}</span></div>
+            <div class="field"><b>اسم الملف</b><span dir="ltr">{{ item.get('file_name') or 'غير متاح' }}</span></div>
+            <div class="field"><b>المسار الكامل</b><span dir="ltr">{{ item.get('executable_path') or 'غير متاح' }}</span></div>
+            <div class="field"><b>وقت بدء التشغيل (UTC)</b><span dir="ltr">{{ item.get('process_started_at') }}</span></div>
+            <div class="field"><b>تاريخ إنشاء الملف (UTC)</b><span dir="ltr">{{ item.get('file_created_at') }}</span></div>
+            <div class="field"><b>تاريخ تعديل الملف (UTC)</b><span dir="ltr">{{ item.get('file_modified_at') }}</span></div>
+            {% if item.get('download_mark') %}<div class="field"><b>علامة تنزيل من الإنترنت</b><span>موجودة — لا تحدد وقت التنزيل بدقة</span></div>{% endif %}
+            {% if item.get('indicator_matches') %}<div class="field"><b>سبب الاشتباه</b><span>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
+          </article>
+        {% else %}<div class="empty-state">لا توجد بيانات عمليات في هذا التقرير.</div>{% endfor %}
+        </div><div class="reports-empty" id="file-none" style="display:none">ما فيه ملفات تطابق البحث.</div>
       </div>
+      <script>(function(){const input=document.getElementById('file-search'),items=Array.from(document.querySelectorAll('[data-file-search]')),none=document.getElementById('file-none');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase();let n=0;items.forEach(el=>{const ok=el.dataset.fileSearch.toLocaleLowerCase().includes(q);el.style.display=ok?'block':'none';if(ok)n++;});if(none)none.style.display=n?'none':'block';});})();</script>
     </div>
-    """,r=r,report_data=report_data,raw_payload=json.dumps(report_data,indent=2,ensure_ascii=False),process_count=process_count,match_count=match_count,startup=startup,findings=findings,status_title=status_title,status_class=status_class,status_detail=status_detail)
+    """,r=r,report_data=report_data,processes=processes,process_count=process_count,match_count=match_count,startup=startup,findings=findings,status_title=status_title,status_class=status_class,status_detail=status_detail)
 
 @app.route("/reports/<int:report_id>/pdf")
 @login_required
