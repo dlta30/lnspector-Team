@@ -121,6 +121,27 @@ def init_db():
                             (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
 
 
+        # Retention policy: prevent accidental deletion of reports, sessions, audit history, or staff accounts.
+        con.executescript("""
+        CREATE TRIGGER IF NOT EXISTS prevent_report_delete
+        BEFORE DELETE ON reports BEGIN
+            SELECT RAISE(ABORT, 'Report retention is enabled; DELETE is disabled.');
+        END;
+        CREATE TRIGGER IF NOT EXISTS prevent_session_delete
+        BEFORE DELETE ON inspection_sessions BEGIN
+            SELECT RAISE(ABORT, 'Session retention is enabled; DELETE is disabled.');
+        END;
+        CREATE TRIGGER IF NOT EXISTS prevent_audit_delete
+        BEFORE DELETE ON audit BEGIN
+            SELECT RAISE(ABORT, 'Audit retention is enabled; DELETE is disabled.');
+        END;
+        CREATE TRIGGER IF NOT EXISTS prevent_user_delete
+        BEFORE DELETE ON users BEGIN
+            SELECT RAISE(ABORT, 'User retention is enabled; DELETE is disabled.');
+        END;
+        """)
+
+
 def notify_discord(report_id, session_code, computer, summary, report=None):
     webhook = os.environ.get('DISCORD_WEBHOOK_URL', '').strip()
     if not webhook.startswith('https://discord.com/api/webhooks/') and not webhook.startswith('https://discordapp.com/api/webhooks/'):
@@ -556,7 +577,7 @@ def reports():
           <div class="report-actions">
             <a class="btn" href="{{ url_for('report_detail',report_id=r['id']) }}">عرض التقرير الكامل</a>
             <a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">⬇ تصدير PDF</a>
-            {% if is_owner %}<form method="post" action="{{ url_for('delete_report',report_id=r['id']) }}" onsubmit="return confirm('هل تريد حذف هذا التقرير نهائيًا؟')"><button class="btn danger" type="submit">حذف</button></form>{% endif %}
+            <span class="tag">محفوظ</span>
           </div>
         </article>
       {% endfor %}
@@ -579,16 +600,8 @@ def reports():
 @app.post("/reports/<int:report_id>/delete")
 @login_required
 def delete_report(report_id):
-    actor = current_user()
-    if actor["role"] != "owner":
-        abort(403)
-    with db() as con:
-        row = con.execute("SELECT id FROM reports WHERE id=?", (report_id,)).fetchone()
-        if not row:
-            abort(404)
-        con.execute("DELETE FROM reports WHERE id=?", (report_id,))
-    log_action(actor["username"], "deleted report #" + str(report_id))
-    flash("Report deleted.")
+    # Permanent retention policy: reports cannot be deleted from the web app.
+    flash("حذف التقارير معطّل — التقارير محفوظة ولا يمكن حذفها من الموقع.")
     return redirect(url_for("reports"))
 
 @app.route("/reports/<int:report_id>")
@@ -798,14 +811,8 @@ def users_page():
                         log_action(actor["username"],"changed role for "+target["username"]+" to "+role)
                         flash("Role updated.")
         elif action=="delete":
-            if actor["role"] != "owner": abort(403)
-            uid=request.form.get("user_id","")
-            with db() as con:
-                target=con.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
-                if target and target["role"]!="owner" and target["username"]!=actor["username"]:
-                    con.execute("DELETE FROM users WHERE id=?",(uid,))
-                    log_action(actor["username"],"deleted staff account "+target["username"])
-                    flash("Staff account deleted.")
+            flash("حذف حسابات الموظفين معطّل — الحسابات محفوظة.")
+
         return redirect(url_for("users_page"))
     with db() as con: users=con.execute("SELECT * FROM users ORDER BY role,username").fetchall()
     return page("""
@@ -868,7 +875,7 @@ def users_page():
               <button class="btn">حفظ التغييرات</button>
             </form>
             {% if actor_role == 'owner' and u['username'] != actor_username %}
-            <form method="post" onsubmit="return confirm('هل أنت متأكد من حذف هذا الحساب؟')" style="margin-top:12px"><input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}"><button class="btn danger">حذف الحساب</button></form>
+            <div class="tag">الحساب محفوظ — الحذف معطّل</div>
             {% endif %}
             {% endif %}
           {% endif %}
