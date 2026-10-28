@@ -725,60 +725,6 @@ def audit_page():
     with db() as con: rows=con.execute("SELECT * FROM audit ORDER BY id DESC LIMIT 300").fetchall()
     return page("""<div class="card"><h2>سجل الأحداث</h2><table><tr><th>الوقت (UTC)</th><th>Actor</th><th>Action</th></tr>{% for r in rows %}<tr><td>{{ r['created_at'] }}</td><td>{{ r['actor'] }}</td><td>{{ r['action'] }}</td></tr>{% endfor %}</table></div>""",rows=rows)
 
-@app.post("/api/v1/session-report")
-def ingest_session_report():
-    """Accept exactly one report for a valid, unexpired one-time session code."""
-    if not request.is_json:
-        abort(415, "application/json is required")
-    raw = request.get_data()
-    if len(raw) > 5_000_000:
-        abort(413, "Report is too large")
-    data = request.get_json(silent=True)
-    if not isinstance(data, dict):
-        abort(400, "Invalid JSON body")
-    code = str(data.get("session_code", "")).strip().upper()
-    if not code or len(code) > 32:
-        abort(400, "session_code is required")
-    label = str(data.get("computer_label", "Unspecified"))[:100]
-    summary = str(data.get("summary", ""))[:1000]
-    report = data.get("report", {})
-    if not isinstance(report, dict):
-        abort(400, "report must be a JSON object")
-    code_hash = hashlib.sha256(code.encode("utf-8")).hexdigest()
-    current = datetime.now(timezone.utc)
-    with db() as con:
-        session_row = con.execute(
-            "SELECT * FROM inspection_sessions WHERE code_hash=?",
-            (code_hash,)
-        ).fetchone()
-        if not session_row:
-            abort(401, "Invalid session code")
-        if session_row["status"] != "open" or session_row["used_at"]:
-            abort(409, "This session has already received a report or is closed")
-        try:
-            expires = datetime.fromisoformat(session_row["expires_at"].replace("Z", "+00:00"))
-            if expires.tzinfo is None:
-                expires = expires.replace(tzinfo=timezone.utc)
-        except (TypeError, ValueError):
-            abort(500, "Session expiry is invalid")
-        if expires <= current:
-            con.execute("UPDATE inspection_sessions SET status='expired' WHERE id=?", (session_row["id"],))
-            abort(410, "This session has expired")
-        serialized = json.dumps(report, ensure_ascii=False)
-        cur = con.execute(
-            "INSERT INTO reports(session_id,computer_label,created_at,summary,payload,submitted_by) VALUES(?,?,?,?,?,?)",
-            (session_row["display_code"], label, now(), summary, serialized, "session-client")
-        )
-        report_id = cur.lastrowid
-        con.execute(
-            "UPDATE inspection_sessions SET status='used',used_at=? WHERE id=?",
-            (now(), session_row["id"])
-        )
-    log_action("session-client", "received report #" + str(report_id))
-    notify_discord(report_id, session_row["display_code"], label, summary)
-    return {"ok": True, "report_id": report_id, "session_id": session_row["display_code"]}, 201
-
-
 @app.post("/api/v1/reports")
 def ingest_report():
     # API key is kept server-side and never displayed in the dashboard.
