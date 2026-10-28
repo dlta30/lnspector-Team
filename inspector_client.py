@@ -10,7 +10,7 @@ import os
 import platform
 import threading
 import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import filedialog, messagebox, simpledialog, ttk
 from datetime import datetime, timezone
 
 APP = "3eN Inspector Team"
@@ -202,6 +202,18 @@ class InspectorApp(tk.Tk):
             return
         if not messagebox.askyesno(APP, "Start a visible scan of running process metadata on this device?"):
             return
+        self.active_session_code = SESSION_CODE
+        self.active_dashboard_url = DASHBOARD_URL
+        if not self.active_session_code:
+            self.active_session_code = (simpledialog.askstring(APP, "أدخل كود الجلسة من لوحة التحكم:", parent=self) or "").strip().upper()
+            if not self.active_session_code:
+                messagebox.showwarning(APP, "يلزم إدخال كود الجلسة لربط التقرير.")
+                return
+        if not self.active_dashboard_url:
+            self.active_dashboard_url = (simpledialog.askstring(APP, "أدخل رابط لوحة التحكم الكامل (HTTPS):", parent=self) or "").strip().rstrip("/")
+            if not self.active_dashboard_url.startswith("https://"):
+                messagebox.showwarning(APP, "أدخل رابط لوحة التحكم الذي يبدأ بـ https://")
+                return
         self.output.delete("1.0", "end")
         self.metric_state.set("SCANNING")
         self.metric_processes.set("…")
@@ -233,8 +245,8 @@ class InspectorApp(tk.Tk):
             if DASHBOARD_URL and SESSION_CODE:
                 try:
                     import urllib.request
-                    endpoint = DASHBOARD_URL.rstrip("/") + "/api/v1/session-report"
-                    payload = {"session_code": SESSION_CODE, "computer_label": self.report["device_label"],
+                    endpoint = self.active_dashboard_url.rstrip("/") + "/api/v1/session-report"
+                    payload = {"session_code": self.active_session_code, "computer_label": self.report["device_label"],
                                "summary": f"{self.report['indicator_match_count']} name-based leads; {self.report.get('startup_entry_count', 0)} startup entries for review",
                                "report": self.report}
                     req = urllib.request.Request(endpoint, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
