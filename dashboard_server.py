@@ -114,19 +114,39 @@ def init_db():
                             (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
 
 
-def notify_discord(report_id, session_code, computer, summary):
+def notify_discord(report_id, session_code, computer, summary, report=None):
     webhook = os.environ.get('DISCORD_WEBHOOK_URL', '').strip()
     if not webhook.startswith('https://discord.com/api/webhooks/') and not webhook.startswith('https://discordapp.com/api/webhooks/'):
+        print('Discord notification skipped: DISCORD_WEBHOOK_URL is missing or invalid')
         return False
-    message = {'username': '3eN Inspector Team', 'embeds': [{'title': 'New inspection report', 'description': (summary or 'Report received')[:1000], 'color': 16076879, 'fields': [{'name': 'Report ID', 'value': str(report_id), 'inline': True}, {'name': 'Session', 'value': str(session_code)[:100], 'inline': True}, {'name': 'Device', 'value': str(computer)[:100], 'inline': True}], 'footer': {'text': '3eN INSPECTOR TEAM'}}], 'allowed_mentions': {'parse': []}}
+    report = report if isinstance(report, dict) else {}
+    processes = report.get('processes', [])
+    if not isinstance(processes, list):
+        processes = []
+    findings = [p for p in processes if isinstance(p, dict) and p.get('indicator_matches')]
+    details = []
+    for item in findings[:8]:
+        name = str(item.get('name') or 'Unknown')[:100]
+        pid = str(item.get('pid') or '?')[:20]
+        matches = item.get('indicator_matches', [])
+        if not isinstance(matches, list):
+            matches = [str(matches)]
+        details.append('• ' + name + ' (PID ' + pid + ') — ' + ', '.join(str(x)[:80] for x in matches[:4]))
+    report_text = '\\n'.join(details) if details else 'No matching indicators were reported.'
+    if len(findings) > 8:
+        report_text += '\\n…and ' + str(len(findings) - 8) + ' more finding(s); see dashboard report.'
+    content = ('**New inspection report #' + str(report_id) + '**\\nSession: `' + str(session_code)[:80] + '`\\nDevice: `' + str(computer)[:80] + '`\\nSummary: ' + (summary or 'Report received')[:400] + '\\n\\n**Findings for review (' + str(len(findings)) + '):**\\n' + report_text)[:1900]
+    message = {'username': '3eN Inspector Team', 'content': content, 'embeds': [{'title': 'Inspection report received', 'description': 'The report is saved in the dashboard. Name matches are indicators for review, not proof of wrongdoing.', 'color': 16076879, 'fields': [{'name': 'Report ID', 'value': str(report_id), 'inline': True}, {'name': 'Session', 'value': str(session_code)[:100], 'inline': True}, {'name': 'Device', 'value': str(computer)[:100], 'inline': True}, {'name': 'Processes scanned', 'value': str(report.get('process_count', len(processes))), 'inline': True}, {'name': 'Indicators to review', 'value': str(len(findings)), 'inline': True}], 'footer': {'text': '3eN INSPECTOR TEAM'}}], 'allowed_mentions': {'parse': []}}
     req = urllib.request.Request(webhook, data=json.dumps(message).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
     try:
-        with urllib.request.urlopen(req, timeout=8) as response:
-            return 200 <= response.status < 300
+        with urllib.request.urlopen(req, timeout=10) as response:
+            ok = 200 <= response.status < 300
+            if not ok:
+                print('Discord notification returned HTTP', response.status)
+            return ok
     except Exception as exc:
-        print('Discord notification failed:', type(exc).__name__)
+        print('Discord notification failed:', type(exc).__name__, str(exc)[:200])
         return False
-
 def trigger_session_build(code):
     if not GITHUB_ACTIONS_TOKEN or not PUBLIC_DASHBOARD_URL.startswith("https://"):
         return False, "اضبط GITHUB_ACTIONS_TOKEN وPUBLIC_DASHBOARD_URL في إعدادات الاستضافة."
@@ -387,7 +407,7 @@ def ingest_session_report():
         report_id = cur.lastrowid
         con.execute("UPDATE inspection_sessions SET status='used',used_at=? WHERE id=?", (now(), session_row["id"]))
     log_action("session:" + session_row["display_code"], "received report #" + str(report_id))
-    notified = notify_discord(report_id, session_row["display_code"], label, summary)
+    notified = notify_discord(report_id, session_row["display_code"], label, summary, report)
     return {"ok": True, "report_id": report_id, "discord_notified": notified}, 201
 
 @app.route("/reports")
