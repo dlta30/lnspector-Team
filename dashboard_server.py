@@ -410,7 +410,7 @@ def ingest_session_report():
         report_id = cur.lastrowid
         con.execute("UPDATE inspection_sessions SET status='used',used_at=? WHERE id=?", (now(), session_row["id"]))
     log_action("session:" + session_row["display_code"], "received report #" + str(report_id))
-    notified = notify_discord(report_id, session_row["display_code"], label, summary, report)
+    notified = notify_discord(report_id, session_row["display_code"], label, summary, payload if isinstance(payload, dict) else {})
     return {"ok": True, "report_id": report_id, "discord_notified": notified}, 201
 
 @app.route("/reports")
@@ -559,7 +559,17 @@ def report_detail(report_id):
     report_data = envelope.get("report") if isinstance(envelope.get("report"), dict) else envelope
     processes = report_data.get("processes", []) if isinstance(report_data.get("processes", []), list) else []
     findings = [p for p in processes if isinstance(p, dict) and p.get("indicator_matches")]
+    # Add readable file names alongside full paths in the report.
+    for item in findings:
+        path = str(item.get("executable_path") or "").replace(chr(92), "/")
+        item["file_name"] = path.rsplit("/", 1)[-1] if path else str(item.get("process_name") or "غير متاح")
     startup = report_data.get("startup_entries", []) if isinstance(report_data.get("startup_entries", []), list) else []
+    for item in startup:
+        command = str(item.get("command") or "").strip()
+        startup_path = command.split(chr(34))[1] if command.startswith(chr(34)) and chr(34) in command[1:] else (command.split(" ", 1)[0] if command else "")
+        normalized_path = startup_path.replace(chr(92), "/")
+        item["file_name"] = normalized_path.rsplit("/", 1)[-1] if normalized_path else "غير متاح"
+        item["file_path"] = startup_path
     match_count = int(report_data.get("indicator_match_count", len(findings)) or 0)
     process_count = int(report_data.get("process_count", len(processes)) or 0)
     if findings or match_count:
@@ -611,6 +621,7 @@ def report_detail(report_id):
           {% for item in findings %}
             <div class="finding">
               <h3>⚠️ {{ item.get('process_name', 'اسم غير متاح') }} <span class="muted">· PID {{ item.get('pid', '—') }}</span></h3>
+              <div class="field"><b>اسم الملف المفحوص:</b> <span class="tag">{{ item.get('file_name', item.get('process_name', 'غير متاح')) }}</span></div>
               <div class="field"><b>سبب الاشتباه:</b> تطابق مع مؤشر أو أكثر من قائمة الفحص.</div>
               <div class="field"><b>المؤشرات:</b>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</div>
               <div class="field"><b>مسار الملف:</b> {{ item.get('executable_path') or 'غير متاح' }}</div>
@@ -626,7 +637,9 @@ def report_detail(report_id):
         {% if startup %}
           {% for item in startup %}
             <details><summary>{{ item.get('name', 'عنصر غير معروف') }} · {{ item.get('source', 'المصدر غير معروف') }}</summary>
-              <div class="field"><b>الأمر:</b> {{ item.get('command', 'غير متاح') }}</div>
+              <div class="field"><b>اسم الملف:</b> <span class="tag">{{ item.get('file_name', 'غير متاح') }}</span></div>
+              <div class="field"><b>مسار الملف:</b> {{ item.get('file_path', 'غير متاح') }}</div>
+              <div class="field"><b>الأمر الكامل:</b> {{ item.get('command', 'غير متاح') }}</div>
             </details>
           {% endfor %}
         {% else %}<p class="muted">لا توجد بيانات لعناصر بدء التشغيل في هذا التقرير.</p>{% endif %}
@@ -694,8 +707,8 @@ def users_page():
             password=request.form.get("password","")
             role=request.form.get("role","viewer")
             allowed_roles = ("inspector", "viewer", "deputy") if actor["role"] == "owner" else ("inspector",)
-            if len(username)<3 or len(password)<8 or role not in allowed_roles:
-                flash("اسم المستخدم 3 خانات على الأقل، وكلمة المرور 8 خانات على الأقل، والرتبة حسب صلاحيتك.")
+            if len(username)<3 or len(password)<3 or role not in allowed_roles:
+                flash("اسم المستخدم 3 خانات على الأقل، وكلمة المرور 3 خانات على الأقل، والرتبة حسب صلاحيتك.")
             else:
                 try:
                     with db() as con:
@@ -747,11 +760,11 @@ def users_page():
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px">
         <div style="background:#0b0d14;border:1px solid #303443;border-radius:14px;padding:20px">
           <h3 style="margin:0 0 5px">＋ إنشاء حساب جديد</h3>
-          <p class="muted" style="margin:0 0 18px">اسم مستخدم فريد وكلمة مرور لا تقل عن 8 خانات.</p>
+          <p class="muted" style="margin:0 0 18px">اسم مستخدم فريد وكلمة مرور لا تقل عن 3 خانات.</p>
           <form method="post" style="display:grid;gap:10px">
             <input type="hidden" name="action" value="create">
             <label>اسم المستخدم</label><input name="username" minlength="3" maxlength="64" autocomplete="off" placeholder="مثال: staff_roith" required>
-            <label>كلمة المرور</label><input name="password" type="password" minlength="8" autocomplete="new-password" placeholder="8 خانات أو أكثر" required>
+            <label>كلمة المرور</label><input name="password" type="password" minlength="3" autocomplete="new-password" placeholder="3 خانات أو أكثر" required>
             <label>دور الموظف</label>
             <select name="role">
               {% if actor_role == 'owner' %}<option value="deputy">نائب الإدارة</option>{% endif %}
