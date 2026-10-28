@@ -585,21 +585,20 @@ def report_detail(report_id):
       .report-metric{position:relative;background:linear-gradient(145deg,#171a25,#0e1017);border:1px solid #ffffff12;border-radius:17px;padding:20px;min-height:112px;color:#aeb3c5;font-size:12px;box-shadow:0 10px 30px #0002}
       .report-metric strong{display:block;font-size:34px;line-height:1.2;margin-top:12px;color:#f5f6fb;font-weight:900;font-variant-numeric:tabular-nums}
       .report-metric:nth-child(2) strong{color:#ff7b91}
-      .finding{background:linear-gradient(145deg,#171923,#0d0f16);border:1px solid #ffffff16;border-radius:16px;padding:0;margin:13px 0;overflow:hidden;box-shadow:0 10px 28px #0003}
-      .finding[open]{border-color:#ff63794d}
-      .finding summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:10px;padding:16px 18px;color:#f4f5fb;font-weight:800;line-height:1.8}
-      .finding summary::-webkit-details-marker{display:none}
-      .finding summary:after{content:"＋";margin-right:auto;color:#ff8ca0;font-size:18px}
-      .finding[open] summary:after{content:"−"}
-      .finding .field{margin:0;padding:12px 16px;border-top:1px solid #ffffff0d;color:#d6d8e2;font-size:12px;line-height:1.9;display:grid;grid-template-columns:minmax(115px,170px) minmax(0,1fr);gap:12px;align-items:start}
-      .finding .field b{color:#ff9aaa}
-      .finding .field span[dir="ltr"]{text-align:left;unicode-bidi:plaintext;overflow-wrap:anywhere;word-break:break-word;color:#dbe1ef}
-      .finding .field .tag{justify-self:start}
+      .process-embed{background:linear-gradient(145deg,#171923,#0d0f16);border:1px solid #ffffff16;border-radius:16px;margin:13px 0;overflow:hidden;box-shadow:0 10px 28px #0003}
+      .process-embed.flagged{border-color:#ff637966}
+      .process-embed-head{display:flex;align-items:center;gap:10px;padding:15px 17px;background:#ffffff05;border-bottom:1px solid #ffffff12;flex-wrap:wrap}
+      .process-embed-title{font-weight:800;color:#f4f5fb;overflow-wrap:anywhere}
+      .process-embed-meta{margin-right:auto;color:#aeb4c5;font-size:11px}
+      .process-embed .field{margin:0;padding:11px 16px;border-bottom:1px solid #ffffff0d;color:#d6d8e2;font-size:12px;line-height:1.9;display:grid;grid-template-columns:minmax(115px,170px) minmax(0,1fr);gap:12px;align-items:start}
+      .process-embed .field:last-child{border-bottom:0}
+      .process-embed .field b{color:#ff9aaa}
+      .process-embed .field span[dir="ltr"]{text-align:left;unicode-bidi:plaintext;overflow-wrap:anywhere;word-break:break-word;color:#dbe1ef}
       .tag{display:inline-block;border:1px solid #67404b;background:#29151d;border-radius:7px;padding:5px 9px;margin:3px;color:#ffc0ca;font-size:11px;direction:ltr;overflow-wrap:anywhere}
       details:not(.finding){margin-top:12px;background:#0e1017;border:1px solid #ffffff10;border-radius:11px;padding:13px;overflow-wrap:anywhere}
       details:not(.finding) summary{cursor:pointer;color:#ff9aaa;font-weight:800;line-height:1.8}
       .raw-report{max-height:0;overflow:hidden}
-      @media(max-width:600px){.finding .field{grid-template-columns:1fr;gap:4px}}
+      @media(max-width:600px){.finding .field,.process-embed .field{grid-template-columns:1fr;gap:4px}}
       .empty-state{padding:28px 18px;text-align:center;border:1px solid #235341;background:radial-gradient(ellipse at top,#17433266,transparent 75%),#10201c;border-radius:15px;color:#8be1b8;line-height:1.9}
       .card:has(.report-hero){border:0;background:transparent;box-shadow:none;padding:0}
       .card:has(.report-hero)>.card{background:linear-gradient(145deg,#151722,#0e1017);border:1px solid #ffffff12;border-radius:18px}
@@ -626,16 +625,24 @@ def report_detail(report_id):
         <p class="muted">كل عملية تظهر بشكل مستقل: اسم العملية، اسم الملف، المسار الكامل، وسطر الأوامر. مؤشرات الاشتباه إشارة للمراجعة وليست إثباتًا.</p>
         {% if processes %}
           {% for item in processes %}
-            <details class="finding" {% if item.get('indicator_matches') %}open{% endif %}>
-              <summary>{% if item.get('indicator_matches') %}⚠️{% else %}•{% endif %} {{ item.get('process_name', 'اسم غير متاح') }} · PID {{ item.get('pid', '—') }}</summary>
-              <div class="field"><b>اسم العنصر:</b> <span class="tag">{{ item.get('process_name', 'غير متاح') }}</span></div>
-              <div class="field"><b>اسم الملف:</b> <span class="tag">{{ item.get('file_name', 'غير متاح') }}</span></div>
-              <div class="field"><b>مسار الملف الكامل:</b> <span dir="ltr">{{ item.get('executable_path') or 'غير متاح' }}</span></div>
-              <div class="field"><b>الأمر الكامل:</b> <span dir="ltr">{{ item.get('command_line', 'غير متاح') }}</span></div>
+            <div class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}">
+              <div class="process-embed-head">
+                <span>{% if item.get('indicator_matches') %}⚠️{% else %}🧩{% endif %}</span>
+                <span class="process-embed-title">{{ item.get('process_name', 'اسم غير متاح') }}</span>
+                <span class="process-embed-meta">PID {{ item.get('pid', '—') }}</span>
+                {% if item.get('indicator_matches') %}<span class="tag">يحتاج مراجعة</span>{% else %}<span class="tag">تم الفحص</span>{% endif %}
+              </div>
+              <div class="field"><b>اسم العنصر</b><span class="tag">{{ item.get('process_name', 'غير متاح') }}</span></div>
+              <div class="field"><b>اسم الملف</b><span class="tag">{{ item.get('file_name', 'غير متاح') }}</span></div>
+              <div class="field"><b>مسار الملف الكامل</b><span dir="ltr">{{ item.get('executable_path') or 'غير متاح' }}</span></div>
+              <div class="field"><b>الأمر الكامل</b><span dir="ltr">{{ item.get('command_line', 'غير متاح') }}</span></div>
               {% if item.get('indicator_matches') %}
-                <div class="field"><b>حالة المراجعة:</b> توجد مؤشرات مطابقة؛ يلزم تحقق يدوي.</div>
-                <div class="field"><b>المؤشرات:</b>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</div>
-              {% else %}
+                <div class="field"><b>مؤشرات المطابقة</b><span>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>
+              {% endif %}
+              <div class="field"><b>SHA-256</b><span dir="ltr">{{ item.get('sha256') or 'غير متاح' }}</span></div>
+            </div>
+          {% endfor %}
+        {% else %}
                 <div class="field"><b>حالة المراجعة:</b> لا يوجد تطابق مع مؤشرات الأسماء الحالية.</div>
               {% endif %}
               <div class="field"><b>SHA-256:</b> <span dir="ltr">{{ item.get('sha256') or 'غير متاح' }}</span></div>
