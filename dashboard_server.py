@@ -239,7 +239,7 @@ def init_db():
         END;
         """)
 
-def notify_discord(report_id, session_code, computer, summary, report=None):
+def notify_discord(report_id, session_code, computer, summary, report=None, verdict=None, review_note=''):
     webhook = os.environ.get('DISCORD_WEBHOOK_URL', '').strip().strip('"').strip("'")
     if not webhook.startswith(('https://discord.com/api/webhooks/', 'https://discordapp.com/api/webhooks/')):
         print('Discord notification skipped: DISCORD_WEBHOOK_URL is missing or invalid')
@@ -264,7 +264,10 @@ def notify_discord(report_id, session_code, computer, summary, report=None):
             target_name = row['target_label'] or target_name
     except Exception as exc:
         print('Discord metadata lookup failed:', type(exc).__name__)
+    verdict_labels = {'clean': '🟢 CLEAN — المراجع صنّف الحالة كلين', 'threat': '🔴 HACK / THREAT — المراجع صنّف الحالة هاك', 'review': '🟠 NEEDS REVIEW — تحتاج مراجعة'}
     fields = [
+        {'name': '🧑‍⚖️ قرار المراجع', 'value': verdict_labels.get(verdict, 'لم يحدد المراجع قرارًا نهائيًا'), 'inline': False},
+        {'name': '📝 ملاحظة المراجع', 'value': safe(review_note, 500), 'inline': False},
         {'name': '👤 الاسم المعروف', 'value': safe(target_name, 180), 'inline': True},
         {'name': '🧾 رقم التقرير', 'value': safe(report_id, 80), 'inline': True},
         {'name': '🕒 وقت التقرير (UTC)', 'value': safe(report_time, 100), 'inline': True},
@@ -327,6 +330,8 @@ def notify_discord(report_id, session_code, computer, summary, report=None):
             Paragraph('<b>Source:</b> ' + escape(str(report_source)), styles['DiscordMeta']),
             Paragraph('<b>Processes reviewed:</b> ' + escape(str(report.get('process_count', len(processes)))), styles['DiscordMeta']),
             Paragraph('<b>Review leads:</b> ' + escape(str(len(findings))), styles['DiscordMeta']),
+            Paragraph('<b>Manual reviewer verdict:</b> ' + escape(verdict_labels.get(verdict, 'Not set')), styles['DiscordMeta']),
+            Paragraph('<b>Reviewer note:</b> ' + escape(str(review_note or 'غير متوفر')), styles['DiscordMeta']),
             Spacer(1, 3*mm), Paragraph('Collected report data (JSON)', styles['Heading2']),
             Preformatted(raw, styles['DiscordPayload'], maxLineLength=110)]
         doc.build(story)
@@ -970,7 +975,22 @@ def report_detail(report_id):
         <a class="btn" href="{{ url_for('reports') }}">← رجوع للتقارير</a>
         <a class="btn" href="{{ url_for('report_pdf', report_id=r['id']) }}" style="background:linear-gradient(120deg,#e72f53,#8f1737);color:#fff;border-color:#ff5b78;font-weight:800">⬇ تنزيل التقرير PDF</a>
         <a class="btn" href="#process-list">▤ عرض بطاقات العمليات</a>
-        {% if actor_role == 'owner' %}<form method="post" action="{{ url_for('report_send_discord', report_id=r['id']) }}" style="display:inline;margin:0" onsubmit="return confirm('إرسال ملخص هذا التقرير وملف PDF إلى روم Discord المرتبط بالويب هوك؟');"><button class="btn" type="submit" style="background:linear-gradient(120deg,#5865F2,#404EED);color:#fff;border-color:#7984ff;font-weight:800">◈ إرسال في Discord</button></form>{% endif %}
+        {% if actor_role == 'owner' %}
+        <button class="btn" type="button" onclick="document.getElementById('discord-verdict-dialog').showModal()" style="background:linear-gradient(120deg,#5865F2,#404EED);color:#fff;border-color:#7984ff;font-weight:800">◈ إرسال في Discord</button>
+        <dialog id="discord-verdict-dialog" style="max-width:460px;width:calc(100% - 40px);border:1px solid #414b68;border-radius:16px;background:#141722;color:#f7f8fc;padding:24px">
+          <form method="post" action="{{ url_for('report_send_discord', report_id=r['id']) }}">
+            <h3 style="margin-top:0">ما قرارك بخصوص هذا التقرير؟</h3>
+            <p class="muted">اختر التصنيف الذي سيظهر في رسالة Discord وداخل ملف PDF. القرار اليدوي لا يغيّر بيانات الفحص الأصلية.</p>
+            <label for="discord-review-note">ملاحظة المراجع (اختياري)</label>
+            <input id="discord-review-note" name="review_note" maxlength="500" placeholder="سبب القرار أو ملاحظات…" style="display:block;width:100%;box-sizing:border-box;margin:8px 0 18px;padding:10px;border-radius:8px">
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn" name="verdict" value="clean" type="submit" style="background:#176b50;color:white;border-color:#238b69">🟢 Clean / كلين</button>
+              <button class="btn" name="verdict" value="threat" type="submit" style="background:#8b2437;color:white;border-color:#d4435c">🔴 Hack / هاك</button>
+              <button class="btn" type="button" onclick="document.getElementById('discord-verdict-dialog').close()">إلغاء</button>
+            </div>
+          </form>
+        </dialog>
+        {% endif %}
       </div>
       <div class="report-hero">
         <div class="muted">3eN INCEPTOR · تقرير فحص #{{ r['id'] }}</div>
@@ -1068,15 +1088,28 @@ def report_send_discord(report_id):
         r = con.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
     if not r:
         abort(404)
+    verdict = str(request.form.get("verdict", "")).strip().lower()
+    if verdict not in {"clean", "threat"}:
+        abort(400, "Choose Clean or Hack/Threat before sending")
+    review_note = str(request.form.get("review_note", "")).strip()[:500]
     try:
         envelope = json.loads(r["payload"])
         if not isinstance(envelope, dict):
             envelope = {"raw_result": envelope}
     except Exception:
         envelope = {"raw_result": str(r["payload"])}
+    # Store the human decision separately; never rewrite the automated scan results.
+    envelope["manual_verdict"] = verdict
+    envelope["review_note"] = review_note
+    envelope["reviewed_by"] = str(actor.get("username") or "owner")
+    envelope["reviewed_at"] = now()
+    with db() as con:
+        con.execute("UPDATE reports SET payload=? WHERE id=?", (json.dumps(envelope, ensure_ascii=False), report_id))
+        con.execute("INSERT INTO audit(actor,action,created_at) VALUES(?,?,?)",
+                    (str(actor.get("username") or "owner"), "report_verdict:" + verdict + ":report_" + str(report_id), now()))
     report_data = envelope.get("report") if isinstance(envelope.get("report"), dict) else envelope
     sent = notify_discord(
-        r["id"], r["session_id"], r["computer_label"], r["summary"], report_data
+        r["id"], r["session_id"], r["computer_label"], r["summary"], report_data, verdict, review_note
     )
     if sent:
         log_action(actor["username"], "sent report #" + str(report_id) + " to Discord")
