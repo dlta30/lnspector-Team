@@ -231,13 +231,6 @@ class InspectorApp(tk.Tk):
         controls.pack(fill="x", pady=(0, 12))
         self.start_button = ttk.Button(controls, text="▶   بدء الفحص", command=self.start)
         self.start_button.pack(side="left", padx=(0, 9))
-        self.report_kind = tk.StringVar(value="review")
-        self.report_kind_box = ttk.Combobox(controls, textvariable=self.report_kind, state="readonly",
-                                             values=("يحتاج مراجعة", "نظيف مبدئيًا"), width=17)
-        self.report_kind_box.pack(side="left", padx=(0, 9))
-        self.report_kind_box.set("يحتاج مراجعة")
-        self.send_button = ttk.Button(controls, text="إعادة إرسال التقرير", command=self.send_report, state="disabled")
-        self.send_button.pack(side="left", padx=(0, 9))
         tk.Label(controls, text="يُرسل التقرير تلقائيًا بعد الفحص؛ التصنيف النهائي من لوحة التحكم.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left", padx=5)
 
@@ -298,7 +291,6 @@ class InspectorApp(tk.Tk):
         self.metric_flags.set(str(self.report["indicator_match_count"]))
         delivery = getattr(self, "delivery_status", "not_configured")
         self.start_button.configure(state="normal")
-        self.send_button.configure(state="normal")
         if delivery == "sent":
             self.metric_state.set("SENT")
             self.session_badge.configure(text="●  اكتمل وأُرسل", bg="#142b28", fg="#62e0b0")
@@ -317,13 +309,9 @@ class InspectorApp(tk.Tk):
         if not self.report:
             messagebox.showwarning(APP, "ابدأ الفحص أولًا.")
             return
-        if not auto and not messagebox.askyesno(APP, "هل تريد إعادة إرسال بيانات الفحص إلى لوحة التحكم؟"):
-            return
         # Keep the initial status as review; the reviewer makes the final decision in the dashboard.
-        label = "review" if auto else ("clean" if self.report_kind.get() == "نظيف مبدئيًا" else "review")
-        self.report["review_label"] = label
-        self.report["review_label_ar"] = "نظيف مبدئيًا" if label == "clean" else "يحتاج مراجعة"
-        self.send_button.configure(state="disabled")
+        self.report["review_label"] = "review"
+        self.report["review_label_ar"] = "بانتظار تصنيف المراجع في لوحة التحكم"
         self.status.set("جارٍ إرسال التقرير بعد موافقتك…")
         try:
             import urllib.request
@@ -341,15 +329,10 @@ class InspectorApp(tk.Tk):
             self.metric_state.set("SENT")
             self.session_badge.configure(text="●  تم الإرسال", bg="#142b28", fg="#62e0b0")
             self.status.set("تم إرسال التقرير تلقائيًا إلى لوحة التحكم.")
-            if not auto:
-                messagebox.showinfo(APP, "تم إرسال التقرير بنجاح.")
         except Exception as exc:
             self.delivery_status = "failed: " + type(exc).__name__
-            self.send_button.configure(state="normal", text="إعادة إرسال التقرير")
             self.session_badge.configure(text="●  تعذر الإرسال", bg="#351521", fg="#ff8093")
             self.status.set("تعذر الإرسال. تحقق من الاتصال والجلسة.")
-            if not auto:
-                messagebox.showerror(APP, "تعذر إرسال التقرير: " + str(exc))
 
     def export_pdf(self):
         if not self.report:
