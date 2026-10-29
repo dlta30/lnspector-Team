@@ -17,7 +17,7 @@ APP_NAME = "3EN INSPECTOR TEAM"
 BYLINE = "by: ROITH"
 REPORT_DIR = Path.home() / "Documents" / "3EN_Inspector_Team"
 CONFIG_PATH = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "3EN_Inspector_Team" / "config.json"
-EXTENSIONS = {".exe", ".dll", ".sys", ".bat", ".cmd", ".ps1", ".vbs", ".scr", ".asi", ".lua"}
+EXTENSIONS = {".exe", ".dll", ".sys", ".bat", ".cmd", ".ps1", ".vbs", ".scr", ".asi", ".lua", ".lnk"}
 TERMS = ("cheat engine", "aimbot", "wallhack", "injector", "mapper", "mod menu", "trainer", "memory editor", "hwid spoofer")
 MAX_FILES = 100000
 MAX_SECONDS = 300
@@ -109,6 +109,10 @@ def inspect_recent_files(progress):
         val = os.environ.get(key)
         if val:
             roots.append(Path(val))
+    recent_root = Path(os.environ.get("APPDATA", str(Path.home()))) / "Microsoft" / "Windows" / "Recent"
+    if recent_root.exists():
+        roots.insert(0, recent_root)
+    recent_root_norm = str(recent_root).casefold()
     start = time.monotonic()
     examined = 0
     for root in roots:
@@ -123,7 +127,11 @@ def inspect_recent_files(progress):
                     if examined >= MAX_FILES or time.monotonic() - start > MAX_SECONDS:
                         return rows, examined
                     path = Path(base) / filename
-                    if path.suffix.casefold() not in EXTENSIONS:
+                    suffix = path.suffix.casefold()
+                    if suffix not in EXTENSIONS:
+                        continue
+                    # Include .lnk shortcut metadata only from Windows Recent.
+                    if suffix == ".lnk" and not str(path).casefold().startswith(recent_root_norm):
                         continue
                     try:
                         stat = path.stat()
@@ -297,6 +305,10 @@ class InspectorApp:
         tk.Checkbutton(control, text="أؤكد أن صاحب الجهاز وافق على تشغيل الفحص", variable=self.consent,
                        bg=PANEL, fg=TEXT, selectcolor=PANEL2, activebackground=PANEL, activeforeground=TEXT,
                        font=("Segoe UI", 9)).grid(row=1, column=1, columnspan=2, sticky="w", padx=14)
+        self.screenshot_consent = tk.BooleanVar(value=False)
+        tk.Checkbutton(control, text="أوافق على إرفاق صورة سطح المكتب عند إرسال Discord (قد تظهر معلومات خاصة)", variable=self.screenshot_consent,
+                       bg=PANEL, fg=MUTED, selectcolor=PANEL2, activebackground=PANEL, activeforeground=TEXT,
+                       font=("Segoe UI", 9)).grid(row=3, column=1, columnspan=3, sticky="w", padx=14, pady=(0, 10))
         self.defender = tk.BooleanVar(value=False)
         tk.Checkbutton(control, text="طلب فحص سريع من Microsoft Defender", variable=self.defender,
                        bg=PANEL, fg=MUTED, selectcolor=PANEL2, activebackground=PANEL, activeforeground=TEXT,
@@ -683,11 +695,16 @@ class InspectorApp:
         if not webhook:
             messagebox.showinfo("إعدادات مطلوبة", "أضف رابط Webhook أولًا.")
             return
-        if not messagebox.askyesno("تأكيد الإرسال", "سيتم إرسال ملخص وملف PDF إلى روم Discord المحدد. هل وافق صاحب الجهاز على مشاركة التقرير؟"):
+        include_screenshot = bool(self.screenshot_consent.get())
+        warning = "سيتم إرسال ملخص وملف PDF إلى روم Discord المحدد."
+        if include_screenshot:
+            warning += "\nستُرفق أيضًا صورة كاملة لسطح المكتب وقد تحتوي معلومات خاصة."
+        warning += "\nهل وافق صاحب الجهاز على مشاركة كل العناصر المحددة؟"
+        if not messagebox.askyesno("تأكيد الإرسال", warning):
             return
-        threading.Thread(target=self._send_discord_worker, args=(webhook, self.pdf_path, self.report), daemon=True).start()
+        threading.Thread(target=self._send_discord_worker, args=(webhook, self.pdf_path, self.report, include_screenshot), daemon=True).start()
 
-    def _send_discord_worker(self, webhook, report_path, report):
+    def _send_discord_worker(self, webhook, report_path, report, include_screenshot=False):
         try:
             boundary = "----3EN" + secrets.token_hex(12)
             summary = json.dumps({"content": (
@@ -701,8 +718,24 @@ class InspectorApp:
                 f"--{boundary}\r\nContent-Disposition: form-data; name=\"payload_json\"\r\nContent-Type: application/json\r\n\r\n".encode(),
                 summary, b"\r\n",
                 f"--{boundary}\r\nContent-Disposition: form-data; name=\"files[0]\"; filename=\"{report_path.name}\"\r\nContent-Type: application/pdf\r\n\r\n".encode(),
-                report_path.read_bytes(), b"\r\n", f"--{boundary}--\r\n".encode()
+                report_path.read_bytes(), b"\r\n"
             ]
+            if include_screenshot:
+                try:
+                    from io import BytesIO
+                    from PIL import ImageGrab
+                    image_buffer = BytesIO()
+                    ImageGrab.grab().convert("RGB").save(image_buffer, format="JPEG", quality=82, optimize=True)
+                    image_bytes = image_buffer.getvalue()
+                    if not image_bytes:
+                        raise RuntimeError("Empty screenshot capture")
+                    parts.extend([
+                        f"--{boundary}\r\nContent-Disposition: form-data; name=\"files[1]\"; filename=\"3EN-Desktop-Capture.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n".encode(),
+                        image_bytes, b"\r\n"
+                    ])
+                except Exception as exc:
+                    raise RuntimeError("تعذر التقاط/إرفاق صورة سطح المكتب: " + type(exc).__name__) from exc
+            parts.append(f"--{boundary}--\r\n".encode())
             req = urllib.request.Request(webhook, data=b"".join(parts), headers={"Content-Type": f"multipart/form-data; boundary={boundary}"}, method="POST")
             with urllib.request.urlopen(req, timeout=30) as response:
                 if response.status not in (200, 204):
