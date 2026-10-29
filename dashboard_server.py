@@ -851,6 +851,7 @@ def report_detail(report_id):
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
         <a class="btn" href="{{ url_for('reports') }}">← رجوع للتقارير</a>
         <a class="btn" href="{{ url_for('report_pdf', report_id=r['id']) }}" style="background:linear-gradient(120deg,#e72f53,#8f1737);color:#fff;border-color:#ff5b78;font-weight:800">⬇ تنزيل التقرير PDF</a>
+        {% if user and user['role']=='owner' %}<form method="post" action="{{ url_for('report_send_discord', report_id=r['id']) }}" style="display:inline" onsubmit="return confirm('إرسال ملخص هذا التقرير وملف PDF إلى روم Discord المرتبط بالويب هوك؟');"><button class="btn" type="submit" style="background:linear-gradient(120deg,#5865F2,#404EED);color:#fff;border-color:#7984ff;font-weight:800">◈ إرسال إلى روم Discord</button></form>{% endif %}
         <a class="btn" href="#process-list">▤ عرض بطاقات العمليات</a>
       </div>
       <div class="report-hero">
@@ -891,6 +892,34 @@ def report_detail(report_id):
       <script>(function(){const input=document.getElementById('file-search'),items=Array.from(document.querySelectorAll('[data-file-search]')),none=document.getElementById('file-none');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase();let n=0;items.forEach(el=>{const ok=el.dataset.fileSearch.toLocaleLowerCase().includes(q);el.style.display=ok?'block':'none';if(ok)n++;});if(none)none.style.display=n?'none':'block';});})();</script>
     </div>
     """,r=r,report_data=report_data,processes=processes,process_count=process_count,match_count=match_count,startup=startup,findings=findings,status_title=status_title,status_class=status_class,status_detail=status_detail)
+
+@app.post("/reports/<int:report_id>/send-discord")
+@login_required
+def report_send_discord(report_id):
+    actor = current_user()
+    if actor["role"] != "owner":
+        abort(403)
+    with db() as con:
+        r = con.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
+    if not r:
+        abort(404)
+    try:
+        envelope = json.loads(r["payload"])
+        if not isinstance(envelope, dict):
+            envelope = {"raw_result": envelope}
+    except Exception:
+        envelope = {"raw_result": str(r["payload"])}
+    report_data = envelope.get("report") if isinstance(envelope.get("report"), dict) else envelope
+    sent = notify_discord(
+        r["id"], r["session_id"], r["computer_label"], r["summary"], report_data
+    )
+    if sent:
+        log_action(actor["username"], "sent report #" + str(report_id) + " to Discord")
+        flash("تم إرسال التقرير إلى روم Discord المرتبط بالويب هوك.")
+    else:
+        flash("تعذر إرسال التقرير. تأكد من DISCORD_WEBHOOK_URL في Render ثم راجع Logs.")
+    return redirect(url_for("report_detail", report_id=report_id))
+
 
 @app.route("/reports/<int:report_id>/pdf")
 @login_required
