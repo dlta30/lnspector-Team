@@ -1140,10 +1140,17 @@ def health():
 @app.errorhandler(403)
 def forbidden(_): return page('<div class="card"><h2 class="danger">Access denied</h2><p>Your account does not have permission for this page.</p></div>'),403
 
+# Fail fast on Render if the configured persistent data disk is missing.
+# This prevents silently creating a new empty database on an ephemeral filesystem.
+if os.environ.get("RENDER") and str(DB_PATH).startswith("/var/data/") and not Path("/var/data").is_mount():
+    raise RuntimeError(
+        "Persistent disk is not mounted at /var/data. Refusing to start with an ephemeral database; "
+        "attach the Render persistent disk and set INSPECTOR_DB=/var/data/inspector_dashboard.sqlite3."
+    )
+
 init_db()
 print("Dashboard database path:", str(DB_PATH))
-if os.environ.get("RENDER") and not Path("/var/data").is_mount():
-    print("WARNING: /var/data is not detected as a mounted persistent disk. Accounts, sessions, and reports may be lost after redeploy. Mount a Render persistent disk at /var/data and set INSPECTOR_DB=/var/data/inspector_dashboard.sqlite3.")
+print("Persistent disk mounted:", Path("/var/data").is_mount() if os.environ.get("RENDER") else "local development")
 
 if __name__ == "__main__":
     if not OWNER_PASSWORD:
