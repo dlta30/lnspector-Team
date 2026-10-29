@@ -307,6 +307,8 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         'embeds': [embed],
         'allowed_mentions': {'parse': []}
     }
+    pdf_data = None
+    screenshot_data = None
     try:
         from io import BytesIO
         from xml.sax.saxutils import escape
@@ -366,21 +368,68 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         print('Discord PDF creation failed, sending embed only:', type(exc).__name__, str(exc)[:160])
         req = urllib.request.Request(webhook, data=json.dumps(message, ensure_ascii=False).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
     try:
-        with urllib.request.urlopen(req, timeout=20) as response:
+        with urllib.request.urlopen(req, timeout=25) as response:
             if 200 <= response.status < 300:
-                print('Discord report notification sent:', report_id, 'with_pdf=', 'files[0]' in body.decode('latin1', errors='ignore') if 'body' in locals() else False)
+                print('Discord report sent:', report_id, 'pdf=True', 'screenshot=' + str(bool(screenshot_data)))
                 return True
             print('Discord report upload returned HTTP', response.status)
     except Exception as exc:
-        # Discord may reject the PDF multipart upload (size or embed validation).
-        # Retry the same report embed as JSON so the notification is not lost.
-        print('Discord report upload failed:', type(exc).__name__, str(exc)[:240])
+        print('Discord combined attachment upload failed:', type(exc).__name__, str(exc)[:240])
 
+    # If Discord rejects a combined upload, retry the PDF and screenshot separately.
+    # This prevents a large screenshot from silently causing both attachments to disappear.
+    pdf_sent = False
+    screenshot_sent = not bool(screenshot_data)
+
+    def send_single_attachment(filename, content_type, data, include_screenshot=False):
+        boundary2 = '----3eNRetry' + secrets.token_hex(12)
+        retry_message = dict(message)
+        retry_message['embeds'] = [dict(item) for item in message.get('embeds', [])]
+        for item in retry_message['embeds']:
+            item.pop('image', None)
+        if include_screenshot and retry_message['embeds']:
+            retry_message['embeds'][0]['image'] = {'url': 'attachment://' + filename}
+        payload_part = (
+            ('--' + boundary2 + '\r\nContent-Disposition: form-data; name="payload_json"\r\nContent-Type: application/json\r\n\r\n').encode()
+            + json.dumps(retry_message, ensure_ascii=False).encode('utf-8') + b'\r\n'
+        )
+        file_part = (
+            ('--' + boundary2 + '\r\nContent-Disposition: form-data; name="files[0]"; filename="' + filename + '"\r\nContent-Type: ' + content_type + '\r\n\r\n').encode()
+            + data + b'\r\n'
+            + ('--' + boundary2 + '--\r\n').encode()
+        )
+        retry_req = urllib.request.Request(
+            webhook, data=payload_part + file_part,
+            headers={'Content-Type': 'multipart/form-data; boundary=' + boundary2, 'User-Agent': '3eN-Inceptor-Dashboard'},
+            method='POST'
+        )
+        with urllib.request.urlopen(retry_req, timeout=25) as response:
+            return 200 <= response.status < 300
+
+    if isinstance(pdf_data, bytes) and pdf_data:
+        try:
+            pdf_sent = send_single_attachment('3eN-Report-' + str(report_id) + '.pdf', 'application/pdf', pdf_data)
+            print('Discord PDF retry:', 'sent' if pdf_sent else 'failed', report_id)
+        except Exception as exc:
+            print('Discord PDF retry failed:', type(exc).__name__, str(exc)[:200])
+
+    if isinstance(screenshot_data, bytes) and screenshot_data:
+        try:
+            screenshot_sent = send_single_attachment('3eN-Desktop-Screenshot.jpg', 'image/jpeg', screenshot_data, include_screenshot=True)
+            print('Discord screenshot retry:', 'sent' if screenshot_sent else 'failed', report_id)
+        except Exception as exc:
+            print('Discord screenshot retry failed:', type(exc).__name__, str(exc)[:200])
+
+    if pdf_sent and screenshot_sent:
+        return True
+
+    # Last-resort text/embed notification; return False so the dashboard doesn't
+    # claim that the requested PDF/screenshot attachments were delivered.
     try:
         fallback_message = dict(message)
-        fallback_message["embeds"] = [dict(embed_item) for embed_item in message.get("embeds", [])]
-        for embed_item in fallback_message["embeds"]:
-            embed_item.pop("image", None)
+        fallback_message['embeds'] = [dict(embed_item) for embed_item in message.get('embeds', [])]
+        for embed_item in fallback_message['embeds']:
+            embed_item.pop('image', None)
         fallback_req = urllib.request.Request(
             webhook,
             data=json.dumps(fallback_message, ensure_ascii=False).encode('utf-8'),
@@ -389,9 +438,9 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         )
         with urllib.request.urlopen(fallback_req, timeout=15) as response:
             if 200 <= response.status < 300:
-                print('Discord report embed fallback sent:', report_id)
-                return True
-            print('Discord report embed fallback returned HTTP', response.status)
+                print('Discord embed fallback sent without all attachments:', report_id, 'pdf=' + str(pdf_sent), 'screenshot=' + str(screenshot_sent))
+            else:
+                print('Discord report embed fallback returned HTTP', response.status)
     except Exception as exc:
         print('Discord report embed fallback failed:', type(exc).__name__, str(exc)[:240])
     return False
