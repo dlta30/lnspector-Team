@@ -1,4 +1,4 @@
-name: Build 3EN Inspector Team EXE
+name: Build 3EN Inspect Team EXE
 
 on:
   workflow_dispatch:
@@ -25,10 +25,10 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --upgrade pyinstaller -r requirements.txt
       - name: Build executable
-        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name "3EN_Inspector_Team" inspector_team.py
+        run: python -m PyInstaller --noconfirm --clean --onefile --windowed --name "3EN_Inspect_Team" inspector_team.py
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: 3EN-Inspector-Team-Windows
-          path: dist/3EN_Inspector_Team.exe
+          path: dist/3EN_Inspect_Team.exe
           if-no-files-found: error
