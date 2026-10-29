@@ -2,7 +2,7 @@
 setlocal
 cd /d "%~dp0"
 echo ==========================================
-echo  3eN Inspector Team - Session EXE Builder
+echo  3eN Inspect Team - Session EXE Builder
 echo  by:ROITH
 echo ==========================================
 set /p SESSION_CODE=Paste the NEW one-time session code from the dashboard: 
