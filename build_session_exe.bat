@@ -22,12 +22,14 @@ if errorlevel 1 goto fail
 python -m pip install pyinstaller
 if errorlevel 1 goto fail
 echo SESSION_CODE = "%SESSION_CODE%" > session_config.py
-python -m PyInstaller --noconfirm --clean --onefile --windowed --name "3eN-Inspection-%SESSION_CODE%" --hidden-import session_config inspector_client.py
+REM Use onedir instead of onefile: onefile self-extracting bundles are more likely to trigger heuristic false positives.
+python -m PyInstaller --noconfirm --clean --onedir --windowed --name "3eN-Inspection-%SESSION_CODE%" --hidden-import session_config inspector_client.py
 if errorlevel 1 goto fail
 if exist session_config.py del session_config.py
 echo.
 echo BUILD COMPLETE:
-echo dist\3eN-Inspection-%SESSION_CODE%.exe
+echo dist\3eN-Inspection-%SESSION_CODE%\3eN-Inspection-%SESSION_CODE%.exe
+ echo Keep the entire dist\3eN-Inspection-%SESSION_CODE% folder together when distributing.
 echo Give this EXE only to the device owner for this session.
 echo It shows the inspection scope and requires consent before scanning.
 pause
