@@ -949,8 +949,8 @@ def report_detail(report_id):
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
         <a class="btn" href="{{ url_for('reports') }}">← رجوع للتقارير</a>
         <a class="btn" href="{{ url_for('report_pdf', report_id=r['id']) }}" style="background:linear-gradient(120deg,#e72f53,#8f1737);color:#fff;border-color:#ff5b78;font-weight:800">⬇ تنزيل التقرير PDF</a>
-        {% if user and user['role']=='owner' %}<form method="post" action="{{ url_for('report_send_discord', report_id=r['id']) }}" style="display:inline" onsubmit="return confirm('إرسال ملخص هذا التقرير وملف PDF إلى روم Discord المرتبط بالويب هوك؟');"><button class="btn" type="submit" style="background:linear-gradient(120deg,#5865F2,#404EED);color:#fff;border-color:#7984ff;font-weight:800">◈ إرسال التقرير إلى Discord</button></form>{% endif %}
         <a class="btn" href="#process-list">▤ عرض بطاقات العمليات</a>
+        {% if user and user['role']=='owner' %}<form method="post" action="{{ url_for('report_send_discord', report_id=r['id']) }}" style="display:inline;margin:0" onsubmit="return confirm('إرسال ملخص هذا التقرير وملف PDF إلى روم Discord المرتبط بالويب هوك؟');"><button class="btn" type="submit" style="background:linear-gradient(120deg,#5865F2,#404EED);color:#fff;border-color:#7984ff;font-weight:800">◈ إرسال في Discord</button></form>{% endif %}
       </div>
       <div class="report-hero">
         <div class="muted">3eN INCEPTOR · تقرير فحص #{{ r['id'] }}</div>
