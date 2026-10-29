@@ -162,7 +162,7 @@ def db():
 
 def init_db():
     if DATABASE_URL:
-        print("Inspector database: PostgreSQL (DATABASE_URL)")
+        print("Inspect database: PostgreSQL (DATABASE_URL)")
         schema = """
         CREATE TABLE IF NOT EXISTS users (
           id BIGSERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
@@ -202,7 +202,7 @@ def init_db():
         return
 
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Inspector database path: {DB_PATH} (SQLite; persistent storage requires a mounted persistent disk)")
+    print(f"Inspect database path: {DB_PATH} (SQLite; persistent storage requires a mounted persistent disk)")
     with db() as con:
         con.executescript(SCHEMA)
         user_columns = {row["name"] for row in con.execute("PRAGMA table_info(users)").fetchall()}
@@ -502,7 +502,7 @@ def login():
                 log_action(username, "login (single active session; previous session invalidated)")
                 return redirect(request.args.get("next") or url_for("home"))
         flash("Login failed. Check credentials and server environment configuration.")
-    return page("""<div class="login-shell"><section class="login-hero"><div><div class="eyebrow">SECURITY OPERATIONS PLATFORM</div><div class="hero-mark">3eN<span>.</span></div><h2>INCEPTOR</h2><p class="muted">جلسات الفحص, secure reports, and team access — in one place.</p></div><div class="status-pill"><i></i> PRIVATE TEAM ACCESS</div></section><section class="login-form"><div class="eyebrow">WELCOME BACK</div><h2>Sign in</h2><p class="muted">Use your team credentials to continue.</p><form method="post"><label>Username</label><input name="username" required autocomplete="username" placeholder="Enter username"><label>Password</label><input name="password" type="password" required autocomplete="current-password" placeholder="Enter password"><button class="btn">Sign in securely &rarr;</button></form><p class="muted" style="font-size:11px;margin-top:24px">Access is controlled by your assigned role.</p></section></div>""")
+    return page("""<div class="login-shell"><section class="login-hero"><div><div class="eyebrow">SECURITY OPERATIONS PLATFORM</div><div class="hero-mark">3eN<span>.</span></div><h2>INSPECT</h2><p class="muted">جلسات الفحص, secure reports, and team access — in one place.</p></div><div class="status-pill"><i></i> PRIVATE TEAM ACCESS</div></section><section class="login-form"><div class="eyebrow">WELCOME BACK</div><h2>Sign in</h2><p class="muted">Use your team credentials to continue.</p><form method="post"><label>Username</label><input name="username" required autocomplete="username" placeholder="Enter username"><label>Password</label><input name="password" type="password" required autocomplete="current-password" placeholder="Enter password"><button class="btn">Sign in securely &rarr;</button></form><p class="muted" style="font-size:11px;margin-top:24px">Access is controlled by your assigned role.</p></section></div>""")
 
 @app.route("/logout")
 def logout():
@@ -624,7 +624,7 @@ def home():
         recent_reports = con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,s.target_label FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id ORDER BY r.id DESC LIMIT 6").fetchall() if can_see_reports else []
         recent_sessions = con.execute("SELECT display_code,created_by,created_at,expires_at,status FROM inspection_sessions ORDER BY id DESC LIMIT 6").fetchall() if user["role"] in ("owner","deputy","team","inspector") else []
         staff_count = con.execute("SELECT COUNT(*) n FROM users").fetchone()["n"] if user["role"] == "owner" else None
-    return page("""<section class="card" style="background:radial-gradient(ellipse at 0% 50%,#40101e 0,transparent 58%),linear-gradient(120deg,#17121d,#0c0d14);border-color:#48202c"><div class="eyebrow">3EN SECURITY OPERATIONS</div><h2 style="font-size:25px;margin-top:10px">مرحباً بك في Inceptor</h2><p class="muted">إدارة جلسات الفحص ومراجعة النتائج والتقارير من لوحة واحدة.</p><a class="btn" href="{{ url_for('sessions_page') }}">＋ بدء جلسة فحص جديدة</a></section>
+    return page("""<section class="card" style="background:radial-gradient(ellipse at 0% 50%,#40101e 0,transparent 58%),linear-gradient(120deg,#17121d,#0c0d14);border-color:#48202c"><div class="eyebrow">3EN SECURITY OPERATIONS</div><h2 style="font-size:25px;margin-top:10px">مرحباً بك في Inspect</h2><p class="muted">إدارة جلسات الفحص ومراجعة النتائج والتقارير من لوحة واحدة.</p><a class="btn" href="{{ url_for('sessions_page') }}">＋ بدء جلسة فحص جديدة</a></section>
     <div class="grid">
       <div class="card"><div class="muted">إجمالي الجلسات</div><div class="metric">{{ total_sessions }}</div><div class="muted">كل الجلسات المسجلة</div></div>
       <div class="card"><div class="muted">انتظار النتائج</div><div class="metric">{{ pending_sessions }}</div><div class="muted">جلسات لم يصل تقريرها بعد</div></div>
