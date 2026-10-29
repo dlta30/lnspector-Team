@@ -225,17 +225,11 @@ def init_db():
                 con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
                             (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
         con.executescript("""
-        CREATE TRIGGER IF NOT EXISTS prevent_report_delete BEFORE DELETE ON reports BEGIN
-            SELECT RAISE(ABORT, 'Report retention is enabled; DELETE is disabled.');
-        END;
         CREATE TRIGGER IF NOT EXISTS prevent_session_delete BEFORE DELETE ON inspection_sessions BEGIN
             SELECT RAISE(ABORT, 'Session retention is enabled; DELETE is disabled.');
         END;
         CREATE TRIGGER IF NOT EXISTS prevent_audit_delete BEFORE DELETE ON audit BEGIN
             SELECT RAISE(ABORT, 'Audit retention is enabled; DELETE is disabled.');
-        END;
-        CREATE TRIGGER IF NOT EXISTS prevent_user_delete BEFORE DELETE ON users BEGIN
-            SELECT RAISE(ABORT, 'User retention is enabled; DELETE is disabled.');
         END;
         """)
 
@@ -916,7 +910,7 @@ def reports():
           <div class="report-actions">
             <a class="btn" href="{{ url_for('report_detail',report_id=r['id']) }}">عرض التقرير الكامل</a>
             <a class="btn" href="{{ url_for('report_pdf',report_id=r['id']) }}">⬇ تصدير PDF</a>
-            <span class="tag">محفوظ</span>
+            {% if is_owner %}<form method="post" action="{{ url_for('delete_report',report_id=r['id']) }}" style="display:inline;margin:0" onsubmit="return confirm('تأكيد حذف التقرير #' + {{ r['id'] }} + ' نهائيًا؟');"><button class="btn" type="submit" style="background:#6d1728;border-color:#b82e49;color:#fff">🗑 حذف التقرير</button></form>{% else %}<span class="tag">محفوظ</span>{% endif %}
           </div>
         </article>
       {% endfor %}
@@ -939,8 +933,16 @@ def reports():
 @app.post("/reports/<int:report_id>/delete")
 @login_required
 def delete_report(report_id):
-    # Permanent retention policy: reports cannot be deleted from the web app.
-    flash("حذف التقارير معطّل — التقارير محفوظة ولا يمكن حذفها من الموقع.")
+    actor = current_user()
+    if actor["role"] != "owner":
+        abort(403)
+    with db() as con:
+        row = con.execute("SELECT id,session_id FROM reports WHERE id=?", (report_id,)).fetchone()
+        if not row:
+            abort(404)
+        con.execute("DELETE FROM reports WHERE id=?", (report_id,))
+    log_action(actor["username"], "deleted report #" + str(report_id) + " from session " + str(row["session_id"]))
+    flash("تم حذف التقرير نهائيًا.")
     return redirect(url_for("reports"))
 
 @app.route("/reports/<int:report_id>")
@@ -1186,7 +1188,21 @@ def users_page():
                         log_action(actor["username"],"changed role for "+target["username"]+" to "+role)
                         flash("Role updated.")
         elif action=="delete":
-            flash("حذف حسابات الموظفين معطّل — الحسابات محفوظة.")
+            if actor["role"] != "owner":
+                abort(403)
+            uid = request.form.get("user_id", "").strip()
+            with db() as con:
+                target = con.execute("SELECT id,username,role FROM users WHERE id=?", (uid,)).fetchone()
+                if not target:
+                    flash("الحساب غير موجود.")
+                elif target["role"] == "owner":
+                    flash("لا يمكن حذف حساب المالك.")
+                elif int(target["id"]) == int(actor["id"]):
+                    flash("لا يمكنك حذف حسابك الحالي.")
+                else:
+                    con.execute("DELETE FROM users WHERE id=?", (uid,))
+                    log_action(actor["username"], "deleted staff account " + target["username"])
+                    flash("تم حذف حساب الموظف نهائيًا.")
 
         return redirect(url_for("users_page"))
     with db() as con: users=con.execute("SELECT * FROM users ORDER BY role,username").fetchall()
@@ -1252,7 +1268,10 @@ def users_page():
               <button class="btn">حفظ التغييرات</button>
             </form>
             {% if actor_role == 'owner' and u['username'] != actor_username %}
-            <div class="tag">الحساب محفوظ — الحذف معطّل</div>
+            <form method="post" style="margin-top:12px" onsubmit="return confirm('تأكيد حذف حساب ' + {{ u['username']|tojson }} + ' نهائيًا؟');">
+              <input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}">
+              <button class="btn" style="background:#6d1728;border-color:#b82e49;color:#fff">🗑 حذف الحساب</button>
+            </form>
             {% endif %}
             {% endif %}
           {% endif %}
