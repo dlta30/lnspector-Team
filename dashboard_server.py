@@ -35,7 +35,15 @@ PERSISTENT_DATA_DIR = Path('/var/data')
 DEFAULT_DB_PATH = (PERSISTENT_DATA_DIR / 'inspector_dashboard.sqlite3') if PERSISTENT_DATA_DIR.is_dir() else (APP_DIR / 'inspector_dashboard.sqlite3')
 DB_PATH = Path(os.environ.get('INSPECTOR_DB', str(DEFAULT_DB_PATH)))
 app = Flask(__name__)
+# Keep this value stable across deployments by setting INSPECTOR_SECRET_KEY in Render.
+# A random fallback is convenient locally but invalidates browser sessions after restart.
 app.secret_key = os.environ.get("INSPECTOR_SECRET_KEY") or secrets.token_hex(32)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 30,
+)
 API_KEY = os.environ.get("INSPECTOR_API_KEY", "")
 OWNER_USER = os.environ.get("INSPECTOR_OWNER_USER", "owner")
 OWNER_PASSWORD = os.environ.get("INSPECTOR_OWNER_PASSWORD", "")
@@ -347,6 +355,7 @@ def login():
                 with db() as con:
                     con.execute("UPDATE users SET login_token=? WHERE id=?", (login_token, user["id"]))
                 session.clear()
+                session.permanent = True
                 session["username"] = user["username"]
                 session["login_token"] = login_token
                 log_action(username, "login (single active session; previous session invalidated)")
