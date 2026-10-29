@@ -59,9 +59,9 @@ jobs:
           $name = "3eN-Inspector"
           if ($env:SESSION_CODE) { $name = "$name-$($env:SESSION_CODE.ToUpper())" }
           if (Test-Path "session_config.py") {
-            python -m PyInstaller --noconfirm --onefile --windowed --name $name --hidden-import session_config inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --hidden-import session_config inspector_client.py
           } else {
-            python -m PyInstaller --noconfirm --clean --onefile --windowed --name $name inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name inspector_client.py
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Generate SHA-256 checksum
