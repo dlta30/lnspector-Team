@@ -1,5 +1,5 @@
 """
-Optional central dashboard for 3EN Inspector Team.
+Optional central dashboard for 3EN Inspect Team.
 Run with: python dashboard_server.py
 Environment:
   INSPECTOR_OWNER_USER (default: owner)
@@ -255,7 +255,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
     def safe(value, limit=900):
         return str(value or 'غير متاح').replace('\x00', '')[:limit]
 
-    target_name, report_time, report_source = 'غير مسجل', now(), '3eN Inspector desktop client'
+    target_name, report_time, report_source = 'غير مسجل', now(), '3eN Inspect desktop client'
     try:
         with db() as con:
             row = con.execute("SELECT r.created_at,r.submitted_by,s.target_label FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id WHERE r.id=?", (report_id,)).fetchone()
@@ -308,7 +308,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         'footer': {'text': '3eN INSPECTOR TEAM • مؤشرات الأسماء تحتاج مراجعة يدوية ولا تثبت وحدها وجود هاك.'}
     }
     message = {
-        'username': '3eN Inspector Team',
+        'username': '3eN Inspect Team',
         'embeds': [embed],
         'allowed_mentions': {'parse': []}
     }
@@ -331,7 +331,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         screenshot_b64 = pdf_report.pop('desktop_screenshot_base64', None)
         screenshot_note = 'Desktop screenshot attached separately to this Discord message.' if screenshot_b64 else 'No desktop screenshot was included.'
         raw = json.dumps(pdf_report, ensure_ascii=False, indent=2, default=str)[:90000]
-        story = [Paragraph('3eN INCEPTOR — INSPECTION REPORT', styles['Title']),
+        story = [Paragraph('3eN INSPECT — INSPECTION REPORT', styles['Title']),
             Paragraph('Report #' + escape(str(report_id)), styles['Heading1']), Spacer(1, 4*mm),
             Paragraph('<b>Reviewer classification:</b> ' + escape(verdict_title), styles['DiscordMeta']),
             Paragraph('<b>Reviewer reason:</b> ' + escape(reason), styles['DiscordMeta']),
@@ -404,7 +404,7 @@ def trigger_session_build(code):
         return False, "اضبط GITHUB_ACTIONS_TOKEN وPUBLIC_DASHBOARD_URL في إعدادات الاستضافة."
     url = f"https://api.github.com/repos/{GITHUB_REPOSITORY}/actions/workflows/build-windows-client.yml/dispatches"
     body = json.dumps({"ref": os.environ.get("GITHUB_DEFAULT_BRANCH", "main"), "inputs": {"session_code": code, "dashboard_url": PUBLIC_DASHBOARD_URL}}).encode()
-    req = urllib.request.Request(url, data=body, headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+GITHUB_ACTIONS_TOKEN,"X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json","User-Agent":"3eN-Inceptor-Dashboard"}, method="POST")
+    req = urllib.request.Request(url, data=body, headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+GITHUB_ACTIONS_TOKEN,"X-GitHub-Api-Version":"2022-11-28","Content-Type":"application/json","User-Agent":"3eN-Inspect-Dashboard"}, method="POST")
     try:
         with urllib.request.urlopen(req, timeout=12) as response:
             return response.status in (201, 204), "تم إرسال طلب بناء ملف الفحص."
@@ -418,7 +418,7 @@ def trigger_session_build(code):
 def github_api_json(path):
     if not GITHUB_ACTIONS_TOKEN: return None
     url = "https://api.github.com/repos/" + GITHUB_REPOSITORY + path
-    req = urllib.request.Request(url, headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+GITHUB_ACTIONS_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"3eN-Inceptor-Dashboard"})
+    req = urllib.request.Request(url, headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+GITHUB_ACTIONS_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"3eN-Inspect-Dashboard"})
     with urllib.request.urlopen(req, timeout=12) as response: return json.loads(response.read().decode("utf-8"))
 
 def log_action(actor, action):
@@ -458,8 +458,8 @@ def permission_required(field):
 
 BASE = """
 <!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>3eN INCEPTOR</title>
-<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');:root{color-scheme:dark;--red:#ff304f;--muted:#9ca3b5}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 10% 0%,#30101d,transparent 38%),radial-gradient(ellipse at 100% 20%,#151d38,transparent 34%),#08090e;color:#f5f6fb;font:14px Inter,Segoe UI,Tahoma,Arial,sans-serif;direction:rtl;text-align:right}header{position:sticky;top:0;z-index:5;padding:18px 4vw;background:rgba(8,9,14,.9);backdrop-filter:blur(16px);border-bottom:1px solid #49202b;display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}h1{margin:0;color:#fff;font-size:20px;font-weight:900;letter-spacing:1.5px}h1:before{content:'◈';color:var(--red);margin-right:10px}small,.muted{color:var(--muted)}.wrap{max-width:1240px;margin:30px auto;padding:0 20px}nav{display:flex;gap:6px;flex-wrap:wrap}nav a,.btn{color:#fff;text-decoration:none;background:linear-gradient(135deg,#b71f3b,#6e1427);border:1px solid #ffffff19;border-radius:10px;padding:10px 14px;display:inline-block;margin:3px;cursor:pointer;font:600 12px Inter,Arial;transition:.15s}nav a:hover,.btn:hover{filter:brightness(1.2);transform:translateY(-1px)}.card{background:linear-gradient(145deg,#181a24f5,#0d0e15f5);border:1px solid #ffffff12;border-radius:18px;padding:22px;margin:14px 0;overflow:auto;box-shadow:0 12px 36px #0003}h2{margin:0 0 14px;font-size:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}.metric{font-size:32px;color:#ff4965;font-weight:900;margin:8px 0}input,select,textarea{background:#0b0c12;border:1px solid #343746;color:#fff;border-radius:10px;padding:12px;margin:6px 0;width:100%;outline:none}input:focus,select:focus,textarea:focus{border-color:#ff4965;box-shadow:0 0 0 3px #ff49651f}label{display:block;color:#c0c4d2;margin-top:10px}table{width:100%;border-collapse:collapse;min-width:620px}th,td{text-align:right;padding:13px;border-bottom:1px solid #ffffff12;vertical-align:top}th{color:#ff7084;font-size:11px;text-transform:uppercase;letter-spacing:.7px}.notice{padding:13px 16px;background:#9d163033;border:1px solid #ff49652e;border-radius:12px;margin:12px 0}.danger{color:#ff727c}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b0c12;padding:16px;border-radius:12px;border:1px solid #ffffff12}a{color:#ff8091}@media(max-width:650px){header{padding:16px}.wrap{padding:0 12px;margin:18px auto}.card{padding:16px}h1{font-size:16px}}</style><style>body{background:#07080d;background-image:radial-gradient(ellipse at 12% -10%,#35101d 0,transparent 42%),radial-gradient(ellipse at 95% 8%,#171326 0,transparent 35%);letter-spacing:.1px}header{padding:16px clamp(16px,4vw,56px);border-bottom:1px solid #ffffff12;background:rgba(7,8,13,.88)}h1{font-size:18px;letter-spacing:2px}h1:before{content:'◉';display:inline-grid;place-items:center;width:31px;height:31px;margin-right:11px;border-radius:50%;border:2px solid #ff3656;color:#ff3656;font-size:18px;box-shadow:0 0 18px #ff304f25}.wrap{max-width:1440px;margin:26px auto;padding:0 26px}nav a{background:#11131c;border:1px solid #ffffff12;color:#c9cbd5;border-radius:9px;padding:10px 13px}nav a:hover{background:#27121a;border-color:#612236;color:#fff}.card{background:linear-gradient(145deg,rgba(21,23,33,.96),rgba(12,13,19,.98));border:1px solid #ffffff10;border-radius:17px;padding:24px;box-shadow:0 16px 45px #0002}.metric{color:#ff536d;font-size:35px;letter-spacing:-1px}.grid{gap:16px}.grid>.card{position:relative;min-height:124px}.grid>.card:after{content:'';position:absolute;left:0;top:18px;bottom:18px;width:3px;border-radius:3px;background:#ff304f}h2{font-size:19px;letter-spacing:-.3px}label{font-size:12px;font-weight:600}input,select,textarea{background:#090a10;border-color:#292c38}input:focus,select:focus,textarea:focus{border-color:#a52b43;box-shadow:0 0 0 3px #ff496511}.btn{background:linear-gradient(135deg,#d42b49,#7b172d);border-radius:9px;padding:11px 15px;box-shadow:0 5px 18px #ff304f10}.btn:hover{box-shadow:0 7px 22px #ff304f20}table{border-collapse:separate;border-spacing:0;width:100%;min-width:620px}th{background:#14151e;color:#ff8192;font-size:10px}td{color:#d4d6e0;font-size:12px}tr:hover td{background:#ffffff04}.notice{background:#24111a;border-color:#542033;color:#f5dbe1}.danger{color:#ff7688}pre{color:#d8dbe6;line-height:1.65}.login-shell{max-width:1040px;margin:6vh auto;display:grid;grid-template-columns:1.1fr .9fr;overflow:hidden;border:1px solid #ffffff14;border-radius:24px;background:#0d0e15;box-shadow:0 25px 90px #0008}.login-hero{padding:42px;background:radial-gradient(ellipse at 5% 0%,#461423,transparent 65%),#10111a;display:flex;flex-direction:column;justify-content:space-between;min-height:420px}.login-form{padding:40px 36px}.eyebrow{color:#ff7187;font-size:11px;font-weight:800;letter-spacing:2px}.hero-mark{font-size:64px;font-weight:900;letter-spacing:-5px;color:#fff}.hero-mark span{color:#ff3656}.login-form h2{font-size:26px;margin:8px 0}.login-form .btn{width:100%;margin:18px 0 0;padding:13px}.status-pill{display:inline-flex;align-items:center;gap:8px;border:1px solid #ffffff14;background:#161822;padding:9px 12px;border-radius:99px;color:#b9bdcb;font-size:11px;width:max-content}.status-pill i{width:7px;height:7px;border-radius:50%;background:#ff526c;display:inline-block}@media(max-width:720px){.login-shell{grid-template-columns:1fr;margin:18px}.login-hero{min-height:220px;padding:26px}.login-form{padding:26px}.hero-mark{font-size:48px}.wrap{padding:0 14px;margin:20px auto}.card{padding:17px}}</style><header><div><h1>3eN INCEPTOR</h1><small>منصة الجلسات والتقارير</small></div>
+<title>3eN INSPECT</title>
+<style>@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800;900&display=swap');:root{color-scheme:dark;--red:#ff304f;--muted:#9ca3b5}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 10% 0%,#30101d,transparent 38%),radial-gradient(ellipse at 100% 20%,#151d38,transparent 34%),#08090e;color:#f5f6fb;font:14px Inter,Segoe UI,Tahoma,Arial,sans-serif;direction:rtl;text-align:right}header{position:sticky;top:0;z-index:5;padding:18px 4vw;background:rgba(8,9,14,.9);backdrop-filter:blur(16px);border-bottom:1px solid #49202b;display:flex;justify-content:space-between;gap:16px;align-items:center;flex-wrap:wrap}h1{margin:0;color:#fff;font-size:20px;font-weight:900;letter-spacing:1.5px}h1:before{content:'◈';color:var(--red);margin-right:10px}small,.muted{color:var(--muted)}.wrap{max-width:1240px;margin:30px auto;padding:0 20px}nav{display:flex;gap:6px;flex-wrap:wrap}nav a,.btn{color:#fff;text-decoration:none;background:linear-gradient(135deg,#b71f3b,#6e1427);border:1px solid #ffffff19;border-radius:10px;padding:10px 14px;display:inline-block;margin:3px;cursor:pointer;font:600 12px Inter,Arial;transition:.15s}nav a:hover,.btn:hover{filter:brightness(1.2);transform:translateY(-1px)}.card{background:linear-gradient(145deg,#181a24f5,#0d0e15f5);border:1px solid #ffffff12;border-radius:18px;padding:22px;margin:14px 0;overflow:auto;box-shadow:0 12px 36px #0003}h2{margin:0 0 14px;font-size:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px}.metric{font-size:32px;color:#ff4965;font-weight:900;margin:8px 0}input,select,textarea{background:#0b0c12;border:1px solid #343746;color:#fff;border-radius:10px;padding:12px;margin:6px 0;width:100%;outline:none}input:focus,select:focus,textarea:focus{border-color:#ff4965;box-shadow:0 0 0 3px #ff49651f}label{display:block;color:#c0c4d2;margin-top:10px}table{width:100%;border-collapse:collapse;min-width:620px}th,td{text-align:right;padding:13px;border-bottom:1px solid #ffffff12;vertical-align:top}th{color:#ff7084;font-size:11px;text-transform:uppercase;letter-spacing:.7px}.notice{padding:13px 16px;background:#9d163033;border:1px solid #ff49652e;border-radius:12px;margin:12px 0}.danger{color:#ff727c}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#0b0c12;padding:16px;border-radius:12px;border:1px solid #ffffff12}a{color:#ff8091}@media(max-width:650px){header{padding:16px}.wrap{padding:0 12px;margin:18px auto}.card{padding:16px}h1{font-size:16px}}</style><style>body{background:#07080d;background-image:radial-gradient(ellipse at 12% -10%,#35101d 0,transparent 42%),radial-gradient(ellipse at 95% 8%,#171326 0,transparent 35%);letter-spacing:.1px}header{padding:16px clamp(16px,4vw,56px);border-bottom:1px solid #ffffff12;background:rgba(7,8,13,.88)}h1{font-size:18px;letter-spacing:2px}h1:before{content:'◉';display:inline-grid;place-items:center;width:31px;height:31px;margin-right:11px;border-radius:50%;border:2px solid #ff3656;color:#ff3656;font-size:18px;box-shadow:0 0 18px #ff304f25}.wrap{max-width:1440px;margin:26px auto;padding:0 26px}nav a{background:#11131c;border:1px solid #ffffff12;color:#c9cbd5;border-radius:9px;padding:10px 13px}nav a:hover{background:#27121a;border-color:#612236;color:#fff}.card{background:linear-gradient(145deg,rgba(21,23,33,.96),rgba(12,13,19,.98));border:1px solid #ffffff10;border-radius:17px;padding:24px;box-shadow:0 16px 45px #0002}.metric{color:#ff536d;font-size:35px;letter-spacing:-1px}.grid{gap:16px}.grid>.card{position:relative;min-height:124px}.grid>.card:after{content:'';position:absolute;left:0;top:18px;bottom:18px;width:3px;border-radius:3px;background:#ff304f}h2{font-size:19px;letter-spacing:-.3px}label{font-size:12px;font-weight:600}input,select,textarea{background:#090a10;border-color:#292c38}input:focus,select:focus,textarea:focus{border-color:#a52b43;box-shadow:0 0 0 3px #ff496511}.btn{background:linear-gradient(135deg,#d42b49,#7b172d);border-radius:9px;padding:11px 15px;box-shadow:0 5px 18px #ff304f10}.btn:hover{box-shadow:0 7px 22px #ff304f20}table{border-collapse:separate;border-spacing:0;width:100%;min-width:620px}th{background:#14151e;color:#ff8192;font-size:10px}td{color:#d4d6e0;font-size:12px}tr:hover td{background:#ffffff04}.notice{background:#24111a;border-color:#542033;color:#f5dbe1}.danger{color:#ff7688}pre{color:#d8dbe6;line-height:1.65}.login-shell{max-width:1040px;margin:6vh auto;display:grid;grid-template-columns:1.1fr .9fr;overflow:hidden;border:1px solid #ffffff14;border-radius:24px;background:#0d0e15;box-shadow:0 25px 90px #0008}.login-hero{padding:42px;background:radial-gradient(ellipse at 5% 0%,#461423,transparent 65%),#10111a;display:flex;flex-direction:column;justify-content:space-between;min-height:420px}.login-form{padding:40px 36px}.eyebrow{color:#ff7187;font-size:11px;font-weight:800;letter-spacing:2px}.hero-mark{font-size:64px;font-weight:900;letter-spacing:-5px;color:#fff}.hero-mark span{color:#ff3656}.login-form h2{font-size:26px;margin:8px 0}.login-form .btn{width:100%;margin:18px 0 0;padding:13px}.status-pill{display:inline-flex;align-items:center;gap:8px;border:1px solid #ffffff14;background:#161822;padding:9px 12px;border-radius:99px;color:#b9bdcb;font-size:11px;width:max-content}.status-pill i{width:7px;height:7px;border-radius:50%;background:#ff526c;display:inline-block}@media(max-width:720px){.login-shell{grid-template-columns:1fr;margin:18px}.login-hero{min-height:220px;padding:26px}.login-form{padding:26px}.hero-mark{font-size:48px}.wrap{padding:0 14px;margin:20px auto}.card{padding:17px}}</style><header><div><h1>3eN INSPECT</h1><small>منصة الجلسات والتقارير</small></div>
 <nav>{% if user %}<a href="{{ url_for('home') }}">الرئيسية</a>{% if user['role']=='owner' or user['can_view'] %}<a href="{{ url_for('reports') }}">التقارير</a>{% endif %}{% if user['role'] in ('owner','deputy') %}<a href="{{ url_for('discord_test') }}">اختبار Discord</a>{% endif %}{% if user['role'] in ('owner','deputy','inspector') %}<a href="{{ url_for('sessions_page') }}">الجلسات</a>{% endif %}{% if user['role'] in ('owner','deputy') %}<a href="{{ url_for('users_page') }}">الموظفون والحسابات</a>{% endif %}{% if user['role']=='owner' %}<a href="{{ url_for('audit_page') }}">سجل الأحداث</a>{% endif %}<a href="{{ url_for('logout') }}">تسجيل الخروج</a>{% endif %}</nav></header>
 <div class="wrap">{% for msg in get_flashed_messages() %}<div class="notice">{{ msg }}</div>{% endfor %}{{ body|safe }}</div></html>
 """
@@ -534,9 +534,9 @@ def discord_test():
             result_detail = "أضف DISCORD_WEBHOOK_URL في Environment داخل Render. تأكد من نسخ رابط Webhook كاملًا وليس رابط الروم."
         else:
             test_message = {
-                "username": "3eN Inspector Team",
+                "username": "3eN Inspect Team",
                 "embeds": [{
-                    "title": "✅ اختبار اتصال 3eN INCEPTOR",
+                    "title": "✅ اختبار اتصال 3eN INSPECT",
                     "description": "نجح الاتصال بين Render وDiscord. هذا اختبار فقط، ولم يتم إرسال بيانات فحص.",
                     "color": 6475877,
                     "fields": [
@@ -595,7 +595,7 @@ def discord_test():
         result_detail = "لا يظهر في إعدادات Render رابط صالح يبدأ بـ https://discord.com/api/webhooks/ أو https://discordapp.com/api/webhooks/."
     return page("""
     <section class="card" style="max-width:850px;margin:25px auto">
-      <div class="eyebrow">3eN INCEPTOR · CONNECTION CHECK</div>
+      <div class="eyebrow">3eN INSPECT · CONNECTION CHECK</div>
       <h2 style="font-size:24px;margin-top:10px">اختبار Webhook ديسكورد</h2>
       <p class="muted">يرسل رسالة اختبار فقط إلى الروم المرتبط بالرابط المخزن في Render، بدون إرسال أي بيانات فحص أو إظهار الرابط السري.</p>
       <div class="card" style="background:#0b0d14">
@@ -655,9 +655,9 @@ def sessions_page():
         log_action(user["username"], "created inspection session for " + target_label)
         build_started, build_message = trigger_session_build(code)
         log_action(user["username"], "requested session-specific client build for " + code)
-        return page("""<div class="card"><div class="eyebrow">3eN INCEPTOR · SESSION READY</div><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p>كود الجلسة</p><div class="metric" style="font-size:42px;letter-spacing:5px">{{ code }}</div><p class="muted">صالح لمدة ساعتين ويقبل تقريراً واحداً. شارك الملف مع صاحب الجهاز فقط وبعد موافقته.</p><div class="notice"><b>ملف الفحص الخاص بهذه الجلسة</b><p id="build-state">{{ build_message }}</p><a id="download-build" class="btn" style="display:none" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل ملف الفحص (EXE)</a><p class="muted">بعد التحميل، شغّل ملف 3eN-Inspector-{{ code }}.exe مباشرة بعد موافقة صاحب الجهاز.</p></div><button class="btn" type="button" onclick="navigator.clipboard.writeText('{{ code }}')">نسخ كود الجلسة</button> <a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div><script>
+        return page("""<div class="card"><div class="eyebrow">3eN INSPECT · SESSION READY</div><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p>كود الجلسة</p><div class="metric" style="font-size:42px;letter-spacing:5px">{{ code }}</div><p class="muted">صالح لمدة ساعتين ويقبل تقريراً واحداً. شارك الملف مع صاحب الجهاز فقط وبعد موافقته.</p><div class="notice"><b>ملف الفحص الخاص بهذه الجلسة</b><p id="build-state">{{ build_message }}</p><a id="download-build" class="btn" style="display:none" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل ملف الفحص (EXE)</a><p class="muted">بعد التحميل، شغّل ملف 3eN-Inspect-{{ code }}.exe مباشرة بعد موافقة صاحب الجهاز.</p></div><button class="btn" type="button" onclick="navigator.clipboard.writeText('{{ code }}')">نسخ كود الجلسة</button> <a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div><script>
 const state=document.getElementById('build-state'), download=document.getElementById('download-build');
-async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}');const d=await r.json();state.textContent=d.message||({'ready':'اكتمل تجهيز الملف.','building':'يتم تجهيز الملف المخصص…','checking':'جارٍ التحقق من البناء…','failed':'فشل بناء الملف. راجع إعدادات GitHub Actions.','needs_setup':'يلزم ضبط GITHUB_ACTIONS_TOKEN وPUBLIC_DASHBOARD_URL في Render.'}[d.state]||'جارٍ تجهيز الملف…');if(d.state==='ready'){download.style.display='inline-block';state.textContent='اكتمل تجهيز الملف المخصص لهذه الجلسة.';return;}if(d.state==='failed'||d.state==='needs_setup'||d.state==='missing'||d.state==='api_error')return;}catch(e){state.textContent='تعذر الاتصال بحالة البناء. أعد تحميل الصفحة للمحاولة مجدداً.';return;}setTimeout(checkBuild,10000)}checkBuild();
+async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{method:'GET',credentials:'same-origin',cache:'no-store',headers:{'Accept':'application/json'}});const ct=r.headers.get('content-type')||'';if(!ct.includes('application/json'))throw new Error('استجابة غير متوقعة من لوحة التحكم (HTTP '+r.status+').');const d=await r.json();if(!r.ok)throw new Error(d.message||'تعذر قراءة حالة البناء (HTTP '+r.status+').');state.textContent=d.message||({'ready':'اكتمل تجهيز الملف.','building':'يتم تجهيز الملف المخصص…','checking':'جارٍ التحقق من البناء…','failed':'فشل بناء الملف. راجع إعدادات GitHub Actions.','needs_setup':'يلزم ضبط GITHUB_ACTIONS_TOKEN وPUBLIC_DASHBOARD_URL في Render.'}[d.state]||'جارٍ تجهيز الملف…');if(d.state==='ready'){download.style.display='inline-block';state.textContent='اكتمل تجهيز الملف المخصص لهذه الجلسة.';return;}if(['failed','needs_setup','missing','api_error'].includes(d.state))return;}catch(e){state.textContent='تعذر التحقق من حالة البناء: '+(e.message||'خطأ اتصال')+' — أعد المحاولة بعد قليل.';return;}setTimeout(checkBuild,10000)}checkBuild();
 </script>""", code=code, target_label=target_label, build_message=("بدأنا طلب بناء الملف المخصص." if build_started else build_message))
     with db() as con:
         rows = con.execute("SELECT display_code,target_label,created_by,created_at,expires_at,used_at,downloaded_at,status FROM inspection_sessions ORDER BY id DESC LIMIT 100").fetchall()
@@ -678,7 +678,7 @@ def session_build_status(code):
         for run in runs.get("workflow_runs",[]):
             if not run.get("created_at") or datetime.fromisoformat(run["created_at"].replace("Z","+00:00")) < created: continue
             arts = github_api_json("/actions/runs/" + str(run["id"]) + "/artifacts") or {}
-            expected = "3eN-Inspector-" + code.upper()
+            expected = "3eN-Inspect-" + code.upper()
             artifact = next((a for a in arts.get("artifacts",[]) if a.get("name")==expected and not a.get("expired")),None)
             if artifact: return {"state":"ready","download_url":url_for("download_session_build",code=code.upper())}
             if run.get("status") != "completed": return {"state":"building","message":"يتم تجهيز الملف…"}
@@ -720,13 +720,13 @@ def download_session_build(code):
                 continue
             arts = github_api_json("/actions/runs/" + str(run["id"]) + "/artifacts") or {}
             candidate = next((a for a in arts.get("artifacts", [])
-                              if a.get("name") == "3eN-Inspector-" + code and not a.get("expired")), None)
+                              if a.get("name") == "3eN-Inspect-" + code and not a.get("expired")), None)
             if candidate:
                 artifact = candidate
                 break
         if not artifact:
             abort(503, "لم يتم العثور على ملف EXE جاهز لهذه الجلسة. انتظر اكتمال البناء ثم أعد المحاولة.")
-        req = urllib.request.Request(artifact["archive_download_url"], headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+GITHUB_ACTIONS_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"3eN-Inceptor-Dashboard"})
+        req = urllib.request.Request(artifact["archive_download_url"], headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+GITHUB_ACTIONS_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"3eN-Inspect-Dashboard"})
         class _NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl):
                 return None
@@ -740,7 +740,7 @@ def download_session_build(code):
             signed_url = exc.headers.get("Location")
             if not signed_url:
                 raise RuntimeError("GitHub did not provide a download redirect")
-            with urllib.request.urlopen(urllib.request.Request(signed_url, headers={"User-Agent":"3eN-Inceptor-Dashboard"}), timeout=90) as response:
+            with urllib.request.urlopen(urllib.request.Request(signed_url, headers={"User-Agent":"3eN-Inspect-Dashboard"}), timeout=90) as response:
                 data = response.read()
         if not data or not data.startswith(b"PK"):
             raise RuntimeError("Downloaded GitHub artifact was empty or not a ZIP archive")
@@ -750,7 +750,7 @@ def download_session_build(code):
         with zipfile.ZipFile(BytesIO(data)) as archive:
             exe_names = [name for name in archive.namelist()
                          if name.lower().endswith(".exe") and not name.startswith("__MACOSX/")]
-            expected_name = "3eN-Inspector-" + code + ".exe"
+            expected_name = "3eN-Inspect-" + code + ".exe"
             exe_name = next((name for name in exe_names if name.rsplit("/", 1)[-1].lower() == expected_name.lower()), None)
             if not exe_name:
                 raise RuntimeError("The matching session EXE was not found in the workflow artifact")
@@ -896,7 +896,7 @@ def reports():
     </style>
     <div class="reports-wrap">
       <div class="reports-head">
-        <div class="reports-kicker">3eN INCEPTOR · SECURITY CENTER</div>
+        <div class="reports-kicker">3eN INSPECT · SECURITY CENTER</div>
         <h2>مركز التقارير</h2>
         <p>سجل منظم لنتائج الفحص، مع بيانات الجهاز والجلسة وحالة المؤشرات وتصدير PDF لكل تقرير.</p>
       </div>
@@ -1047,7 +1047,7 @@ def report_detail(report_id):
         {% if actor_role in ('owner','deputy','inspector') %}<form method="post" action="{{ url_for('report_send_discord', report_id=r['id']) }}" style="display:inline;margin:0" onsubmit="return chooseDiscordVerdict(this);"><input type="hidden" name="verdict" value=""><input type="hidden" name="reason" value=""><button class="btn" type="submit" style="background:linear-gradient(120deg,#5865F2,#404EED);color:#fff;border-color:#7984ff;font-weight:800">◈ إرسال في Discord</button></form>{% endif %}
       </div>
       <div class="report-hero">
-        <div class="muted">3eN INCEPTOR · تقرير فحص #{{ r['id'] }}</div>
+        <div class="muted">3eN INSPECT · تقرير فحص #{{ r['id'] }}</div>
         <div class="muted" style="margin-top:5px;font-size:12px;letter-spacing:1px">by:ROITH</div>
         <h2 style="margin-top:10px">نتيجة فحص الجهاز</h2>
         <span class="report-status {{ status_class }}">{{ status_title }}</span>
@@ -1142,7 +1142,7 @@ def report_pdf(report_id):
     from reportlab.lib.units import mm
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Preformatted
     output = BytesIO()
-    doc = SimpleDocTemplate(output, pagesize=A4, rightMargin=18*mm, leftMargin=18*mm, topMargin=18*mm, bottomMargin=18*mm, title="3eN Inspector التقرير رقم" + str(report_id), author="3eN Inspector Team")
+    doc = SimpleDocTemplate(output, pagesize=A4, rightMargin=18*mm, leftMargin=18*mm, topMargin=18*mm, bottomMargin=18*mm, title="3eN Inspect التقرير رقم" + str(report_id), author="3eN Inspect Team")
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name="SmallMeta", parent=styles["BodyText"], fontSize=9, leading=13, textColor=colors.HexColor("#444444"), spaceAfter=5))
     styles.add(ParagraphStyle(name="Payload", parent=styles["BodyText"], fontName="Courier", fontSize=7, leading=9, wordWrap="CJK"))
@@ -1247,8 +1247,8 @@ def users_page():
             <label>كلمة المرور</label><input name="password" type="password" minlength="3" autocomplete="new-password" placeholder="3 خانات أو أكثر" required>
             <label>دور الموظف</label>
             <select name="role">
-              {% if actor_role == 'owner' %}<option value="deputy">نائب الإدارة</option>{% endif %}
-              <option value="inspector">موظف فحص</option>
+              {% if actor_role == 'owner' %}<option value="deputy">Assistant Inspect</option>{% endif %}
+              <option value="inspector">Inspect Team</option>
               {% if actor_role == 'owner' %}<option value="viewer">مشاهدة فقط</option>{% endif %}
             </select>
             <label style="display:flex;gap:9px;align-items:center"><input style="width:auto;margin:0" type="checkbox" name="can_view" checked> السماح بمشاهدة التقارير</label>
@@ -1258,8 +1258,8 @@ def users_page():
         </div>
         <div style="background:#0b0d14;border:1px solid #303443;border-radius:14px;padding:20px">
           <h3 style="margin:0 0 12px">مستويات الصلاحيات</h3>
-          <div style="padding:12px;border:1px solid #303443;border-radius:10px;margin-bottom:9px"><b style="color:#ff8093">نائب الإدارة</b><p class="muted" style="margin:5px 0 0">إدارة الجلسات وإنشاء حسابات موظفي الفحص.</p></div>
-          <div style="padding:12px;border:1px solid #303443;border-radius:10px;margin-bottom:9px"><b style="color:#ffb454">موظف فحص</b><p class="muted" style="margin:5px 0 0">إنشاء جلسات الفحص ومتابعة المهام المسموحة.</p></div>
+          <div style="padding:12px;border:1px solid #303443;border-radius:10px;margin-bottom:9px"><b style="color:#ff8093">Assistant Inspect</b><p class="muted" style="margin:5px 0 0">إدارة الجلسات وإنشاء حسابات موظفي الفحص.</p></div>
+          <div style="padding:12px;border:1px solid #303443;border-radius:10px;margin-bottom:9px"><b style="color:#ffb454">Inspect Team</b><p class="muted" style="margin:5px 0 0">إنشاء جلسات الفحص ومتابعة المهام المسموحة.</p></div>
           <div style="padding:12px;border:1px solid #303443;border-radius:10px"><b style="color:#62d6a7">مشاهدة فقط</b><p class="muted" style="margin:5px 0 0">وصول محدود حسب الصلاحيات الممنوحة للحساب.</p></div>
         </div>
       </div>
@@ -1275,7 +1275,7 @@ def users_page():
         <article class="staff-item" data-staff-search="{{ (u['username'] ~ ' ' ~ u['role'])|e }}" style="border:1px solid #303443;border-radius:13px;background:#0b0d14;padding:17px">
           <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
             <div><b style="font-size:16px">{{ u['username'] }}</b><div class="muted" style="margin-top:5px">تم إنشاء الحساب: {{ u['created_at'][:10] }}<br><span class="muted">أنشأه: {{ u['created_by'] or 'النظام' }}</span></div></div>
-            <span class="badge">{% if u['role']=='owner' %}مالك النظام{% elif u['role']=='deputy' %}نائب الإدارة{% elif u['role']=='team' %}موظف فحص{% elif u['role']=='inspector' %}موظف فحص{% elif u['role']=='viewer' %}مشاهدة فقط{% else %}{{ u['role'] }}{% endif %}</span>
+            <span class="badge">{% if u['role']=='owner' %}Inspect Manager{% elif u['role']=='deputy' %}Assistant Inspect{% elif u['role']=='team' %}Inspect Team{% elif u['role']=='inspector' %}Inspect Team{% elif u['role']=='viewer' %}مشاهدة فقط{% else %}{{ u['role'] }}{% endif %}</span>
           </div>
           {% if u['role']=='owner' %}
             <p class="muted">صلاحيات المالك محمية ولا يمكن تعديلها من هنا.</p>
@@ -1284,8 +1284,8 @@ def users_page():
             <form method="post" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end">
               <input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <div><label>دور الموظف</label><select name="role">
-                {% if actor_role == 'owner' %}<option value="deputy" {% if u['role']=='deputy' %}selected{% endif %}>نائب الإدارة</option>{% endif %}
-                <option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>موظف فحص</option>
+                {% if actor_role == 'owner' %}<option value="deputy" {% if u['role']=='deputy' %}selected{% endif %}>Assistant Inspect</option>{% endif %}
+                <option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>Inspect Team</option>
                 {% if actor_role == 'owner' %}<option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>مشاهدة فقط</option>{% endif %}
               </select></div>
               <div style="display:flex;flex-direction:column;gap:10px"><label style="display:flex;gap:8px;align-items:center"><input style="width:auto;margin:0" type="checkbox" name="can_view" {% if u['can_view'] %}checked{% endif %}> مشاهدة التقارير</label><label style="display:flex;gap:8px;align-items:center"><input style="width:auto;margin:0" type="checkbox" name="can_ingest" {% if u['can_ingest'] %}checked{% endif %}> استقبال التقارير</label></div>
@@ -1341,7 +1341,7 @@ def ingest_report():
 
 @app.get("/health")
 def health():
-    return {"ok":True,"service":"3EN Inspector Team dashboard"}
+    return {"ok":True,"service":"3EN Inspect Team dashboard"}
 
 @app.errorhandler(403)
 def forbidden(_): return page('<div class="card"><h2 class="danger">Access denied</h2><p>Your account does not have permission for this page.</p></div>'),403
