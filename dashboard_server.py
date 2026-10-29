@@ -978,14 +978,14 @@ def users_page():
             username=request.form.get("username","").strip()
             password=request.form.get("password","")
             role=request.form.get("role","viewer")
-            allowed_roles = ("inspector", "viewer", "deputy") if actor["role"] == "owner" else ("inspector",)
+            allowed_roles = ("deputy", "team", "inspector", "viewer") if actor["role"] == "owner" else ("team", "inspector")
             if len(username)<3 or len(password)<3 or role not in allowed_roles:
                 flash("اسم المستخدم 3 خانات على الأقل، وكلمة المرور 3 خانات على الأقل، والرتبة حسب صلاحيتك.")
             else:
                 try:
                     with db() as con:
                         con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
-                                    (username,generate_password_hash(password),role,1 if request.form.get("can_view") else 0,1 if request.form.get("can_ingest") and role=="inspector" else 0,now()))
+                                    (username,generate_password_hash(password),role,1 if request.form.get("can_view") else 0,1 if request.form.get("can_ingest") and role in ("team","inspector") else 0,now()))
                     log_action(actor["username"],"created staff account "+username)
                     flash("Staff account created.")
                 except sqlite3.IntegrityError: flash("That username already exists.")
@@ -1003,14 +1003,14 @@ def users_page():
             if actor["role"] != "owner": abort(403)
             uid=request.form.get("user_id","")
             role=request.form.get("role","viewer")
-            if role not in ("deputy","inspector","viewer"):
+            if role not in ("deputy","team","inspector","viewer"):
                 flash("Invalid role.")
             else:
                 with db() as con:
                     target=con.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
                     if target and target["role"]!="owner":
                         con.execute("UPDATE users SET role=?,can_view=?,can_ingest=? WHERE id=?",
-                                    (role, 1 if request.form.get("can_view") else 0, 1 if request.form.get("can_ingest") and role=="inspector" else 0, uid))
+                                    (role, 1 if request.form.get("can_view") else 0, 1 if request.form.get("can_ingest") and role in ("team","inspector") else 0, uid))
                         log_action(actor["username"],"changed role for "+target["username"]+" to "+role)
                         flash("Role updated.")
         elif action=="delete":
@@ -1034,6 +1034,7 @@ def users_page():
             <label>دور الموظف</label>
             <select name="role">
               {% if actor_role == 'owner' %}<option value="deputy">نائب الإدارة</option>{% endif %}
+              <option value="team">موظف فريق</option>
               <option value="inspector">موظف فحص</option>
               {% if actor_role == 'owner' %}<option value="viewer">مشاهدة فقط</option>{% endif %}
             </select>
@@ -1061,7 +1062,7 @@ def users_page():
         <article class="staff-item" data-staff-search="{{ (u['username'] ~ ' ' ~ u['role'])|e }}" style="border:1px solid #303443;border-radius:13px;background:#0b0d14;padding:17px">
           <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
             <div><b style="font-size:16px">{{ u['username'] }}</b><div class="muted" style="margin-top:5px">تم إنشاء الحساب: {{ u['created_at'][:10] }}</div></div>
-            <span class="badge">{% if u['role']=='owner' %}مالك النظام{% elif u['role']=='deputy' %}نائب الإدارة{% elif u['role']=='inspector' %}موظف فحص{% elif u['role']=='viewer' %}مشاهدة فقط{% else %}{{ u['role'] }}{% endif %}</span>
+            <span class="badge">{% if u['role']=='owner' %}مالك النظام{% elif u['role']=='deputy' %}نائب الإدارة{% elif u['role']=='team' %}موظف فريق{% elif u['role']=='inspector' %}موظف فحص{% elif u['role']=='viewer' %}مشاهدة فقط{% else %}{{ u['role'] }}{% endif %}</span>
           </div>
           {% if u['role']=='owner' %}
             <p class="muted">صلاحيات المالك محمية ولا يمكن تعديلها من هنا.</p>
@@ -1071,6 +1072,7 @@ def users_page():
               <input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <div><label>دور الموظف</label><select name="role">
                 {% if actor_role == 'owner' %}<option value="deputy" {% if u['role']=='deputy' %}selected{% endif %}>نائب الإدارة</option>{% endif %}
+                <option value="team" {% if u['role']=='team' %}selected{% endif %}>موظف فريق</option>
                 <option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>موظف فحص</option>
                 {% if actor_role == 'owner' %}<option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>مشاهدة فقط</option>{% endif %}
               </select></div>
