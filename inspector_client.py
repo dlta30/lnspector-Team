@@ -209,7 +209,7 @@ class InspectorApp(tk.Tk):
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أملك هذا الجهاز أو لدي إذن بفحصه، وأوافق على إرسال تقرير الفحص إلى المسؤول.",
+            text="أوافق على فحص أسماء العمليات ومسارات الملفات التنفيذية وبصمات SHA-256 ومداخل بدء التشغيل فقط. لن يُرسل التقرير إلا بعد موافقة منفصلة.",
             variable=self.consent, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
@@ -250,7 +250,7 @@ class InspectorApp(tk.Tk):
         if not self.consent.get():
             messagebox.showwarning(APP, "Please confirm consent before starting.")
             return
-        if not messagebox.askyesno(APP, "Start a visible scan of running process metadata on this device?"):
+        if not messagebox.askyesno(APP, "بدء الفحص الظاهر؟ سيجمع أسماء العمليات ومسارات ملفاتها التنفيذية وبصمات SHA-256 ومداخل بدء تشغيل Windows فقط. لن تُرسل النتائج قبل موافقة منفصلة منك.\n\nStart the visible scan?"):
             return
         # Session-specific builds contain the session code and dashboard URL.
         # Never prompt the scanned person to enter either value.
