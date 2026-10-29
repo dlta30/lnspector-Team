@@ -25,6 +25,20 @@ Required deployment environment variables:
 
 Install dependencies with `python -m pip install -r requirements.txt`. Run locally with `python dashboard_server.py`. In production, use HTTPS and a production WSGI server; configure the hosting provider's start command and environment variables. Do not expose Flask's development server directly to the public internet.
 
+## Keep accounts, sessions, reports, and audit history across deploys
+
+SQLite data survives application restarts and deploys **only when the database file is stored on persistent storage**. Render's default service filesystem is ephemeral.
+
+For the Render service `3en-fight`:
+1. Open the service in the Render Dashboard.
+2. Add a **Persistent Disk** and set its mount path to `/var/data` (choose a size appropriate for your reports).
+3. In **Environment**, set `INSPECTOR_DB=/var/data/inspector_dashboard.sqlite3`.
+4. Save changes and wait for the service to redeploy.
+5. Open **Logs** and verify the startup line says `Inspector database path: /var/data/inspector_dashboard.sqlite3`.
+6. Create a test report, redeploy once, then sign in and verify that the same report and staff accounts remain.
+
+The app already blocks deletion of reports, sessions, audit events, and staff accounts through its retention triggers. This does not replace backups: periodically back up the SQLite database from the persistent disk. Attaching a new empty disk does **not** automatically recover records that were stored on the old ephemeral filesystem. Export/back up existing records before switching storage if you need to preserve them.
+
 ## Build a Windows EXE
 Open [Build Windows Inspector EXE](https://github.com/dlta30/lnspector-Team/actions/workflows/build-windows-client.yml).
 
