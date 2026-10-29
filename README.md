@@ -1,4 +1,4 @@
-# 3eN Inspector Team
+# 3eN Inspect Team
 **by: ROITH**
 
 A consent-based Windows inspection client with a Flask reporting dashboard.
