@@ -629,7 +629,7 @@ def sessions_page():
         log_action(user["username"], "requested session-specific client build for " + code)
         return page("""<div class="card"><div class="eyebrow">3eN INCEPTOR · SESSION READY</div><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p>كود الجلسة</p><div class="metric" style="font-size:42px;letter-spacing:5px">{{ code }}</div><p class="muted">صالح لمدة ساعتين ويقبل تقريراً واحداً. شارك الملف مع صاحب الجهاز فقط وبعد موافقته.</p><div class="notice"><b>ملف الفحص الخاص بهذه الجلسة</b><p id="build-state">{{ build_message }}</p><a id="download-build" class="btn" style="display:none" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل ملف الفحص المخصص</a></div><button class="btn" type="button" onclick="navigator.clipboard.writeText('{{ code }}')">نسخ كود الجلسة</button> <a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div><script>
 const state=document.getElementById('build-state'), download=document.getElementById('download-build');
-async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}');const d=await r.json();state.textContent=d.message||({'ready':'اكتمل تجهيز الملف.','building':'يتم تجهيز الملف المخصص…','checking':'جارٍ التحقق من البناء…','failed':'فشل بناء الملف. راجع إعدادات GitHub Actions.','needs_setup':'يلزم ضبط GITHUB_ACTIONS_TOKEN وPUBLIC_DASHBOARD_URL في Render.'}[d.state]||'جارٍ تجهيز الملف…');if(d.state==='ready'){download.style.display='inline-block';state.textContent='اكتمل تجهيز الملف المخصص لهذه الجلسة.';return;}if(d.state==='failed'||d.state==='needs_setup'||d.state==='missing')return;}catch(e){state.textContent='جارٍ التحقق من حالة البناء…';}setTimeout(checkBuild,5000)}checkBuild();
+async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}');const d=await r.json();state.textContent=d.message||({'ready':'اكتمل تجهيز الملف.','building':'يتم تجهيز الملف المخصص…','checking':'جارٍ التحقق من البناء…','failed':'فشل بناء الملف. راجع إعدادات GitHub Actions.','needs_setup':'يلزم ضبط GITHUB_ACTIONS_TOKEN وPUBLIC_DASHBOARD_URL في Render.'}[d.state]||'جارٍ تجهيز الملف…');if(d.state==='ready'){download.style.display='inline-block';state.textContent='اكتمل تجهيز الملف المخصص لهذه الجلسة.';return;}if(d.state==='failed'||d.state==='needs_setup'||d.state==='missing'||d.state==='api_error')return;}catch(e){state.textContent='تعذر الاتصال بحالة البناء. أعد تحميل الصفحة للمحاولة مجدداً.';return;}setTimeout(checkBuild,10000)}checkBuild();
 </script>""", code=code, target_label=target_label, build_message=("بدأنا طلب بناء الملف المخصص." if build_started else build_message))
     with db() as con:
         rows = con.execute("SELECT display_code,target_label,created_by,created_at,expires_at,used_at,downloaded_at,status FROM inspection_sessions ORDER BY id DESC LIMIT 100").fetchall()
@@ -656,9 +656,18 @@ def session_build_status(code):
             if run.get("status") != "completed": return {"state":"building","message":"يتم تجهيز الملف…"}
             if run.get("conclusion") != "success": return {"state":"failed","message":"فشل البناء؛ راجع إعدادات GitHub Actions."}
         return {"state":"building","message":"بانتظار بدء البناء…"}
+    except urllib.error.HTTPError as exc:
+        print("Build status lookup failed: GitHub HTTP", exc.code)
+        if exc.code in (401, 403):
+            return {"state":"api_error","message":"تعذر قراءة حالة البناء من GitHub (صلاحيات التوكن). تأكد أن GITHUB_ACTIONS_TOKEN يملك Actions: Read and write على المستودع."}
+        if exc.code == 404:
+            return {"state":"api_error","message":"GitHub لم يجد سير العمل المطلوب. تحقق من وجود build-windows-client.yml على فرع main."}
+        if exc.code == 429:
+            return {"state":"api_error","message":"GitHub حدّ مؤقتاً من الطلبات. انتظر دقيقة ثم أعد المحاولة."}
+        return {"state":"api_error","message":"تعذر قراءة حالة البناء من GitHub (HTTP " + str(exc.code) + ")."}
     except Exception as exc:
         print("Build status lookup failed:", type(exc).__name__)
-        return {"state":"checking","message":"جارٍ التحقق من حالة البناء…"}
+        return {"state":"api_error","message":"تعذر الاتصال بـ GitHub للتحقق من البناء. تحقق من اتصال الاستضافة ثم أعد المحاولة."}
 
 @app.get("/sessions/<code>/download")
 @login_required
