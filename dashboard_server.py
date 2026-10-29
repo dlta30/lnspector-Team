@@ -28,11 +28,13 @@ from flask import Flask, abort, flash, redirect, render_template_string, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
 APP_DIR = Path(__file__).resolve().parent
-# Hosted platforms may use an ephemeral app filesystem. Prefer a mounted
-# persistent disk when available (Render convention: /var/data).
-# INSPECTOR_DB can override this path; local development uses APP_DIR.
+# On Render, always target the mounted persistent disk. Do not silently
+# fall back to the deploy directory, because that filesystem can be replaced
+# during deploys/restarts and make accounts, sessions, and reports appear lost.
+# Keep the project directory only for local development.
 PERSISTENT_DATA_DIR = Path('/var/data')
-DEFAULT_DB_PATH = (PERSISTENT_DATA_DIR / 'inspector_dashboard.sqlite3') if PERSISTENT_DATA_DIR.is_dir() else (APP_DIR / 'inspector_dashboard.sqlite3')
+ON_RENDER = bool(os.environ.get('RENDER') or os.environ.get('RENDER_SERVICE_ID'))
+DEFAULT_DB_PATH = (PERSISTENT_DATA_DIR / 'inspector_dashboard.sqlite3') if ON_RENDER else (APP_DIR / 'inspector_dashboard.sqlite3')
 DB_PATH = Path(os.environ.get('INSPECTOR_DB', str(DEFAULT_DB_PATH)))
 app = Flask(__name__)
 # Keep this value stable across deployments by setting INSPECTOR_SECRET_KEY in Render.
