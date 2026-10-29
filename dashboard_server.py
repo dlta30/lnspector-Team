@@ -235,10 +235,10 @@ def notify_discord(report_id, session_code, computer, summary, report=None):
         doc.build(story)
         pdf_data = pdf_buffer.getvalue()
         boundary = '----3eNReport' + str(report_id)
-        body = (('--' + boundary + '\\r\\nContent-Disposition: form-data; name="payload_json"\\r\\nContent-Type: application/json\\r\\n\\r\\n').encode()
-            + json.dumps(message, ensure_ascii=False).encode('utf-8') + b'\\r\\n'
-            + ('--' + boundary + '\\r\\nContent-Disposition: form-data; name="files[0]"; filename="3eN-Report-' + str(report_id) + '.pdf"\\r\\nContent-Type: application/pdf\\r\\n\\r\\n').encode()
-            + pdf_data + b'\\r\\n' + ('--' + boundary + '--\\r\\n').encode())
+        body = (('--' + boundary + '\r\nContent-Disposition: form-data; name="payload_json"\r\nContent-Type: application/json\r\n\r\n').encode()
+            + json.dumps(message, ensure_ascii=False).encode('utf-8') + b'\r\n'
+            + ('--' + boundary + '\r\nContent-Disposition: form-data; name="files[0]"; filename="3eN-Report-' + str(report_id) + '.pdf"\r\nContent-Type: application/pdf\r\n\r\n').encode()
+            + pdf_data + b'\r\n' + ('--' + boundary + '--\r\n').encode())
         req = urllib.request.Request(webhook, data=body, headers={'Content-Type': 'multipart/form-data; boundary=' + boundary}, method='POST')
     except Exception as exc:
         print('Discord PDF creation failed, sending embed only:', type(exc).__name__, str(exc)[:160])
