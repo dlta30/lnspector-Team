@@ -70,26 +70,20 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $exe = Join-Path "dist" "$name.exe"
           if (-not (Test-Path $exe)) { throw "EXE was not created: $exe" }
-          # The ZIP contains only the EXE; checksum is published separately.
-          Compress-Archive -Path $exe -DestinationPath (Join-Path "dist" "$name.zip") -CompressionLevel Optimal
-      - name: Generate SHA-256 checksums
+      - name: Generate SHA-256 checksum
         shell: pwsh
         run: |
-          $package = Get-ChildItem "dist/*.zip" | Select-Object -First 1
           $exe = Get-ChildItem "dist/*.exe" | Select-Object -First 1
-          if (-not $package -or -not $exe) { throw "Package or EXE was not created." }
-          $packageHash = (Get-FileHash $package.FullName -Algorithm SHA256).Hash.ToLower()
-          "$packageHash  $($package.Name)" | Set-Content -Encoding ascii "$($package.FullName).sha256"
+          if (-not $exe) { throw "EXE was not created." }
           $exeHash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
           "$exeHash  $($exe.Name)" | Set-Content -Encoding ascii (Join-Path "dist" "$($exe.Name).sha256")
-          Write-Host "Package SHA-256: $packageHash"
           Write-Host "EXE SHA-256: $exeHash"
-      - name: Upload portable folder package and checksums
+      - name: Upload standalone EXE and checksum
         uses: actions/upload-artifact@v4
         with:
           name: 3eN-Inspector-${{ inputs.session_code || 'Generic' }}
           path: |
-            dist/*.zip
+            dist/*.exe
             dist/*.sha256
           if-no-files-found: error
           retention-days: 14
