@@ -58,19 +58,18 @@ jobs:
         run: |
           $name = "3eN-Inspector"
           if ($env:SESSION_CODE) { $name = "$name-$($env:SESSION_CODE.ToUpper())" }
-          # Prefer onedir over onefile: self-extracting single-file bundles are more
-          # likely to trigger generic antivirus heuristics. This does not guarantee
-          # every vendor will classify the application as clean.
+          # Build a single, uncompressed-by-UPX EXE. PyInstaller onefile may unpack
+          # runtime support files into a temporary directory when launched; the
+          # deliverable itself is one EXE. No obfuscation or UPX is used.
           if (Test-Path "session_config.py") {
-            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --hidden-import session_config inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --hidden-import session_config inspector_client.py
           } else {
-            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name inspector_client.py
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $folder = Join-Path "dist" $name
-          $exe = Join-Path $folder "$name.exe"
+          $exe = Join-Path "dist" "$name.exe"
           if (-not (Test-Path $exe)) { throw "EXE was not created: $exe" }
-          Compress-Archive -Path (Join-Path $folder "*") -DestinationPath (Join-Path "dist" "$name.zip") -CompressionLevel Optimal
+          # The ZIP contains only the EXE; checksum is published separately.
       - name: Generate SHA-256 checksums
         shell: pwsh
         run: |
