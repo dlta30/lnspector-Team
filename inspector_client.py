@@ -1,5 +1,5 @@
 """
-3eN Inspector Team — transparent local inspection client.
+3eN Inspect Team — transparent local inspection client.
 Scans running process metadata only (name, executable path, SHA-256 where readable).
 It does not read personal documents, browser data, credentials, or memory.
 Run: python inspector_client.py
@@ -15,7 +15,7 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from datetime import datetime, timezone
 
-APP = "3eN Inspector Team"
+APP = "3eN Inspect Team"
 try:
     from session_config import SESSION_CODE, DASHBOARD_URL
 except ImportError:
@@ -179,7 +179,7 @@ class InspectorApp(tk.Tk):
                  padx=13, pady=11).pack(side="left", padx=(0, 15))
         brand = tk.Frame(hero, bg=PANEL)
         brand.pack(side="left", fill="x", expand=True)
-        tk.Label(brand, text="3eN INSPECTOR TEAM", bg=PANEL, fg=WHITE,
+        tk.Label(brand, text="3eN INSPECT TEAM", bg=PANEL, fg=WHITE,
                  font=("Segoe UI", 20, "bold")).pack(anchor="w")
         tk.Label(brand, text="DEVICE SECURITY REVIEW  /  by ROITH", bg=PANEL,
                  fg=RED, font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(3, 0))
@@ -242,7 +242,7 @@ class InspectorApp(tk.Tk):
         tk.Label(controls, text="يُرسل التقرير تلقائيًا بعد الفحص؛ التصنيف النهائي من لوحة التحكم.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left", padx=5)
 
-        tk.Label(self, text="3eN INSPECTOR TEAM    •    by ROITH    •    فحص ظاهر وبموافقة المستخدم",
+        tk.Label(self, text="3eN INSPECT TEAM    •    by ROITH    •    فحص ظاهر وبموافقة المستخدم",
                  bg="#0d1018", fg="#7e899f", font=("Segoe UI", 8, "bold"), pady=9).pack(fill="x")
     def update_progress(self, value, text):
         self.after(0, lambda: (self.progress.configure(value=value), self.status.set(text)))
@@ -295,7 +295,7 @@ class InspectorApp(tk.Tk):
                     self.after(0, lambda: messagebox.showwarning(APP, "تعذر التقاط صورة سطح المكتب. سيُرسل التقرير دون صورة."))
             self.report = {
                 "product": APP,
-                "signature": "3eN INSPECTOR TEAM",
+                "signature": "3eN INSPECT TEAM",
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
@@ -381,7 +381,7 @@ class InspectorApp(tk.Tk):
             styles = getSampleStyleSheet()
             styles.add(ParagraphStyle(name="RedTitle", parent=styles["Title"], textColor=colors.HexColor("#d92345")))
             doc = SimpleDocTemplate(path, pagesize=A4, rightMargin=16*mm, leftMargin=16*mm, topMargin=16*mm, bottomMargin=16*mm)
-            story = [Paragraph("3eN INSPECTOR TEAM", styles["RedTitle"]), Paragraph("Security inspection report - by:ROITH", styles["Normal"]), Spacer(1, 8*mm)]
+            story = [Paragraph("3eN INSPECT TEAM", styles["RedTitle"]), Paragraph("Security inspection report - by:ROITH", styles["Normal"]), Spacer(1, 8*mm)]
             summary = [["Device", str(self.report["device_label"])], ["Created (UTC)", str(self.report["created_at"])], ["Platform", str(self.report["platform"])], ["Processes reviewed", str(self.report["process_count"])], ["Name-based leads", str(self.report["indicator_match_count"])]]
             table = Table(summary, colWidths=[42*mm, 120*mm])
             table.setStyle(TableStyle([("BACKGROUND",(0,0),(0,-1),colors.HexColor("#fbe7eb")),("TEXTCOLOR",(0,0),(0,-1),colors.HexColor("#86152b")),("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#dddddd")),("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),7)]))
