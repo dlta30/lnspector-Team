@@ -225,6 +225,8 @@ def init_db():
                 con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
                             (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
         con.executescript("""
+        DROP TRIGGER IF EXISTS prevent_report_delete;
+        DROP TRIGGER IF EXISTS prevent_user_delete;
         CREATE TRIGGER IF NOT EXISTS prevent_session_delete BEFORE DELETE ON inspection_sessions BEGIN
             SELECT RAISE(ABORT, 'Session retention is enabled; DELETE is disabled.');
         END;
