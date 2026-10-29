@@ -986,7 +986,25 @@ def report_detail(report_id):
         <div class="report-metric">مؤشرات المطابقة<strong>{{ match_count }}</strong></div>
         <div class="report-metric">العمليات المعروضة<strong>{{ processes|length }}</strong></div>
       </div>
-      <div class="card"><h2>النتيجة والتوصية</h2><p>{{ status_detail }}</p><p class="muted">{{ report_data.get('note', 'النتائج الآلية مؤشرات أولية وتحتاج إلى مراجعة بشرية.') }}</p></div>
+      <div class="card">
+        <h2>قرار المراجع</h2>
+        {% if manual_verdict %}<p><strong>القرار الحالي:</strong> {{ {'clean':'✅ Clean — لم يُثبت وجود تهديد','review':'🟠 Needs Review — يحتاج مراجعة','threat':'🔴 Confirmed Threat — تهديد مؤكد'}.get(manual_verdict, manual_verdict) }}</p>{% else %}<p class="muted">لم يُسجّل قرار يدوي لهذا التقرير بعد.</p>{% endif %}
+        {% if actor_role == 'owner' %}
+        <form method="post" action="{{ url_for('report_set_verdict', report_id=r['id']) }}" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <label for="manual-verdict">تحديد نتيجة المراجعة:</label>
+          <select id="manual-verdict" name="verdict" required>
+            <option value="">اختر القرار…</option>
+            <option value="clean" {% if manual_verdict == 'clean' %}selected{% endif %}>Clean — لم يُثبت وجود تهديد</option>
+            <option value="review" {% if manual_verdict == 'review' %}selected{% endif %}>Needs Review — يحتاج مراجعة</option>
+            <option value="threat" {% if manual_verdict == 'threat' %}selected{% endif %}>Confirmed Threat — تهديد مؤكد</option>
+          </select>
+          <input name="review_note" maxlength="500" placeholder="ملاحظة المراجع (اختياري)" value="{{ review_note }}">
+          <button class="btn" type="submit">حفظ القرار</button>
+        </form>
+        {% endif %}
+        <p class="muted">القرار اليدوي منفصل عن المؤشرات الآلية؛ اختيار Clean لا يحذف نتائج الفحص أو يغيّرها.</p>
+      </div>
+      <div class="card"><h2>النتيجة الآلية والتوصية</h2><p>{{ status_detail }}</p><p class="muted">{{ report_data.get('note', 'النتائج الآلية مؤشرات أولية وتحتاج إلى مراجعة بشرية.') }}</p></div>
       <div class="card" id="process-list">
         <h2>الملفات والعمليات</h2>
         <p class="muted">أسماء الملفات ومساراتها وأوقات التشغيل وتواريخ الملفات المتاحة. تاريخ إنشاء الملف لا يثبت وقت تنزيله بدقة.</p>
@@ -1009,7 +1027,36 @@ def report_detail(report_id):
       </div>
       <script>(function(){const input=document.getElementById('file-search'),items=Array.from(document.querySelectorAll('[data-file-search]')),none=document.getElementById('file-none');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase();let n=0;items.forEach(el=>{const ok=el.dataset.fileSearch.toLocaleLowerCase().includes(q);el.style.display=ok?'block':'none';if(ok)n++;});if(none)none.style.display=n?'none':'block';});})();</script>
     </div>
-    """,r=r,report_data=report_data,processes=processes,process_count=process_count,match_count=match_count,startup=startup,findings=findings,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"])
+    """,r=r,report_data=report_data,processes=processes,process_count=process_count,match_count=match_count,startup=startup,findings=findings,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"],manual_verdict=envelope.get("manual_verdict"),review_note=envelope.get("review_note",""))
+
+@app.post("/reports/<int:report_id>/verdict")
+@login_required
+def report_set_verdict(report_id):
+    actor = current_user()
+    if actor["role"] != "owner":
+        abort(403)
+    verdict = str(request.form.get("verdict", "")).strip().lower()
+    if verdict not in {"clean", "review", "threat"}:
+        abort(400, "Invalid review verdict")
+    note = str(request.form.get("review_note", "")).strip()[:500]
+    with db() as con:
+        row = con.execute("SELECT payload FROM reports WHERE id=?", (report_id,)).fetchone()
+        if not row:
+            abort(404)
+        try:
+            envelope = json.loads(row["payload"])
+            if not isinstance(envelope, dict):
+                envelope = {"raw_result": envelope}
+        except Exception:
+            envelope = {"raw_result": str(row["payload"])}
+        envelope["manual_verdict"] = verdict
+        envelope["review_note"] = note
+        envelope["reviewed_by"] = str(actor.get("username") or "owner")
+        envelope["reviewed_at"] = now()
+        con.execute("UPDATE reports SET payload=? WHERE id=?", (json.dumps(envelope, ensure_ascii=False), report_id))
+        con.execute("INSERT INTO audit(actor,action,created_at) VALUES(?,?,?)",
+                    (str(actor.get("username") or "owner"), "report_verdict:" + verdict + ":report_" + str(report_id), now()))
+    return redirect(url_for("report_detail", report_id=report_id))
 
 @app.post("/reports/<int:report_id>/send-discord")
 @login_required
