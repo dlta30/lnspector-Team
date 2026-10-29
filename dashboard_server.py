@@ -1221,7 +1221,7 @@ def users_page():
                     flash("لا يمكن حذف حساب المالك.")
                 elif int(target["id"]) == int(actor["id"]):
                     flash("لا يمكنك حذف حسابك الحالي.")
-                elif actor["role"] == "deputy" and target["role"] != "inspector":
+                elif actor["role"] == "deputy" and target["role"] not in ("inspector", "viewer"):
                     abort(403)
                 elif actor["role"] not in ("owner", "deputy"):
                     abort(403)
@@ -1291,7 +1291,7 @@ def users_page():
               <div style="display:flex;flex-direction:column;gap:10px"><label style="display:flex;gap:8px;align-items:center"><input style="width:auto;margin:0" type="checkbox" name="can_view" {% if u['can_view'] %}checked{% endif %}> مشاهدة التقارير</label><label style="display:flex;gap:8px;align-items:center"><input style="width:auto;margin:0" type="checkbox" name="can_ingest" {% if u['can_ingest'] %}checked{% endif %}> استقبال التقارير</label></div>
               <button class="btn">حفظ التغييرات</button>
             </form>
-            {% if actor_role in ('owner','deputy') and u['username'] != actor_username and (actor_role == 'owner' or u['role'] == 'inspector') %}
+            {% if actor_role in ('owner','deputy') and u['username'] != actor_username and (actor_role == 'owner' or u['role'] in ('inspector','viewer')) %}
             <form method="post" style="margin-top:12px" onsubmit="return confirm('تأكيد حذف حساب ' + {{ u['username']|tojson }} + ' نهائيًا؟');">
               <input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <button class="btn" style="background:#6d1728;border-color:#b82e49;color:#fff">🗑 حذف الحساب</button>
