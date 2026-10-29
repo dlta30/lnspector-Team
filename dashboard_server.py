@@ -651,7 +651,7 @@ def sessions_page():
         log_action(user["username"], "created inspection session for " + target_label)
         build_started, build_message = trigger_session_build(code)
         log_action(user["username"], "requested session-specific client build for " + code)
-        return page("""<div class="card"><div class="eyebrow">3eN INCEPTOR · SESSION READY</div><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p>كود الجلسة</p><div class="metric" style="font-size:42px;letter-spacing:5px">{{ code }}</div><p class="muted">صالح لمدة ساعتين ويقبل تقريراً واحداً. شارك الملف مع صاحب الجهاز فقط وبعد موافقته.</p><div class="notice"><b>ملف الفحص الخاص بهذه الجلسة</b><p id="build-state">{{ build_message }}</p><a id="download-build" class="btn" style="display:none" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل ملف الفحص المخصص</a></div><button class="btn" type="button" onclick="navigator.clipboard.writeText('{{ code }}')">نسخ كود الجلسة</button> <a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div><script>
+        return page("""<div class="card"><div class="eyebrow">3eN INCEPTOR · SESSION READY</div><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p>كود الجلسة</p><div class="metric" style="font-size:42px;letter-spacing:5px">{{ code }}</div><p class="muted">صالح لمدة ساعتين ويقبل تقريراً واحداً. شارك الملف مع صاحب الجهاز فقط وبعد موافقته.</p><div class="notice"><b>ملف الفحص الخاص بهذه الجلسة</b><p id="build-state">{{ build_message }}</p><a id="download-build" class="btn" style="display:none" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل حزمة الفحص (ZIP)</a><p class="muted">بعد التحميل، فك ضغط ZIP ثم شغّل 3eN-Inspector-{{ code }}.exe مع إبقاء مجلد الملفات المرفق بجانبه.</p></div><button class="btn" type="button" onclick="navigator.clipboard.writeText('{{ code }}')">نسخ كود الجلسة</button> <a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div><script>
 const state=document.getElementById('build-state'), download=document.getElementById('download-build');
 async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}');const d=await r.json();state.textContent=d.message||({'ready':'اكتمل تجهيز الملف.','building':'يتم تجهيز الملف المخصص…','checking':'جارٍ التحقق من البناء…','failed':'فشل بناء الملف. راجع إعدادات GitHub Actions.','needs_setup':'يلزم ضبط GITHUB_ACTIONS_TOKEN وPUBLIC_DASHBOARD_URL في Render.'}[d.state]||'جارٍ تجهيز الملف…');if(d.state==='ready'){download.style.display='inline-block';state.textContent='اكتمل تجهيز الملف المخصص لهذه الجلسة.';return;}if(d.state==='failed'||d.state==='needs_setup'||d.state==='missing'||d.state==='api_error')return;}catch(e){state.textContent='تعذر الاتصال بحالة البناء. أعد تحميل الصفحة للمحاولة مجدداً.';return;}setTimeout(checkBuild,10000)}checkBuild();
 </script>""", code=code, target_label=target_label, build_message=("بدأنا طلب بناء الملف المخصص." if build_started else build_message))
@@ -736,14 +736,18 @@ def download_session_build(code):
         import zipfile
         from flask import send_file
         with zipfile.ZipFile(BytesIO(data)) as archive:
-            exe_names = [name for name in archive.namelist() if name.lower().endswith(".exe") and not name.startswith("__MACOSX/")]
-            if not exe_names:
-                raise RuntimeError("Artifact ZIP contains no EXE file")
-            exe_data = archive.read(exe_names[0])
+            package_names = [name for name in archive.namelist()
+                             if name.lower().endswith(".zip") and not name.lower().endswith(".sha256")
+                             and not name.startswith("__MACOSX/")]
+            if not package_names:
+                raise RuntimeError("Artifact ZIP contains no portable ZIP package")
+            package_data = archive.read(package_names[0])
+        if not package_data.startswith(b"PK"):
+            raise RuntimeError("Portable package is not a valid ZIP archive")
         with db() as con:
             con.execute("UPDATE inspection_sessions SET downloaded_at=? WHERE display_code=?", (now(), code.upper()))
-        log_action("session-download", "downloaded inspection build for session " + code.upper())
-        return send_file(BytesIO(exe_data), mimetype="application/vnd.microsoft.portable-executable", as_attachment=True, download_name="3eN-INCEPTOR-" + code.upper() + ".exe")
+        log_action("session-download", "downloaded inspection package for session " + code.upper())
+        return send_file(BytesIO(package_data), mimetype="application/zip", as_attachment=True, download_name="3eN-INCEPTOR-" + code.upper() + ".zip")
     except Exception as exc:
         if getattr(exc, "code", None) in (503, 404):
             raise
