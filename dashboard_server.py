@@ -18,6 +18,9 @@ import json
 import os
 import secrets
 import sqlite3
+import re
+import psycopg2
+from psycopg2.extras import RealDictCursor
 import urllib.request
 import urllib.error
 from datetime import datetime, timezone
@@ -28,14 +31,15 @@ from flask import Flask, abort, flash, redirect, render_template_string, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
 APP_DIR = Path(__file__).resolve().parent
-# On Render, always target the mounted persistent disk. Do not silently
-# fall back to the deploy directory, because that filesystem can be replaced
-# during deploys/restarts and make accounts, sessions, and reports appear lost.
-# Keep the project directory only for local development.
+DATABASE_URL = os.environ.get("DATABASE_URL", "").strip()
+# Render may provide postgres://; psycopg2 expects postgresql://.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
 PERSISTENT_DATA_DIR = Path('/var/data')
 ON_RENDER = bool(os.environ.get('RENDER') or os.environ.get('RENDER_SERVICE_ID'))
 DEFAULT_DB_PATH = (PERSISTENT_DATA_DIR / 'inspector_dashboard.sqlite3') if ON_RENDER else (APP_DIR / 'inspector_dashboard.sqlite3')
-DB_PATH = Path(os.environ.get('INSPECTOR_DB', str(DEFAULT_DB_PATH)))
+DB_PATH = Path(os.environ.get('INSPECTOR_DB', str(DEFAULT_DB_PATH))) if not DATABASE_URL else None
+
 app = Flask(__name__)
 # Keep this value stable across deployments by setting INSPECTOR_SECRET_KEY in Render.
 # A random fallback is convenient locally but invalidates browser sessions after restart.
@@ -98,14 +102,105 @@ CREATE TABLE IF NOT EXISTS audit (
 def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+class PgCursor:
+    def __init__(self, cursor):
+        self._cursor = cursor
+        self.lastrowid = None
+
+    def execute(self, sql, params=()):
+        sql = sql.replace("?", "%s")
+        is_report_insert = bool(re.match(r"\s*INSERT\s+INTO\s+reports\b", sql, re.I))
+        if is_report_insert and "RETURNING" not in sql.upper():
+            sql += " RETURNING id"
+        self._cursor.execute(sql, params)
+        if is_report_insert:
+            row = self._cursor.fetchone()
+            self.lastrowid = row["id"] if row else None
+        return self
+
+    def fetchone(self):
+        return self._cursor.fetchone()
+
+    def fetchall(self):
+        return self._cursor.fetchall()
+
+    def __iter__(self):
+        return iter(self._cursor)
+
+class PgConnection:
+    def __init__(self, connection):
+        self._connection = connection
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        if exc_type:
+            self._connection.rollback()
+        else:
+            self._connection.commit()
+        self._connection.close()
+        return False
+
+    def execute(self, sql, params=()):
+        cursor = self._connection.cursor(cursor_factory=RealDictCursor)
+        return PgCursor(cursor).execute(sql, params)
+
+    def executescript(self, script):
+        cursor = self._connection.cursor()
+        for statement in script.split(";"):
+            if statement.strip():
+                cursor.execute(statement)
+        return cursor
+
 def db():
+    if DATABASE_URL:
+        return PgConnection(psycopg2.connect(DATABASE_URL, connect_timeout=10, cursor_factory=RealDictCursor))
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     return con
 
 def init_db():
+    if DATABASE_URL:
+        print("Inspector database: PostgreSQL (DATABASE_URL)")
+        schema = """
+        CREATE TABLE IF NOT EXISTS users (
+          id BIGSERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
+          role TEXT NOT NULL CHECK(role IN ('owner','deputy','team','inspector','viewer')),
+          can_view INTEGER NOT NULL DEFAULT 1, can_ingest INTEGER NOT NULL DEFAULT 0,
+          login_token TEXT, created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS inspection_sessions (
+          id BIGSERIAL PRIMARY KEY, code_hash TEXT UNIQUE NOT NULL, display_code TEXT NOT NULL,
+          target_label TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+          expires_at TEXT NOT NULL, used_at TEXT, downloaded_at TEXT, status TEXT NOT NULL DEFAULT 'open'
+        );
+        CREATE TABLE IF NOT EXISTS reports (
+          id BIGSERIAL PRIMARY KEY, session_id TEXT NOT NULL,
+          computer_label TEXT NOT NULL DEFAULT 'Unspecified', created_at TEXT NOT NULL,
+          summary TEXT NOT NULL DEFAULT '', payload TEXT NOT NULL,
+          submitted_by TEXT NOT NULL DEFAULT 'desktop-client'
+        );
+        CREATE TABLE IF NOT EXISTS audit (
+          id BIGSERIAL PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, created_at TEXT NOT NULL
+        );
+        """
+        with db() as con:
+            con.executescript(schema)
+            # Safe additive migrations for older PostgreSQL deployments.
+            con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS login_token TEXT")
+            con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_label TEXT NOT NULL DEFAULT ''")
+            con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS downloaded_at TEXT")
+            row = con.execute("SELECT id FROM users WHERE role='owner' LIMIT 1").fetchone()
+            if not row and OWNER_PASSWORD:
+                con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
+                            (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
+            elif not row:
+                print("FIRST RUN: set INSPECTOR_OWNER_PASSWORD to a strong password before logging in.")
+        return
+
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    print(f"Inspector database path: {DB_PATH} (persistent storage requires a mounted persistent disk)")
+    print(f"Inspector database path: {DB_PATH} (SQLite; persistent storage requires a mounted persistent disk)")
     with db() as con:
         con.executescript(SCHEMA)
         user_columns = {row["name"] for row in con.execute("PRAGMA table_info(users)").fetchall()}
@@ -116,8 +211,8 @@ def init_db():
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN target_label TEXT NOT NULL DEFAULT ''")
         if "downloaded_at" not in session_columns:
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN downloaded_at TEXT")
-        schema = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
-        if schema and "'deputy'" not in (schema['sql'] or ''):
+        schema_row = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
+        if schema_row and "'deputy'" not in (schema_row['sql'] or ''):
             con.execute('ALTER TABLE users RENAME TO users_old')
             con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','deputy','team','inspector','viewer')), can_view INTEGER NOT NULL DEFAULT 1, can_ingest INTEGER NOT NULL DEFAULT 0, login_token TEXT, created_at TEXT NOT NULL)")
             con.execute('INSERT INTO users(id,username,password_hash,role,can_view,can_ingest,created_at) SELECT id,username,password_hash,role,can_view,can_ingest,created_at FROM users_old')
@@ -126,32 +221,23 @@ def init_db():
         if not row:
             if not OWNER_PASSWORD:
                 print("FIRST RUN: set INSPECTOR_OWNER_PASSWORD to a strong password before logging in.")
-                # Create owner only when a password is configured; allow first-run setup below.
             else:
                 con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
                             (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
-
-
-        # Retention policy: prevent accidental deletion of reports, sessions, audit history, or staff accounts.
         con.executescript("""
-        CREATE TRIGGER IF NOT EXISTS prevent_report_delete
-        BEFORE DELETE ON reports BEGIN
+        CREATE TRIGGER IF NOT EXISTS prevent_report_delete BEFORE DELETE ON reports BEGIN
             SELECT RAISE(ABORT, 'Report retention is enabled; DELETE is disabled.');
         END;
-        CREATE TRIGGER IF NOT EXISTS prevent_session_delete
-        BEFORE DELETE ON inspection_sessions BEGIN
+        CREATE TRIGGER IF NOT EXISTS prevent_session_delete BEFORE DELETE ON inspection_sessions BEGIN
             SELECT RAISE(ABORT, 'Session retention is enabled; DELETE is disabled.');
         END;
-        CREATE TRIGGER IF NOT EXISTS prevent_audit_delete
-        BEFORE DELETE ON audit BEGIN
+        CREATE TRIGGER IF NOT EXISTS prevent_audit_delete BEFORE DELETE ON audit BEGIN
             SELECT RAISE(ABORT, 'Audit retention is enabled; DELETE is disabled.');
         END;
-        CREATE TRIGGER IF NOT EXISTS prevent_user_delete
-        BEFORE DELETE ON users BEGIN
+        CREATE TRIGGER IF NOT EXISTS prevent_user_delete BEFORE DELETE ON users BEGIN
             SELECT RAISE(ABORT, 'User retention is enabled; DELETE is disabled.');
         END;
         """)
-
 
 def notify_discord(report_id, session_code, computer, summary, report=None):
     webhook = os.environ.get('DISCORD_WEBHOOK_URL', '').strip().strip('"').strip("'")
@@ -351,7 +437,7 @@ def login():
                         con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)", (safe_name, generate_password_hash(password), matched_role, 1 if matched_role in ("owner","deputy") else 0, 1 if matched_role == "owner" else 0, now()))
                         user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
                         log_action(safe_name, "created account with role " + matched_role)
-                    except sqlite3.IntegrityError:
+                    except (sqlite3.IntegrityError, psycopg2.IntegrityError):
                         user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
             if user and check_password_hash(user["password_hash"], password):
                 login_token = secrets.token_urlsafe(32)
@@ -1145,14 +1231,14 @@ def forbidden(_): return page('<div class="card"><h2 class="danger">Access denie
 
 # Fail fast on Render if the configured persistent data disk is missing.
 # This prevents silently creating a new empty database on an ephemeral filesystem.
-if os.environ.get("RENDER") and str(DB_PATH).startswith("/var/data/") and not Path("/var/data").is_mount():
+if not DATABASE_URL and os.environ.get("RENDER") and str(DB_PATH).startswith("/var/data/") and not Path("/var/data").is_mount():
     raise RuntimeError(
         "Persistent disk is not mounted at /var/data. Refusing to start with an ephemeral database; "
         "attach the Render persistent disk and set INSPECTOR_DB=/var/data/inspector_dashboard.sqlite3."
     )
 
 init_db()
-print("Dashboard database path:", str(DB_PATH))
+print("Dashboard database:", "PostgreSQL (DATABASE_URL)" if DATABASE_URL else str(DB_PATH))
 print("Persistent disk mounted:", Path("/var/data").is_mount() if os.environ.get("RENDER") else "local development")
 
 if __name__ == "__main__":
