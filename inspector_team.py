@@ -13,10 +13,10 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
-APP_NAME = "3EN INSPECTOR TEAM"
+APP_NAME = "3EN INSPECT TEAM"
 BYLINE = "by: ROITH"
-REPORT_DIR = Path.home() / "Documents" / "3EN_Inspector_Team"
-CONFIG_PATH = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "3EN_Inspector_Team" / "config.json"
+REPORT_DIR = Path.home() / "Documents" / "3EN_Inspect_Team"
+CONFIG_PATH = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "3EN_Inspect_Team" / "config.json"
 EXTENSIONS = {".exe", ".dll", ".sys", ".bat", ".cmd", ".ps1", ".vbs", ".scr", ".asi", ".lua"}
 TERMS = ("cheat engine", "aimbot", "wallhack", "injector", "mapper", "mod menu", "trainer", "memory editor", "hwid spoofer")
 MAX_FILES = 100000
@@ -179,7 +179,7 @@ def create_pdf_report(report, destination):
     pdf = canvas.Canvas(str(destination), pagesize=A4)
     w, h = A4; y = h - 55
     pdf.setFillColor(colors.HexColor('#090a0f')); pdf.rect(0, h-90, w, 90, fill=1, stroke=0)
-    pdf.setFillColor(colors.HexColor('#ff4057')); pdf.setFont('Helvetica-Bold', 17); pdf.drawString(38, h-42, '3EN INSPECTOR TEAM')
+    pdf.setFillColor(colors.HexColor('#ff4057')); pdf.setFont('Helvetica-Bold', 17); pdf.drawString(38, h-42, '3EN INSPECT TEAM')
     pdf.setFillColor(colors.white); pdf.setFont('Helvetica', 9); pdf.drawString(38, h-62, 'PLAYER INSPECTION REPORT | by: ROITH')
     pdf.setFillColor(colors.black)
     def write(text, bold=False):
@@ -269,7 +269,7 @@ class InspectorApp:
                  font=("Segoe UI", 34, "bold")).pack(pady=(22, 0))
         tk.Label(self.sidebar, text="3EN", bg="#0d0f16", fg=TEXT,
                  font=("Segoe UI", 20, "bold")).pack()
-        tk.Label(self.sidebar, text="INSPECTOR TEAM", bg="#0d0f16", fg=RED,
+        tk.Label(self.sidebar, text="INSPECT TEAM", bg="#0d0f16", fg=RED,
                  font=("Segoe UI", 10, "bold")).pack()
         tk.Label(self.sidebar, text="by: ROITH", bg="#0d0f16", fg=MUTED,
                  font=("Segoe UI", 9)).pack(pady=(0, 24))
@@ -282,7 +282,7 @@ class InspectorApp:
         mark = tk.Label(header, text="3", bg="#2a0d16", fg=RED, font=("Segoe UI", 25, "bold"), width=3, height=2)
         mark.pack(side="left", padx=(0, 14))
         brand = tk.Frame(header, bg=BG); brand.pack(side="left", fill="y")
-        tk.Label(brand, text="3eN Inspector Team", bg=BG, fg=TEXT, font=("Segoe UI", 22, "bold")).pack(anchor="w")
+        tk.Label(brand, text="3eN Inspect Team", bg=BG, fg=TEXT, font=("Segoe UI", 22, "bold")).pack(anchor="w")
         tk.Label(brand, text="by: ROITH  •  PLAYER INSPECTION OPERATIONS", bg=BG, fg=RED, font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(3, 0))
         tk.Label(header, text="●  النظام جاهز للفحص", bg=BG, fg=RED, font=("Segoe UI", 10, "bold")).pack(side="right", anchor="n", pady=8)
 
@@ -402,7 +402,7 @@ class InspectorApp:
         self.events_text = tk.Text(self.events_page, bg=PANEL, fg=TEXT, insertbackground=TEXT,
                                    relief="flat", height=20, wrap="word")
         self.events_text.pack(fill="both", expand=True, padx=18, pady=8)
-        self.events_text.insert("end", "تم تشغيل 3eN Inspector Team\\n")
+        self.events_text.insert("end", "تم تشغيل 3eN Inspect Team\\n")
         self.events_text.insert("end", "يتم تسجيل نتائج الفحص بعد اكتماله.\\n")
         self.events_text.configure(state="disabled")
 
@@ -691,7 +691,7 @@ class InspectorApp:
         try:
             boundary = "----3EN" + secrets.token_hex(12)
             summary = json.dumps({"content": (
-                "**3EN INSPECTOR TEAM**\n"
+                "**3EN INSPECT TEAM**\n"
                 f"Player: {report.get('player', 'Unknown')}\n"
                 f"Device: {report.get('device', 'Unknown')}\n"
                 f"Results: {report.get('result_count', 0)} | Review leads: {report.get('review_count', 0)}\n"
@@ -745,7 +745,7 @@ def password_gate(root):
             save_config(config)
             return True
     for _ in range(3):
-        p = simpledialog.askstring("3EN INSPECTOR TEAM", "أدخل كلمة المرور:", show="*", parent=root)
+        p = simpledialog.askstring("3EN INSPECT TEAM", "أدخل كلمة المرور:", show="*", parent=root)
         if p is None:
             return False
         if secrets.compare_digest(password_digest(p, config.get("password_salt", "")), saved):
