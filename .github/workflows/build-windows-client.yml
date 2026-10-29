@@ -58,26 +58,37 @@ jobs:
         run: |
           $name = "3eN-Inspector"
           if ($env:SESSION_CODE) { $name = "$name-$($env:SESSION_CODE.ToUpper())" }
+          # Prefer onedir over onefile: self-extracting single-file bundles are more
+          # likely to trigger generic antivirus heuristics. This does not guarantee
+          # every vendor will classify the application as clean.
           if (Test-Path "session_config.py") {
-            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --hidden-import session_config inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --hidden-import session_config inspector_client.py
           } else {
-            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name inspector_client.py
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Generate SHA-256 checksum
+          $folder = Join-Path "dist" $name
+          $exe = Join-Path $folder "$name.exe"
+          if (-not (Test-Path $exe)) { throw "EXE was not created: $exe" }
+          Compress-Archive -Path (Join-Path $folder "*") -DestinationPath (Join-Path "dist" "$name.zip") -CompressionLevel Optimal
+      - name: Generate SHA-256 checksums
         shell: pwsh
         run: |
-          $exe = Get-ChildItem "dist/*.exe" | Select-Object -First 1
-          if (-not $exe) { throw "EXE was not created." }
-          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
-          "$hash  $($exe.Name)" | Set-Content -Encoding ascii "$($exe.FullName).sha256"
-          Write-Host "SHA-256: $hash"
-      - name: Upload EXE and checksum artifact
+          $package = Get-ChildItem "dist/*.zip" | Select-Object -First 1
+          $exe = Get-ChildItem "dist/*/*.exe" | Select-Object -First 1
+          if (-not $package -or -not $exe) { throw "Package or EXE was not created." }
+          $packageHash = (Get-FileHash $package.FullName -Algorithm SHA256).Hash.ToLower()
+          "$packageHash  $($package.Name)" | Set-Content -Encoding ascii "$($package.FullName).sha256"
+          $exeHash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          "$exeHash  $($exe.Name)" | Set-Content -Encoding ascii (Join-Path "dist" "$($exe.Name).sha256")
+          Write-Host "Package SHA-256: $packageHash"
+          Write-Host "EXE SHA-256: $exeHash"
+      - name: Upload portable folder package and checksums
         uses: actions/upload-artifact@v4
         with:
           name: 3eN-Inspector-${{ inputs.session_code || 'Generic' }}
           path: |
-            dist/*.exe
+            dist/*.zip
             dist/*.sha256
           if-no-files-found: error
           retention-days: 14
