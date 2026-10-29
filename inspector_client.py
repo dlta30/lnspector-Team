@@ -209,7 +209,7 @@ class InspectorApp(tk.Tk):
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على فحص أسماء العمليات ومسارات الملفات التنفيذية وبصمات SHA-256 ومداخل بدء التشغيل فقط. لن يُرسل التقرير إلا بعد موافقة منفصلة.",
+            text="أوافق على فحص أسماء العمليات ومسارات الملفات التنفيذية وبصمات SHA-256 ومداخل بدء التشغيل، وإرسال تقرير الفحص تلقائيًا إلى لوحة التحكم بعد اكتماله. لا يلتقط البرنامج صورة سطح المكتب.",
             variable=self.consent, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
@@ -236,9 +236,9 @@ class InspectorApp(tk.Tk):
                                              values=("يحتاج مراجعة", "نظيف مبدئيًا"), width=17)
         self.report_kind_box.pack(side="left", padx=(0, 9))
         self.report_kind_box.set("يحتاج مراجعة")
-        self.send_button = ttk.Button(controls, text="إرسال التقرير يدويًا", command=self.send_report, state="disabled")
+        self.send_button = ttk.Button(controls, text="إعادة إرسال التقرير", command=self.send_report, state="disabled")
         self.send_button.pack(side="left", padx=(0, 9))
-        tk.Label(controls, text="لا يُرسل شيء حتى تضغط زر الإرسال.",
+        tk.Label(controls, text="يُرسل التقرير تلقائيًا بعد الفحص؛ التصنيف النهائي من لوحة التحكم.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left", padx=5)
 
         tk.Label(self, text="3eN INSPECTOR TEAM    •    by ROITH    •    فحص ظاهر وبموافقة المستخدم",
@@ -250,7 +250,7 @@ class InspectorApp(tk.Tk):
         if not self.consent.get():
             messagebox.showwarning(APP, "Please confirm consent before starting.")
             return
-        if not messagebox.askyesno(APP, "بدء الفحص الظاهر؟ سيجمع أسماء العمليات ومسارات ملفاتها التنفيذية وبصمات SHA-256 ومداخل بدء تشغيل Windows فقط. لن تُرسل النتائج قبل موافقة منفصلة منك.\n\nStart the visible scan?"):
+        if not messagebox.askyesno(APP, "بدء الفحص الظاهر؟ سيجمع أسماء العمليات ومسارات ملفاتها التنفيذية وبصمات SHA-256 ومداخل بدء التشغيل، ثم يرسل تقرير الفحص تلقائيًا إلى لوحة التحكم. لا يلتقط البرنامج صورة سطح المكتب.\n\nStart the visible scan and automatically submit the report?"):
             return
         # Session-specific builds contain the session code and dashboard URL.
         # Never prompt the scanned person to enter either value.
@@ -310,15 +310,17 @@ class InspectorApp(tk.Tk):
         else:
             self.metric_state.set("COMPLETE")
             self.session_badge.configure(text="●  بانتظار الإرسال", bg="#332616", fg="#ffbd69")
-            self.status.set("اكتمل الفحص. اختر التصنيف ثم اضغط إرسال التقرير يدويًا.")
+            self.status.set("اكتمل الفحص. جارٍ إرسال التقرير تلقائيًا إلى لوحة التحكم…")
+            self.after(150, lambda: self.send_report(auto=True))
 
-    def send_report(self):
+    def send_report(self, auto=False):
         if not self.report:
             messagebox.showwarning(APP, "ابدأ الفحص أولًا.")
             return
-        if not messagebox.askyesno(APP, "هل تريد إرسال بيانات الفحص إلى لوحة التحكم وDiscord؟"):
+        if not auto and not messagebox.askyesno(APP, "هل تريد إعادة إرسال بيانات الفحص إلى لوحة التحكم؟"):
             return
-        label = "clean" if self.report_kind.get() == "نظيف مبدئيًا" else "review"
+        # Keep the initial status as review; the reviewer makes the final decision in the dashboard.
+        label = "review" if auto else ("clean" if self.report_kind.get() == "نظيف مبدئيًا" else "review")
         self.report["review_label"] = label
         self.report["review_label_ar"] = "نظيف مبدئيًا" if label == "clean" else "يحتاج مراجعة"
         self.send_button.configure(state="disabled")
@@ -338,14 +340,16 @@ class InspectorApp(tk.Tk):
             self.delivery_status = "sent"
             self.metric_state.set("SENT")
             self.session_badge.configure(text="●  تم الإرسال", bg="#142b28", fg="#62e0b0")
-            self.status.set("تم إرسال التقرير إلى لوحة التحكم.")
-            messagebox.showinfo(APP, "تم إرسال التقرير بنجاح.")
+            self.status.set("تم إرسال التقرير تلقائيًا إلى لوحة التحكم.")
+            if not auto:
+                messagebox.showinfo(APP, "تم إرسال التقرير بنجاح.")
         except Exception as exc:
             self.delivery_status = "failed: " + type(exc).__name__
-            self.send_button.configure(state="normal")
+            self.send_button.configure(state="normal", text="إعادة إرسال التقرير")
             self.session_badge.configure(text="●  تعذر الإرسال", bg="#351521", fg="#ff8093")
             self.status.set("تعذر الإرسال. تحقق من الاتصال والجلسة.")
-            messagebox.showerror(APP, "تعذر إرسال التقرير: " + str(exc))
+            if not auto:
+                messagebox.showerror(APP, "تعذر إرسال التقرير: " + str(exc))
 
     def export_pdf(self):
         if not self.report:
