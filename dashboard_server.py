@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS users (
  can_view INTEGER NOT NULL DEFAULT 1,
  can_ingest INTEGER NOT NULL DEFAULT 0,
  login_token TEXT,
+ created_by TEXT,
  created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS inspection_sessions (
@@ -167,7 +168,7 @@ def init_db():
           id BIGSERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
           role TEXT NOT NULL CHECK(role IN ('owner','deputy','team','inspector','viewer')),
           can_view INTEGER NOT NULL DEFAULT 1, can_ingest INTEGER NOT NULL DEFAULT 0,
-          login_token TEXT, created_at TEXT NOT NULL
+          login_token TEXT, created_by TEXT, created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS inspection_sessions (
           id BIGSERIAL PRIMARY KEY, code_hash TEXT UNIQUE NOT NULL, display_code TEXT NOT NULL,
@@ -188,6 +189,7 @@ def init_db():
             con.executescript(schema)
             # Safe additive migrations for older PostgreSQL deployments.
             con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS login_token TEXT")
+            con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by TEXT")
             con.execute("UPDATE users SET role='inspector' WHERE role='team'")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_label TEXT NOT NULL DEFAULT ''")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS downloaded_at TEXT")
@@ -206,6 +208,8 @@ def init_db():
         user_columns = {row["name"] for row in con.execute("PRAGMA table_info(users)").fetchall()}
         if "login_token" not in user_columns:
             con.execute("ALTER TABLE users ADD COLUMN login_token TEXT")
+        if "created_by" not in user_columns:
+            con.execute("ALTER TABLE users ADD COLUMN created_by TEXT")
         con.execute("UPDATE users SET role='inspector' WHERE role='team'")
         session_columns = {row["name"] for row in con.execute("PRAGMA table_info(inspection_sessions)").fetchall()}
         if "target_label" not in session_columns:
@@ -215,7 +219,7 @@ def init_db():
         schema_row = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
         if schema_row and "'deputy'" not in (schema_row['sql'] or ''):
             con.execute('ALTER TABLE users RENAME TO users_old')
-            con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','deputy','team','inspector','viewer')), can_view INTEGER NOT NULL DEFAULT 1, can_ingest INTEGER NOT NULL DEFAULT 0, login_token TEXT, created_at TEXT NOT NULL)")
+            con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','deputy','team','inspector','viewer')), can_view INTEGER NOT NULL DEFAULT 1, can_ingest INTEGER NOT NULL DEFAULT 0, login_token TEXT, created_by TEXT, created_at TEXT NOT NULL)")
             con.execute('INSERT INTO users(id,username,password_hash,role,can_view,can_ingest,created_at) SELECT id,username,password_hash,role,can_view,can_ingest,created_at FROM users_old')
             con.execute('DROP TABLE users_old')
         row = con.execute("SELECT id FROM users WHERE role='owner' LIMIT 1").fetchone()
@@ -1178,8 +1182,8 @@ def users_page():
             else:
                 try:
                     with db() as con:
-                        con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
-                                    (username,generate_password_hash(password),role,1 if request.form.get("can_view") else 0,1 if request.form.get("can_ingest") and role == "inspector" else 0,now()))
+                        con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
+                                    (username,generate_password_hash(password),role,1 if request.form.get("can_view") else 0,1 if request.form.get("can_ingest") and role == "inspector" else 0,actor["username"],now()))
                     log_action(actor["username"],"created staff account "+username)
                     flash("Staff account created.")
                 except sqlite3.IntegrityError: flash("That username already exists.")
@@ -1270,7 +1274,7 @@ def users_page():
       {% for u in users %}
         <article class="staff-item" data-staff-search="{{ (u['username'] ~ ' ' ~ u['role'])|e }}" style="border:1px solid #303443;border-radius:13px;background:#0b0d14;padding:17px">
           <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
-            <div><b style="font-size:16px">{{ u['username'] }}</b><div class="muted" style="margin-top:5px">تم إنشاء الحساب: {{ u['created_at'][:10] }}</div></div>
+            <div><b style="font-size:16px">{{ u['username'] }}</b><div class="muted" style="margin-top:5px">تم إنشاء الحساب: {{ u['created_at'][:10] }}<br><span class="muted">أنشأه: {{ u['created_by'] or 'النظام' }}</span></div></div>
             <span class="badge">{% if u['role']=='owner' %}مالك النظام{% elif u['role']=='deputy' %}نائب الإدارة{% elif u['role']=='team' %}موظف فحص{% elif u['role']=='inspector' %}موظف فحص{% elif u['role']=='viewer' %}مشاهدة فقط{% else %}{{ u['role'] }}{% endif %}</span>
           </div>
           {% if u['role']=='owner' %}
