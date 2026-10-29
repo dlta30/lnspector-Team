@@ -15,6 +15,7 @@ on:
     paths:
       - "dashboard_server.py"
       - "inspector_client.py"
+      - "inspector_team.py"
       - "requirements.txt"
       - ".github/workflows/build-windows-client.yml"
 
@@ -75,7 +76,7 @@ jobs:
         shell: pwsh
         run: |
           $package = Get-ChildItem "dist/*.zip" | Select-Object -First 1
-          $exe = Get-ChildItem "dist/*/*.exe" | Select-Object -First 1
+          $exe = Get-ChildItem "dist/*.exe" | Select-Object -First 1
           if (-not $package -or -not $exe) { throw "Package or EXE was not created." }
           $packageHash = (Get-FileHash $package.FullName -Algorithm SHA256).Hash.ToLower()
           "$packageHash  $($package.Name)" | Set-Content -Encoding ascii "$($package.FullName).sha256"
