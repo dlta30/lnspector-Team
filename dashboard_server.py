@@ -342,10 +342,30 @@ def notify_discord(report_id, session_code, computer, summary, report=None):
         req = urllib.request.Request(webhook, data=json.dumps(message, ensure_ascii=False).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
     try:
         with urllib.request.urlopen(req, timeout=20) as response:
-            return 200 <= response.status < 300
+            if 200 <= response.status < 300:
+                print('Discord report notification sent:', report_id, 'with_pdf=', 'files[0]' in body.decode('latin1', errors='ignore') if 'body' in locals() else False)
+                return True
+            print('Discord report upload returned HTTP', response.status)
     except Exception as exc:
-        print('Discord notification failed:', type(exc).__name__, str(exc)[:200])
-        return False
+        # Discord may reject the PDF multipart upload (size or embed validation).
+        # Retry the same report embed as JSON so the notification is not lost.
+        print('Discord report upload failed:', type(exc).__name__, str(exc)[:240])
+
+    try:
+        fallback_req = urllib.request.Request(
+            webhook,
+            data=json.dumps(message, ensure_ascii=False).encode('utf-8'),
+            headers={'Content-Type': 'application/json', 'User-Agent': '3eN-Inceptor-Dashboard'},
+            method='POST'
+        )
+        with urllib.request.urlopen(fallback_req, timeout=15) as response:
+            if 200 <= response.status < 300:
+                print('Discord report embed fallback sent:', report_id)
+                return True
+            print('Discord report embed fallback returned HTTP', response.status)
+    except Exception as exc:
+        print('Discord report embed fallback failed:', type(exc).__name__, str(exc)[:240])
+    return False
 
 def trigger_session_build(code):
     if not GITHUB_ACTIONS_TOKEN or not PUBLIC_DASHBOARD_URL.startswith("https://"):
