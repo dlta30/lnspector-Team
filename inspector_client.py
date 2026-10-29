@@ -194,28 +194,13 @@ class InspectorApp(tk.Tk):
         heading.pack(fill="x", pady=(0, 14))
         tk.Label(heading, text="فحص أمان الجهاز", bg=BG, fg=WHITE,
                  font=("Segoe UI", 23, "bold")).pack(anchor="w")
-        tk.Label(heading, text="ملخص سريع، حالة مباشرة، وسجل واضح لنتائج الفحص.",
+        tk.Label(heading, text="وافق على الفحص ثم ابدأ — ستظهر حالة التقدم هنا.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(4, 0))
 
-        # Summary cards
-        cards = tk.Frame(body, bg=BG)
-        cards.pack(fill="x", pady=(0, 14))
+        # Keep metric variables for report processing without displaying extra cards.
         self.metric_processes = tk.StringVar(value="—")
         self.metric_flags = tk.StringVar(value="—")
         self.metric_state = tk.StringVar(value="READY")
-        metric_defs = [
-            ("العمليات المفحوصة", self.metric_processes, RED, "RUNNING PROCESSES"),
-            ("مؤشرات للمراجعة", self.metric_flags, AMBER, "REVIEW INDICATORS"),
-            ("حالة الفحص", self.metric_state, GREEN, "SCAN STATUS"),
-        ]
-        for idx, (title, var, accent, subtitle) in enumerate(metric_defs):
-            card = tk.Frame(cards, bg=PANEL, highlightbackground=LINE, highlightthickness=1, padx=17, pady=13)
-            card.pack(side="left", fill="both", expand=True, padx=(0 if idx == 0 else 10, 0))
-            tk.Frame(card, bg=accent, height=3).pack(fill="x", pady=(0, 10))
-            tk.Label(card, text=subtitle, bg=PANEL, fg=accent, font=("Segoe UI", 7, "bold")).pack(anchor="w")
-            tk.Label(card, text=title, bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", pady=(5, 0))
-            tk.Label(card, textvariable=var, bg=PANEL, fg=WHITE if idx == 2 else accent,
-                     font=("Segoe UI", 20, "bold")).pack(anchor="w", pady=(3, 0))
 
         # Consent block
         consent_box = tk.Frame(body, bg=PANEL, highlightbackground=LINE, highlightthickness=1, padx=17, pady=12)
