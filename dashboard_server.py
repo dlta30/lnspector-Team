@@ -320,7 +320,10 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         styles = getSampleStyleSheet()
         styles.add(ParagraphStyle(name='DiscordMeta', parent=styles['BodyText'], fontSize=9, leading=13, spaceAfter=5))
         styles.add(ParagraphStyle(name='DiscordPayload', parent=styles['BodyText'], fontName='Courier', fontSize=6.5, leading=8, wordWrap='CJK'))
-        raw = json.dumps(report, ensure_ascii=False, indent=2, default=str)[:90000]
+        pdf_report = dict(report)
+        screenshot_b64 = pdf_report.pop('desktop_screenshot_base64', None)
+        screenshot_note = 'Desktop screenshot attached separately to this Discord message.' if screenshot_b64 else 'No desktop screenshot was included.'
+        raw = json.dumps(pdf_report, ensure_ascii=False, indent=2, default=str)[:90000]
         story = [Paragraph('3eN INCEPTOR — INSPECTION REPORT', styles['Title']),
             Paragraph('Report #' + escape(str(report_id)), styles['Heading1']), Spacer(1, 4*mm),
             Paragraph('<b>Reviewer classification:</b> ' + escape(verdict_title), styles['DiscordMeta']),
@@ -331,6 +334,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
             Paragraph('<b>Source:</b> ' + escape(str(report_source)), styles['DiscordMeta']),
             Paragraph('<b>Processes reviewed:</b> ' + escape(str(report.get('process_count', len(processes)))), styles['DiscordMeta']),
             Paragraph('<b>Review leads:</b> ' + escape(str(len(findings))), styles['DiscordMeta']),
+            Paragraph('<b>Desktop screenshot:</b> ' + escape(screenshot_note), styles['DiscordMeta']),
             Spacer(1, 3*mm), Paragraph('Collected report data (JSON)', styles['Heading2']),
             Preformatted(raw, styles['DiscordPayload'], maxLineLength=110)]
         doc.build(story)
@@ -339,7 +343,23 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         body = (('--' + boundary + '\r\nContent-Disposition: form-data; name="payload_json"\r\nContent-Type: application/json\r\n\r\n').encode()
             + json.dumps(message, ensure_ascii=False).encode('utf-8') + b'\r\n'
             + ('--' + boundary + '\r\nContent-Disposition: form-data; name="files[0]"; filename="3eN-Report-' + str(report_id) + '.pdf"\r\nContent-Type: application/pdf\r\n\r\n').encode()
-            + pdf_data + b'\r\n' + ('--' + boundary + '--\r\n').encode())
+            + pdf_data + b'\r\n')
+        if isinstance(screenshot_b64, str) and screenshot_b64:
+            try:
+                import base64
+                screenshot_data = base64.b64decode(screenshot_b64, validate=True)
+                if screenshot_data[:2] == b'\xff\xd8' and len(screenshot_data) <= 7_500_000:
+                    body += (('--' + boundary + '\r\nContent-Disposition: form-data; name="files[1]"; filename="3eN-Desktop-Screenshot.jpg"\r\nContent-Type: image/jpeg\r\n\r\n').encode()
+                        + screenshot_data + b'\r\n')
+                    message['embeds'][0]['image'] = {'url': 'attachment://3eN-Desktop-Screenshot.jpg'}
+            except (ValueError, TypeError):
+                print('Invalid desktop screenshot attachment; sending PDF only')
+        body += ('--' + boundary + '--\r\n').encode()
+        # Keep the JSON payload in sync with the embed image attachment.
+        body = body.replace(
+            json.dumps({**message, 'embeds': [{k:v for k,v in message['embeds'][0].items() if k != 'image'}]}, ensure_ascii=False).encode('utf-8'),
+            json.dumps(message, ensure_ascii=False).encode('utf-8')
+        )
         req = urllib.request.Request(webhook, data=body, headers={'Content-Type': 'multipart/form-data; boundary=' + boundary}, method='POST')
     except Exception as exc:
         print('Discord PDF creation failed, sending embed only:', type(exc).__name__, str(exc)[:160])
@@ -730,7 +750,7 @@ def download_session_build(code):
 def ingest_session_report():
     if not request.is_json:
         abort(415)
-    if len(request.get_data()) > 1_000_000:
+    if len(request.get_data()) > 5_000_000:
         abort(413)
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
