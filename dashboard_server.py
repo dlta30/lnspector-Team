@@ -239,7 +239,7 @@ def init_db():
         END;
         """)
 
-def notify_discord(report_id, session_code, computer, summary, report=None):
+def notify_discord(report_id, session_code, computer, summary, report=None, verdict="review"):
     webhook = os.environ.get('DISCORD_WEBHOOK_URL', '').strip().strip('"').strip("'")
     if not webhook.startswith(('https://discord.com/api/webhooks/', 'https://discordapp.com/api/webhooks/')):
         print('Discord notification skipped: DISCORD_WEBHOOK_URL is missing or invalid')
@@ -264,7 +264,10 @@ def notify_discord(report_id, session_code, computer, summary, report=None):
             target_name = row['target_label'] or target_name
     except Exception as exc:
         print('Discord metadata lookup failed:', type(exc).__name__)
+    verdict = verdict if verdict in ('hack', 'clean') else 'review'
+    verdict_title = {'hack': 'هاك / مشتبه (تصنيف المراجع)', 'clean': 'كلين / لم تظهر مؤشرات (تصنيف المراجع)', 'review': 'قيد المراجعة'}[verdict]
     fields = [
+        {'name': '🧑‍⚖️ تصنيف المراجع', 'value': verdict_title, 'inline': False},
         {'name': '👤 الاسم المعروف', 'value': safe(target_name, 180), 'inline': True},
         {'name': '🧾 رقم التقرير', 'value': safe(report_id, 80), 'inline': True},
         {'name': '🕒 وقت التقرير (UTC)', 'value': safe(report_time, 100), 'inline': True},
@@ -294,7 +297,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None):
         fields.append({'name': 'بقية العناصر', 'value': str(len(findings) - 5) + ' عناصر إضافية — راجع التقرير الكامل في لوحة التحكم.', 'inline': False})
 
     embed = {
-        'title': 'تم استلام تقرير فحص جديد',
+        'title': 'تقرير فحص جديد — ' + verdict_title,
         'description': safe(summary or 'تم استلام التقرير وحفظه في لوحة التحكم.', 900),
         'color': 16076879 if findings else 6475877,
         'fields': fields[:25],
@@ -320,6 +323,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None):
         raw = json.dumps(report, ensure_ascii=False, indent=2, default=str)[:90000]
         story = [Paragraph('3eN INCEPTOR — INSPECTION REPORT', styles['Title']),
             Paragraph('Report #' + escape(str(report_id)), styles['Heading1']), Spacer(1, 4*mm),
+            Paragraph('<b>Reviewer classification:</b> ' + escape(verdict_title), styles['DiscordMeta']),
             Paragraph('<b>Known name:</b> ' + escape(str(target_name)), styles['DiscordMeta']),
             Paragraph('<b>Device:</b> ' + escape(str(computer)), styles['DiscordMeta']),
             Paragraph('<b>Session:</b> ' + escape(str(session_code)), styles['DiscordMeta']),
@@ -937,6 +941,7 @@ def report_detail(report_id):
         status_detail = "لم تتطابق العمليات مع قائمة المؤشرات الحالية. النتيجة لا تضمن اكتشاف كل أنواع الهاكات."
     return page("""
     <style>
+      function chooseDiscordVerdict(form){const answer=window.prompt("اختر تصنيف المراجع قبل الإرسال:\n1 = هاك / مشتبه\n2 = كلين / لم تظهر مؤشرات\n\nاكتب 1 أو 2:");if(answer===null)return false;const v=answer.trim();if(v!=="1"&&v!=="2"){window.alert("اختيار غير صحيح. اكتب 1 للهاك أو 2 للكلين.");return false;}if(!window.confirm("تأكيد إرسال التقرير PDF إلى Discord بتصنيف: "+(v==="1"?"هاك / مشتبه":"كلين / لم تظهر مؤشرات")+"؟"))return false;form.querySelector('input[name="verdict"]').value=v==="1"?"hack":"clean";return true;}
       .report-hero{position:relative;isolation:isolate;overflow:hidden;padding:clamp(22px,4vw,38px);border-radius:22px;background:radial-gradient(ellipse at 95% 0%,#7f1d3b55,transparent 42%),linear-gradient(135deg,#17131f 0%,#10121c 55%,#0c0e14 100%);border:1px solid #ff49652b;margin-bottom:20px;box-shadow:0 18px 55px #0005}
       .report-hero:after{content:"3eN";position:absolute;z-index:-1;left:18px;bottom:-35px;font-size:clamp(76px,14vw,150px);font-weight:900;letter-spacing:-8px;color:#ffffff06;direction:ltr}
       .report-status{display:inline-flex;align-items:center;gap:8px;padding:10px 15px;border-radius:11px;font-weight:900;font-size:14px;margin:4px 0;border:1px solid transparent}
@@ -970,7 +975,7 @@ def report_detail(report_id):
         <a class="btn" href="{{ url_for('reports') }}">← رجوع للتقارير</a>
         <a class="btn" href="{{ url_for('report_pdf', report_id=r['id']) }}" style="background:linear-gradient(120deg,#e72f53,#8f1737);color:#fff;border-color:#ff5b78;font-weight:800">⬇ تنزيل التقرير PDF</a>
         <a class="btn" href="#process-list">▤ عرض بطاقات العمليات</a>
-        {% if actor_role == 'owner' %}<form method="post" action="{{ url_for('report_send_discord', report_id=r['id']) }}" style="display:inline;margin:0" onsubmit="return confirm('إرسال ملخص هذا التقرير وملف PDF إلى روم Discord المرتبط بالويب هوك؟');"><button class="btn" type="submit" style="background:linear-gradient(120deg,#5865F2,#404EED);color:#fff;border-color:#7984ff;font-weight:800">◈ إرسال في Discord</button></form>{% endif %}
+        {% if actor_role == 'owner' %}<form method="post" action="{{ url_for('report_send_discord', report_id=r['id']) }}" style="display:inline;margin:0" onsubmit="return chooseDiscordVerdict(this);"><input type="hidden" name="verdict" value=""><button class="btn" type="submit" style="background:linear-gradient(120deg,#5865F2,#404EED);color:#fff;border-color:#7984ff;font-weight:800">◈ إرسال في Discord</button></form>{% endif %}
       </div>
       <div class="report-hero">
         <div class="muted">3eN INCEPTOR · تقرير فحص #{{ r['id'] }}</div>
@@ -1029,7 +1034,8 @@ def report_send_discord(report_id):
         envelope = {"raw_result": str(r["payload"])}
     report_data = envelope.get("report") if isinstance(envelope.get("report"), dict) else envelope
     sent = notify_discord(
-        r["id"], r["session_id"], r["computer_label"], r["summary"], report_data
+        r["id"], r["session_id"], r["computer_label"], r["summary"], report_data,
+        verdict=request.form.get("verdict", "review").strip().lower()
     )
     if sent:
         log_action(actor["username"], "sent report #" + str(report_id) + " to Discord")
