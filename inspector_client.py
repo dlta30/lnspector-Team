@@ -233,9 +233,9 @@ class InspectorApp(tk.Tk):
         self.start_button.pack(side="left", padx=(0, 9))
         self.report_kind = tk.StringVar(value="review")
         self.report_kind_box = ttk.Combobox(controls, textvariable=self.report_kind, state="readonly",
-                                             values=("review", "clean"), width=17)
+                                             values=("يحتاج مراجعة", "نظيف مبدئيًا"), width=17)
         self.report_kind_box.pack(side="left", padx=(0, 9))
-        self.report_kind_box.set("review")
+        self.report_kind_box.set("يحتاج مراجعة")
         self.send_button = ttk.Button(controls, text="إرسال التقرير يدويًا", command=self.send_report, state="disabled")
         self.send_button.pack(side="left", padx=(0, 9))
         tk.Label(controls, text="لا يُرسل شيء حتى تضغط زر الإرسال.",
@@ -318,7 +318,7 @@ class InspectorApp(tk.Tk):
             return
         if not messagebox.askyesno(APP, "هل تريد إرسال بيانات الفحص إلى لوحة التحكم وDiscord؟"):
             return
-        label = "clean" if self.report_kind.get() == "clean" else "review"
+        label = "clean" if self.report_kind.get() == "نظيف مبدئيًا" else "review"
         self.report["review_label"] = label
         self.report["review_label_ar"] = "نظيف مبدئيًا" if label == "clean" else "يحتاج مراجعة"
         self.send_button.configure(state="disabled")
