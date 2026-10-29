@@ -339,27 +339,28 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
             Preformatted(raw, styles['DiscordPayload'], maxLineLength=110)]
         doc.build(story)
         pdf_data = pdf_buffer.getvalue()
+        import base64
+        screenshot_data = None
+        if isinstance(screenshot_b64, str) and screenshot_b64:
+            try:
+                decoded = base64.b64decode(screenshot_b64, validate=True)
+                if decoded[:2] == b'\xff\xd8' and len(decoded) <= 7_500_000:
+                    screenshot_data = decoded
+                else:
+                    print('Desktop screenshot rejected: invalid JPEG signature or size')
+            except (ValueError, TypeError):
+                print('Desktop screenshot rejected: invalid base64 data')
+        if screenshot_data:
+            message['embeds'][0]['image'] = {'url': 'attachment://3eN-Desktop-Screenshot.jpg'}
         boundary = '----3eNReport' + str(report_id)
         body = (('--' + boundary + '\r\nContent-Disposition: form-data; name="payload_json"\r\nContent-Type: application/json\r\n\r\n').encode()
             + json.dumps(message, ensure_ascii=False).encode('utf-8') + b'\r\n'
             + ('--' + boundary + '\r\nContent-Disposition: form-data; name="files[0]"; filename="3eN-Report-' + str(report_id) + '.pdf"\r\nContent-Type: application/pdf\r\n\r\n').encode()
             + pdf_data + b'\r\n')
-        if isinstance(screenshot_b64, str) and screenshot_b64:
-            try:
-                import base64
-                screenshot_data = base64.b64decode(screenshot_b64, validate=True)
-                if screenshot_data[:2] == b'\xff\xd8' and len(screenshot_data) <= 7_500_000:
-                    body += (('--' + boundary + '\r\nContent-Disposition: form-data; name="files[1]"; filename="3eN-Desktop-Screenshot.jpg"\r\nContent-Type: image/jpeg\r\n\r\n').encode()
-                        + screenshot_data + b'\r\n')
-                    message['embeds'][0]['image'] = {'url': 'attachment://3eN-Desktop-Screenshot.jpg'}
-            except (ValueError, TypeError):
-                print('Invalid desktop screenshot attachment; sending PDF only')
+        if screenshot_data:
+            body += (('--' + boundary + '\r\nContent-Disposition: form-data; name="files[1]"; filename="3eN-Desktop-Screenshot.jpg"\r\nContent-Type: image/jpeg\r\n\r\n').encode()
+                + screenshot_data + b'\r\n')
         body += ('--' + boundary + '--\r\n').encode()
-        # Keep the JSON payload in sync with the embed image attachment.
-        body = body.replace(
-            json.dumps({**message, 'embeds': [{k:v for k,v in message['embeds'][0].items() if k != 'image'}]}, ensure_ascii=False).encode('utf-8'),
-            json.dumps(message, ensure_ascii=False).encode('utf-8')
-        )
         req = urllib.request.Request(webhook, data=body, headers={'Content-Type': 'multipart/form-data; boundary=' + boundary}, method='POST')
     except Exception as exc:
         print('Discord PDF creation failed, sending embed only:', type(exc).__name__, str(exc)[:160])
