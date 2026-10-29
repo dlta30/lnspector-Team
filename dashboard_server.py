@@ -239,7 +239,7 @@ def init_db():
         END;
         """)
 
-def notify_discord(report_id, session_code, computer, summary, report=None, verdict="review"):
+def notify_discord(report_id, session_code, computer, summary, report=None, verdict="review", reason=""):
     webhook = os.environ.get('DISCORD_WEBHOOK_URL', '').strip().strip('"').strip("'")
     if not webhook.startswith(('https://discord.com/api/webhooks/', 'https://discordapp.com/api/webhooks/')):
         print('Discord notification skipped: DISCORD_WEBHOOK_URL is missing or invalid')
@@ -265,9 +265,12 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
     except Exception as exc:
         print('Discord metadata lookup failed:', type(exc).__name__)
     verdict = verdict if verdict in ('hack', 'clean') else 'review'
-    verdict_title = {'hack': 'هاك / مشتبه (تصنيف المراجع)', 'clean': 'كلين / لم تظهر مؤشرات (تصنيف المراجع)', 'review': 'قيد المراجعة'}[verdict]
+    verdict_title = {'hack': '🚨 هاك / مشتبه — قرار المراجع', 'clean': '✅ كلين — قرار المراجع', 'review': '🟡 قيد المراجعة'}[verdict]
+    verdict_color = {'hack': 0xE74C3C, 'clean': 0x2ECC71, 'review': 0xF1C40F}[verdict]
+    reason = safe(reason.strip(), 900) if isinstance(reason, str) and reason.strip() else 'لم يُذكر سبب.'
     fields = [
-        {'name': '🧑‍⚖️ تصنيف المراجع', 'value': verdict_title, 'inline': False},
+        {'name': '🧑‍⚖️ التصنيف النهائي', 'value': verdict_title, 'inline': False},
+        {'name': '📝 سبب التصنيف', 'value': reason, 'inline': False},
         {'name': '👤 الاسم المعروف', 'value': safe(target_name, 180), 'inline': True},
         {'name': '🧾 رقم التقرير', 'value': safe(report_id, 80), 'inline': True},
         {'name': '🕒 وقت التقرير (UTC)', 'value': safe(report_time, 100), 'inline': True},
@@ -297,9 +300,9 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         fields.append({'name': 'بقية العناصر', 'value': str(len(findings) - 5) + ' عناصر إضافية — راجع التقرير الكامل في لوحة التحكم.', 'inline': False})
 
     embed = {
-        'title': 'تقرير فحص جديد — ' + verdict_title,
-        'description': safe(summary or 'تم استلام التقرير وحفظه في لوحة التحكم.', 900),
-        'color': 16076879 if findings else 6475877,
+        'title': verdict_title + ' • تقرير الفحص #' + safe(report_id, 50),
+        'description': (('اعتمد المراجع تصنيف «كلين». هذا قرار مراجعة يدوي ولا يضمن خلو الجهاز من كل المخاطر.\n\n' if verdict == 'clean' else 'اعتمد المراجع تصنيف «هاك / مشتبه». المؤشرات تحتاج تحققًا يدويًا ولا تُعد وحدها إثباتًا قاطعًا.\n\n' if verdict == 'hack' else 'التقرير بانتظار قرار المراجع.\n\n') + safe(summary or 'تم استلام التقرير وحفظه في لوحة التحكم.', 700)),
+        'color': verdict_color,
         'fields': fields[:25],
         'footer': {'text': '3eN INSPECTOR TEAM • مؤشرات الأسماء تحتاج مراجعة يدوية ولا تثبت وحدها وجود هاك.'}
     }
@@ -327,6 +330,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         story = [Paragraph('3eN INCEPTOR — INSPECTION REPORT', styles['Title']),
             Paragraph('Report #' + escape(str(report_id)), styles['Heading1']), Spacer(1, 4*mm),
             Paragraph('<b>Reviewer classification:</b> ' + escape(verdict_title), styles['DiscordMeta']),
+            Paragraph('<b>Reviewer reason:</b> ' + escape(reason), styles['DiscordMeta']),
             Paragraph('<b>Known name:</b> ' + escape(str(target_name)), styles['DiscordMeta']),
             Paragraph('<b>Device:</b> ' + escape(str(computer)), styles['DiscordMeta']),
             Paragraph('<b>Session:</b> ' + escape(str(session_code)), styles['DiscordMeta']),
@@ -759,7 +763,8 @@ def download_session_build(code):
 def ingest_session_report():
     if not request.is_json:
         abort(415)
-    if len(request.get_data()) > 5_000_000:
+    # The optional desktop screenshot is base64-encoded inside this JSON request.
+    if len(request.get_data()) > 8_000_000:
         abort(413)
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
@@ -1010,14 +1015,14 @@ def report_detail(report_id):
       @media(max-width:600px){.report-hero{padding:20px;border-radius:16px}.report-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.report-metric{padding:14px;min-width:0}.report-metric strong{font-size:26px}}
     </style>
     <script>
-      function chooseDiscordVerdict(form){const nl=String.fromCharCode(10);const answer=window.prompt("اختر تصنيف المراجع قبل الإرسال:"+nl+"1 = هاك / مشتبه"+nl+"2 = كلين / لم تظهر مؤشرات"+nl+nl+"اكتب 1 أو 2:");if(answer===null)return false;const v=answer.trim();if(v!=="1"&&v!=="2"){window.alert("اختيار غير صحيح. اكتب 1 للهاك أو 2 للكلين.");return false;}if(!window.confirm("تأكيد إرسال التقرير PDF إلى Discord بتصنيف: "+(v==="1"?"هاك / مشتبه":"كلين / لم تظهر مؤشرات")+"؟"))return false;form.querySelector("input[name='verdict']").value=v==="1"?"hack":"clean";return true;}
+      function chooseDiscordVerdict(form){const nl=String.fromCharCode(10);const answer=window.prompt("اختر تصنيف المراجع:"+nl+"1 = هاك / مشتبه"+nl+"2 = كلين"+nl+nl+"اكتب 1 أو 2:");if(answer===null)return false;const v=answer.trim();if(v!=="1"&&v!=="2"){window.alert("اختيار غير صحيح. اكتب 1 للهاك أو 2 للكلين.");return false;}const reason=window.prompt("اكتب سبب اختيار "+(v==="1"?"هاك / مشتبه":"كلين")+" (مطلوب):");if(reason===null)return false;if(!reason.trim()){window.alert("لازم تكتب سبب التصنيف قبل الإرسال.");return false;}if(!window.confirm("تأكيد إرسال التقرير مع PDF وصورة سطح المكتب (إن وُجدت) وتصنيف "+(v==="1"?"هاك / مشتبه":"كلين")+"؟"))return false;form.querySelector("input[name='verdict']").value=v==="1"?"hack":"clean";form.querySelector("input[name='reason']").value=reason.trim();return true;}
     </script>
     <div class="card">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
         <a class="btn" href="{{ url_for('reports') }}">← رجوع للتقارير</a>
         <a class="btn" href="{{ url_for('report_pdf', report_id=r['id']) }}" style="background:linear-gradient(120deg,#e72f53,#8f1737);color:#fff;border-color:#ff5b78;font-weight:800">⬇ تنزيل التقرير PDF</a>
         <a class="btn" href="#process-list">▤ عرض بطاقات العمليات</a>
-        {% if actor_role == 'owner' %}<form method="post" action="{{ url_for('report_send_discord', report_id=r['id']) }}" style="display:inline;margin:0" onsubmit="return chooseDiscordVerdict(this);"><input type="hidden" name="verdict" value=""><button class="btn" type="submit" style="background:linear-gradient(120deg,#5865F2,#404EED);color:#fff;border-color:#7984ff;font-weight:800">◈ إرسال في Discord</button></form>{% endif %}
+        {% if actor_role == 'owner' %}<form method="post" action="{{ url_for('report_send_discord', report_id=r['id']) }}" style="display:inline;margin:0" onsubmit="return chooseDiscordVerdict(this);"><input type="hidden" name="verdict" value=""><input type="hidden" name="reason" value=""><button class="btn" type="submit" style="background:linear-gradient(120deg,#5865F2,#404EED);color:#fff;border-color:#7984ff;font-weight:800">◈ إرسال في Discord</button></form>{% endif %}
       </div>
       <div class="report-hero">
         <div class="muted">3eN INCEPTOR · تقرير فحص #{{ r['id'] }}</div>
@@ -1077,7 +1082,8 @@ def report_send_discord(report_id):
     report_data = envelope.get("report") if isinstance(envelope.get("report"), dict) else envelope
     sent = notify_discord(
         r["id"], r["session_id"], r["computer_label"], r["summary"], report_data,
-        verdict=request.form.get("verdict", "review").strip().lower()
+        verdict=request.form.get("verdict", "review").strip().lower(),
+        reason=request.form.get("reason", "").strip()
     )
     if sent:
         log_action(actor["username"], "sent report #" + str(report_id) + " to Discord")
