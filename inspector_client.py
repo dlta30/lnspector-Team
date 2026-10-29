@@ -4,7 +4,9 @@ Scans running process metadata only (name, executable path, SHA-256 where readab
 It does not read personal documents, browser data, credentials, or memory.
 Run: python inspector_client.py
 """
+import base64
 import hashlib
+import io
 import json
 import os
 import platform
@@ -209,8 +211,14 @@ class InspectorApp(tk.Tk):
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على فحص أسماء العمليات ومسارات الملفات التنفيذية وبصمات SHA-256 ومداخل بدء التشغيل، وإرسال تقرير الفحص تلقائيًا إلى لوحة التحكم بعد اكتماله. لا يلتقط البرنامج صورة سطح المكتب.",
+            text="أوافق على فحص أسماء العمليات ومسارات الملفات التنفيذية وبصمات SHA-256 ومداخل بدء التشغيل، وإرسال تقرير الفحص تلقائيًا إلى لوحة التحكم بعد اكتماله.",
             variable=self.consent, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
+            activebackground=PANEL, activeforeground=WHITE, wraplength=900,
+            font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
+        self.screenshot_consent = tk.BooleanVar(value=False)
+        tk.Checkbutton(consent_box,
+            text="اختياري ومنفصل: أوافق على التقاط صورة كاملة لسطح المكتب الحالي وإرفاقها بتقرير Discord عند إرسال التقرير. قد تظهر بالصورة نوافذ أو معلومات خاصة؛ لن تُلتقط الصورة ما لم أحدد هذا الخيار.",
+            variable=self.screenshot_consent, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
 
@@ -243,7 +251,8 @@ class InspectorApp(tk.Tk):
         if not self.consent.get():
             messagebox.showwarning(APP, "Please confirm consent before starting.")
             return
-        if not messagebox.askyesno(APP, "بدء الفحص الظاهر؟ سيجمع أسماء العمليات ومسارات ملفاتها التنفيذية وبصمات SHA-256 ومداخل بدء التشغيل، ثم يرسل تقرير الفحص تلقائيًا إلى لوحة التحكم. لا يلتقط البرنامج صورة سطح المكتب.\n\nStart the visible scan and automatically submit the report?"):
+        screenshot_note = "\\nتم اختيار التقاط صورة سطح المكتب وإرفاقها بالتقرير." if self.screenshot_consent.get() else "\\nلن تُلتقط أي صورة لسطح المكتب."
+        if not messagebox.askyesno(APP, "بدء الفحص الظاهر؟ سيجمع أسماء العمليات ومسارات ملفاتها التنفيذية وبصمات SHA-256 ومداخل بدء التشغيل، ثم يرسل تقرير الفحص تلقائيًا إلى لوحة التحكم." + screenshot_note + "\\n\\nStart the visible scan and automatically submit the report?"):
             return
         # Session-specific builds contain the session code and dashboard URL.
         # Never prompt the scanned person to enter either value.
@@ -265,6 +274,24 @@ class InspectorApp(tk.Tk):
             processes = collect_processes(self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
             startup_entries = collect_startup_entries()
+            screenshot_b64 = None
+            if self.screenshot_consent.get():
+                try:
+                    from PIL import ImageGrab
+                    shot = ImageGrab.grab(all_screens=True)
+                    buffer = io.BytesIO()
+                    shot.convert("RGB").save(buffer, format="JPEG", quality=55, optimize=True)
+                    screenshot_bytes = buffer.getvalue()
+                    if len(screenshot_bytes) > 3_500_000:
+                        buffer = io.BytesIO()
+                        shot.convert("RGB").save(buffer, format="JPEG", quality=35, optimize=True)
+                        screenshot_bytes = buffer.getvalue()
+                    if len(screenshot_bytes) <= 3_500_000:
+                        screenshot_b64 = base64.b64encode(screenshot_bytes).decode("ascii")
+                    else:
+                        self.after(0, lambda: messagebox.showwarning(APP, "تعذر إرفاق صورة سطح المكتب لأن حجمها كبير جدًا. سيُرسل التقرير دون صورة."))
+                except Exception as shot_exc:
+                    self.after(0, lambda: messagebox.showwarning(APP, "تعذر التقاط صورة سطح المكتب. سيُرسل التقرير دون صورة."))
             self.report = {
                 "product": APP,
                 "signature": "3eN INSPECTOR TEAM",
@@ -278,6 +305,8 @@ class InspectorApp(tk.Tk):
                 "startup_entries": startup_entries,
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
                 "note": "Name-based indicators are not proof of cheating. Manual review is required.",
+                "desktop_screenshot_base64": screenshot_b64,
+                "desktop_screenshot_included": bool(screenshot_b64),
                 "processes": processes,
             }
             self.delivery_status = "pending"
