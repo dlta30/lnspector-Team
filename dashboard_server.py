@@ -309,6 +309,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
     }
     pdf_data = None
     screenshot_data = None
+    body = None
     try:
         from io import BytesIO
         from xml.sax.saxutils import escape
@@ -370,9 +371,12 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
     try:
         with urllib.request.urlopen(req, timeout=25) as response:
             if 200 <= response.status < 300:
-                print('Discord report sent:', report_id, 'pdf=True', 'screenshot=' + str(bool(screenshot_data)))
-                return True
-            print('Discord report upload returned HTTP', response.status)
+                if isinstance(body, bytes) and isinstance(pdf_data, bytes) and pdf_data:
+                    print('Discord report sent:', report_id, 'pdf=True', 'screenshot=' + str(bool(screenshot_data)))
+                    return True
+                print('Discord sent embed only because PDF generation failed:', report_id)
+            else:
+                print('Discord report upload returned HTTP', response.status)
     except Exception as exc:
         print('Discord combined attachment upload failed:', type(exc).__name__, str(exc)[:240])
 
