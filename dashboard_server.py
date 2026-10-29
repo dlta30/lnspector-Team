@@ -594,7 +594,8 @@ def ingest_session_report():
 @app.route("/report")
 @login_required
 def reports():
-    if current_user()["role"] != "owner":
+    actor = current_user()
+    if actor["role"] != "owner" and not actor["can_view"]:
         abort(403)
     with db() as con:
         rows=con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,r.submitted_by,s.target_label,r.payload FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id ORDER BY r.id DESC").fetchall()
@@ -740,7 +741,8 @@ def delete_report(report_id):
 @app.route("/reports/<int:report_id>")
 @login_required
 def report_detail(report_id):
-    if current_user()["role"] != "owner":
+    actor = current_user()
+    if actor["role"] != "owner" and not actor["can_view"]:
         abort(403)
     with db() as con:
         r=con.execute("SELECT * FROM reports WHERE id=?",(report_id,)).fetchone()
@@ -855,7 +857,7 @@ def report_detail(report_id):
 @login_required
 def report_pdf(report_id):
     actor = current_user()
-    if actor["role"] != "owner":
+    if actor["role"] != "owner" and not actor["can_view"]:
         abort(403)
     with db() as con:
         r = con.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
