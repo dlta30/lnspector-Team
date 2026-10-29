@@ -1284,19 +1284,19 @@ def users_page():
             <form method="post" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end">
               <input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <div><label>دور الموظف</label><select name="role">
-                {% if actor_role == 'owner' %}<option value="owner" {% if u['role']=='owner' %}selected{% endif %}>Inspect Manager</option><option value="deputy" {% if u['role']=='deputy' %}selected{% endif %}>Assistant Inspect</option>{% endif %}
+                <option value="owner" {% if u['role']=='owner' %}selected{% endif %}>Inspect Manager</option><option value="deputy" {% if u['role']=='deputy' %}selected{% endif %}>Assistant Inspect</option>
                 <option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>Inspect Team</option>
-                {% if actor_role == 'owner' %}<option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>مشاهدة فقط</option>{% endif %}
+                <option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>مشاهدة فقط</option>
               </select></div>
               <div style="display:flex;flex-direction:column;gap:10px"><label style="display:flex;gap:8px;align-items:center"><input style="width:auto;margin:0" type="checkbox" name="can_view" {% if u['can_view'] %}checked{% endif %}> مشاهدة التقارير</label><label style="display:flex;gap:8px;align-items:center"><input style="width:auto;margin:0" type="checkbox" name="can_ingest" {% if u['can_ingest'] %}checked{% endif %}> استقبال التقارير</label></div>
               <button class="btn">حفظ التغييرات</button>
             </form>
+            {% endif %}
             {% if actor_role in ('owner','deputy') and u['username'] != actor_username and (actor_role == 'owner' or u['role'] in ('inspector','viewer')) %}
             <form method="post" style="margin-top:12px" onsubmit="return confirm('تأكيد حذف حساب ' + {{ u['username']|tojson }} + ' نهائيًا؟');">
               <input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <button class="btn" style="background:#6d1728;border-color:#b82e49;color:#fff">🗑 حذف الحساب</button>
             </form>
-            {% endif %}
             {% endif %}
           {% endif %}
         </article>
