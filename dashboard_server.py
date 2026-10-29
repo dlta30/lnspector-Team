@@ -364,7 +364,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
             body += (('--' + boundary + '\r\nContent-Disposition: form-data; name="files[1]"; filename="3eN-Desktop-Screenshot.jpg"\r\nContent-Type: image/jpeg\r\n\r\n').encode()
                 + screenshot_data + b'\r\n')
         body += ('--' + boundary + '--\r\n').encode()
-        req = urllib.request.Request(webhook, data=body, headers={'Content-Type': 'multipart/form-data; boundary=' + boundary}, method='POST')
+        req = urllib.request.Request(webhook, data=body, headers={'Content-Type': 'multipart/form-data; boundary=' + boundary, 'Accept': 'application/json', 'User-Agent': 'DiscordBot (https://github.com/dlta30/lnspector-Team, 1.0)'}, method='POST')
     except Exception as exc:
         # Strict all-or-nothing: never send a partial embed if the PDF could not be built.
         print('Discord PDF creation failed; nothing was sent:', type(exc).__name__, str(exc)[:240])
@@ -385,7 +385,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
             detail = exc.read(1200).decode('utf-8', errors='replace')
         except Exception:
             detail = ''
-        print('Discord webhook HTTP error:', exc.code, detail[:1200])
+        print('Discord webhook HTTP error:', exc.code, 'server=' + str(exc.headers.get('Server', 'unknown')), 'cf-ray=' + str(exc.headers.get('CF-RAY', 'none')), 'content-type=' + str(exc.headers.get('Content-Type', 'unknown')), 'body=' + detail[:1200])
     except Exception as exc:
         print('Discord combined attachment upload failed:', type(exc).__name__, str(exc)[:240])
 
@@ -545,7 +545,7 @@ def discord_test():
             req = urllib.request.Request(
                 webhook,
                 data=json.dumps(test_message, ensure_ascii=False).encode("utf-8"),
-                headers={"Content-Type": "application/json", "User-Agent": "3eN-Inceptor-Dashboard"},
+                headers={"Content-Type": "application/json", "Accept": "application/json", "User-Agent": "DiscordBot (https://github.com/dlta30/lnspector-Team, 1.0)"},
                 method="POST"
             )
             try:
@@ -576,7 +576,7 @@ def discord_test():
                 else:
                     result_detail = "رد Discord: " + (discord_message[:300] or "تعذر تحديد السبب من الرد.")
                 result_color = "#ff7688"
-                print("Discord webhook test failed: HTTP", exc.code, discord_message[:200])
+                print("Discord webhook test failed: HTTP", exc.code, "server=" + str(exc.headers.get("Server", "unknown")), "cf-ray=" + str(exc.headers.get("CF-RAY", "none")), "content-type=" + str(exc.headers.get("Content-Type", "unknown")), "body=" + body[:500])
                 log_action(actor["username"], "Discord webhook test failed: HTTP " + str(exc.code))
             except Exception as exc:
                 result_title = "❌ تعذر الاتصال بـ Discord"
