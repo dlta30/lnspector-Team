@@ -951,7 +951,7 @@ def report_detail(report_id):
         status_detail = "لم تتطابق العمليات مع قائمة المؤشرات الحالية. النتيجة لا تضمن اكتشاف كل أنواع الهاكات."
     return page("""
     <style>
-      function chooseDiscordVerdict(form){const nl=String.fromCharCode(10);const answer=window.prompt("اختر تصنيف المراجع قبل الإرسال:"+nl+"1 = هاك / مشتبه"+nl+"2 = كلين / لم تظهر مؤشرات"+nl+nl+"اكتب 1 أو 2:");if(answer===null)return false;const v=answer.trim();if(v!=="1"&&v!=="2"){window.alert("اختيار غير صحيح. اكتب 1 للهاك أو 2 للكلين.");return false;}if(!window.confirm("تأكيد إرسال التقرير PDF إلى Discord بتصنيف: "+(v==="1"?"هاك / مشتبه":"كلين / لم تظهر مؤشرات")+"؟"))return false;form.querySelector("input[name='verdict']").value=v==="1"?"hack":"clean";return true;}
+
       .report-hero{position:relative;isolation:isolate;overflow:hidden;padding:clamp(22px,4vw,38px);border-radius:22px;background:radial-gradient(ellipse at 95% 0%,#7f1d3b55,transparent 42%),linear-gradient(135deg,#17131f 0%,#10121c 55%,#0c0e14 100%);border:1px solid #ff49652b;margin-bottom:20px;box-shadow:0 18px 55px #0005}
       .report-hero:after{content:"3eN";position:absolute;z-index:-1;left:18px;bottom:-35px;font-size:clamp(76px,14vw,150px);font-weight:900;letter-spacing:-8px;color:#ffffff06;direction:ltr}
       .report-status{display:inline-flex;align-items:center;gap:8px;padding:10px 15px;border-radius:11px;font-weight:900;font-size:14px;margin:4px 0;border:1px solid transparent}
@@ -980,6 +980,9 @@ def report_detail(report_id):
       .card:has(.report-hero)>.card{background:linear-gradient(145deg,#151722,#0e1017);border:1px solid #ffffff12;border-radius:18px}
       @media(max-width:600px){.report-hero{padding:20px;border-radius:16px}.report-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.report-metric{padding:14px;min-width:0}.report-metric strong{font-size:26px}}
     </style>
+    <script>
+      function chooseDiscordVerdict(form){const nl=String.fromCharCode(10);const answer=window.prompt("اختر تصنيف المراجع قبل الإرسال:"+nl+"1 = هاك / مشتبه"+nl+"2 = كلين / لم تظهر مؤشرات"+nl+nl+"اكتب 1 أو 2:");if(answer===null)return false;const v=answer.trim();if(v!=="1"&&v!=="2"){window.alert("اختيار غير صحيح. اكتب 1 للهاك أو 2 للكلين.");return false;}if(!window.confirm("تأكيد إرسال التقرير PDF إلى Discord بتصنيف: "+(v==="1"?"هاك / مشتبه":"كلين / لم تظهر مؤشرات")+"؟"))return false;form.querySelector("input[name='verdict']").value=v==="1"?"hack":"clean";return true;}
+    </script>
     <div class="card">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
         <a class="btn" href="{{ url_for('reports') }}">← رجوع للتقارير</a>
