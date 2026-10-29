@@ -705,7 +705,7 @@ def sessions_page():
         log_action(user["username"], "created inspection session for " + target_label)
         build_started, build_message = trigger_session_build(code)
         log_action(user["username"], "requested session-specific client build for " + code)
-        return page("""<div class="card"><div class="eyebrow">3eN INCEPTOR · SESSION READY</div><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p>كود الجلسة</p><div class="metric" style="font-size:42px;letter-spacing:5px">{{ code }}</div><p class="muted">صالح لمدة ساعتين ويقبل تقريراً واحداً. شارك الملف مع صاحب الجهاز فقط وبعد موافقته.</p><div class="notice"><b>ملف الفحص الخاص بهذه الجلسة</b><p id="build-state">{{ build_message }}</p><a id="download-build" class="btn" style="display:none" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل حزمة الفحص (ZIP)</a><p class="muted">بعد التحميل، فك ضغط ZIP ثم شغّل 3eN-Inspector-{{ code }}.exe مع إبقاء مجلد الملفات المرفق بجانبه.</p></div><button class="btn" type="button" onclick="navigator.clipboard.writeText('{{ code }}')">نسخ كود الجلسة</button> <a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div><script>
+        return page("""<div class="card"><div class="eyebrow">3eN INCEPTOR · SESSION READY</div><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p>كود الجلسة</p><div class="metric" style="font-size:42px;letter-spacing:5px">{{ code }}</div><p class="muted">صالح لمدة ساعتين ويقبل تقريراً واحداً. شارك الملف مع صاحب الجهاز فقط وبعد موافقته.</p><div class="notice"><b>ملف الفحص الخاص بهذه الجلسة</b><p id="build-state">{{ build_message }}</p><a id="download-build" class="btn" style="display:none" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل ملف الفحص (EXE)</a><p class="muted">بعد التحميل، شغّل ملف 3eN-Inspector-{{ code }}.exe مباشرة بعد موافقة صاحب الجهاز.</p></div><button class="btn" type="button" onclick="navigator.clipboard.writeText('{{ code }}')">نسخ كود الجلسة</button> <a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div><script>
 const state=document.getElementById('build-state'), download=document.getElementById('download-build');
 async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}');const d=await r.json();state.textContent=d.message||({'ready':'اكتمل تجهيز الملف.','building':'يتم تجهيز الملف المخصص…','checking':'جارٍ التحقق من البناء…','failed':'فشل بناء الملف. راجع إعدادات GitHub Actions.','needs_setup':'يلزم ضبط GITHUB_ACTIONS_TOKEN وPUBLIC_DASHBOARD_URL في Render.'}[d.state]||'جارٍ تجهيز الملف…');if(d.state==='ready'){download.style.display='inline-block';state.textContent='اكتمل تجهيز الملف المخصص لهذه الجلسة.';return;}if(d.state==='failed'||d.state==='needs_setup'||d.state==='missing'||d.state==='api_error')return;}catch(e){state.textContent='تعذر الاتصال بحالة البناء. أعد تحميل الصفحة للمحاولة مجدداً.';return;}setTimeout(checkBuild,10000)}checkBuild();
 </script>""", code=code, target_label=target_label, build_message=("بدأنا طلب بناء الملف المخصص." if build_started else build_message))
@@ -752,22 +752,30 @@ def session_build_status(code):
 def download_session_build(code):
     if current_user()["role"] not in ("owner", "deputy", "inspector"): abort(403)
     if not GITHUB_ACTIONS_TOKEN: abort(503, "GitHub build token is not configured.")
+    code = code.upper()
     with db() as con:
-        row = con.execute("SELECT id FROM inspection_sessions WHERE display_code=?", (code.upper(),)).fetchone()
+        row = con.execute("SELECT id,created_at FROM inspection_sessions WHERE display_code=?", (code,)).fetchone()
     if not row: abort(404)
     try:
-        # Deliver only the EXE compiled with this exact session code and dashboard URL.
-        runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?event=workflow_dispatch&per_page=30") or {}
+        # The workflow uploads a standalone EXE plus a SHA-256 file, not a nested ZIP.
+        runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?event=workflow_dispatch&per_page=50") or {}
+        session_created = datetime.fromisoformat(row["created_at"].replace("Z","+00:00"))
         artifact = None
         for run in runs.get("workflow_runs", []):
+            run_created = run.get("created_at")
+            if not run_created or datetime.fromisoformat(run_created.replace("Z","+00:00")) < session_created:
+                continue
+            # The workflow_dispatch input is not exposed as a reliable field in every API response.
             if run.get("status") != "completed" or run.get("conclusion") != "success":
                 continue
             arts = github_api_json("/actions/runs/" + str(run["id"]) + "/artifacts") or {}
-            artifact = next((a for a in arts.get("artifacts", []) if a.get("name") == "3eN-Inspector-" + code.upper() and not a.get("expired")), None)
-            if artifact:
+            candidate = next((a for a in arts.get("artifacts", [])
+                              if a.get("name") == "3eN-Inspector-" + code and not a.get("expired")), None)
+            if candidate:
+                artifact = candidate
                 break
         if not artifact:
-            abort(503, "لا توجد نسخة عامة جاهزة بعد. شغّل بناء GitHub Actions مرة واحدة.")
+            abort(503, "لم يتم العثور على ملف EXE جاهز لهذه الجلسة. انتظر اكتمال البناء ثم أعد المحاولة.")
         req = urllib.request.Request(artifact["archive_download_url"], headers={"Accept":"application/vnd.github+json","Authorization":"Bearer "+GITHUB_ACTIONS_TOKEN,"X-GitHub-Api-Version":"2022-11-28","User-Agent":"3eN-Inceptor-Dashboard"})
         class _NoRedirect(urllib.request.HTTPRedirectHandler):
             def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -785,28 +793,30 @@ def download_session_build(code):
             with urllib.request.urlopen(urllib.request.Request(signed_url, headers={"User-Agent":"3eN-Inceptor-Dashboard"}), timeout=90) as response:
                 data = response.read()
         if not data or not data.startswith(b"PK"):
-            raise RuntimeError("Downloaded artifact was empty or not a ZIP archive")
+            raise RuntimeError("Downloaded GitHub artifact was empty or not a ZIP archive")
         from io import BytesIO
         import zipfile
         from flask import send_file
         with zipfile.ZipFile(BytesIO(data)) as archive:
-            package_names = [name for name in archive.namelist()
-                             if name.lower().endswith(".zip") and not name.lower().endswith(".sha256")
-                             and not name.startswith("__MACOSX/")]
-            if not package_names:
-                raise RuntimeError("Artifact ZIP contains no portable ZIP package")
-            package_data = archive.read(package_names[0])
-        if not package_data.startswith(b"PK"):
-            raise RuntimeError("Portable package is not a valid ZIP archive")
+            exe_names = [name for name in archive.namelist()
+                         if name.lower().endswith(".exe") and not name.startswith("__MACOSX/")]
+            expected_name = "3eN-Inspector-" + code + ".exe"
+            exe_name = next((name for name in exe_names if name.rsplit("/", 1)[-1].lower() == expected_name.lower()), None)
+            if not exe_name:
+                raise RuntimeError("The matching session EXE was not found in the workflow artifact")
+            exe_data = archive.read(exe_name)
+        if not exe_data or not exe_data.startswith(b"MZ"):
+            raise RuntimeError("The downloaded session EXE is empty or invalid")
         with db() as con:
-            con.execute("UPDATE inspection_sessions SET downloaded_at=? WHERE display_code=?", (now(), code.upper()))
-        log_action("session-download", "downloaded inspection package for session " + code.upper())
-        return send_file(BytesIO(package_data), mimetype="application/zip", as_attachment=True, download_name="3eN-INCEPTOR-" + code.upper() + ".zip")
+            con.execute("UPDATE inspection_sessions SET downloaded_at=? WHERE display_code=?", (now(), code))
+        log_action("session-download", "downloaded inspection EXE for session " + code)
+        return send_file(BytesIO(exe_data), mimetype="application/vnd.microsoft.portable-executable",
+                         as_attachment=True, download_name=expected_name)
     except Exception as exc:
         if getattr(exc, "code", None) in (503, 404):
             raise
         print("Artifact download failed:", type(exc).__name__, str(exc)[:240])
-        abort(502, "تعذر تنزيل النسخة الجاهزة من GitHub. تحقق من صلاحيات التوكن وسجل Render.")
+        abort(502, "تعذر تنزيل ملف الفحص من GitHub. تحقق من صلاحيات التوكن وسجل Render.")
 
 @app.post("/api/v1/session-report")
 def ingest_session_report():
