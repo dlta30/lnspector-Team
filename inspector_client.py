@@ -231,7 +231,14 @@ class InspectorApp(tk.Tk):
         controls.pack(fill="x", pady=(0, 12))
         self.start_button = ttk.Button(controls, text="▶   بدء الفحص", command=self.start)
         self.start_button.pack(side="left", padx=(0, 9))
-        tk.Label(controls, text="سيتم إرسال التقرير تلقائيًا عند نجاح الفحص والجلسة.",
+        self.report_kind = tk.StringVar(value="review")
+        self.report_kind_box = ttk.Combobox(controls, textvariable=self.report_kind, state="readonly",
+                                             values=("review", "clean"), width=17)
+        self.report_kind_box.pack(side="left", padx=(0, 9))
+        self.report_kind_box.set("review")
+        self.send_button = ttk.Button(controls, text="إرسال التقرير يدويًا", command=self.send_report, state="disabled")
+        self.send_button.pack(side="left", padx=(0, 9))
+        tk.Label(controls, text="لا يُرسل شيء حتى تضغط زر الإرسال.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left", padx=5)
 
         tk.Label(self, text="3eN INSPECTOR TEAM    •    by ROITH    •    فحص ظاهر وبموافقة المستخدم",
@@ -280,21 +287,7 @@ class InspectorApp(tk.Tk):
                 "note": "Name-based indicators are not proof of cheating. Manual review is required.",
                 "processes": processes,
             }
-            self.delivery_status = "not_configured"
-            if DASHBOARD_URL and SESSION_CODE:
-                try:
-                    import urllib.request
-                    endpoint = self.active_dashboard_url.rstrip("/") + "/api/v1/session-report"
-                    payload = {"session_code": self.active_session_code, "computer_label": self.report["device_label"],
-                               "summary": f"{self.report['indicator_match_count']} name-based leads; {self.report.get('startup_entry_count', 0)} startup entries for review",
-                               "report": self.report}
-                    req = urllib.request.Request(endpoint, data=json.dumps(payload).encode("utf-8"), headers={"Content-Type": "application/json"}, method="POST")
-                    with urllib.request.urlopen(req, timeout=20) as response:
-                        result = json.loads(response.read().decode("utf-8"))
-                    self.delivery_status = "sent"
-                    self.report["dashboard_report_id"] = result.get("report_id")
-                except Exception as send_error:
-                    self.delivery_status = "failed: " + type(send_error).__name__
+            self.delivery_status = "pending"
             self.after(0, self._show_report)
         except Exception as exc:
             self.after(0, lambda: (messagebox.showerror(APP, str(exc)), self.start_button.configure(state="normal"), self.session_badge.configure(text="●  تعذر إكمال الفحص", bg="#351521", fg="#ff8093")))
@@ -305,6 +298,7 @@ class InspectorApp(tk.Tk):
         self.metric_flags.set(str(self.report["indicator_match_count"]))
         delivery = getattr(self, "delivery_status", "not_configured")
         self.start_button.configure(state="normal")
+        self.send_button.configure(state="normal")
         if delivery == "sent":
             self.metric_state.set("SENT")
             self.session_badge.configure(text="●  اكتمل وأُرسل", bg="#142b28", fg="#62e0b0")
@@ -315,8 +309,43 @@ class InspectorApp(tk.Tk):
             self.status.set("اكتمل الفحص، لكن تعذر إرسال التقرير. تحقق من الاتصال والجلسة.")
         else:
             self.metric_state.set("COMPLETE")
-            self.session_badge.configure(text="●  اكتمل الفحص", bg="#332616", fg="#ffbd69")
-            self.status.set("اكتمل الفحص، لكن لا توجد جلسة مرتبطة لإرسال التقرير.")
+            self.session_badge.configure(text="●  بانتظار الإرسال", bg="#332616", fg="#ffbd69")
+            self.status.set("اكتمل الفحص. اختر التصنيف ثم اضغط إرسال التقرير يدويًا.")
+
+    def send_report(self):
+        if not self.report:
+            messagebox.showwarning(APP, "ابدأ الفحص أولًا.")
+            return
+        if not messagebox.askyesno(APP, "هل تريد إرسال بيانات الفحص إلى لوحة التحكم وDiscord؟"):
+            return
+        label = "clean" if self.report_kind.get() == "clean" else "review"
+        self.report["review_label"] = label
+        self.report["review_label_ar"] = "نظيف مبدئيًا" if label == "clean" else "يحتاج مراجعة"
+        self.send_button.configure(state="disabled")
+        self.status.set("جارٍ إرسال التقرير بعد موافقتك…")
+        try:
+            import urllib.request
+            endpoint = self.active_dashboard_url.rstrip("/") + "/api/v1/session-report"
+            payload = {"session_code": self.active_session_code,
+                       "computer_label": self.report["device_label"],
+                       "summary": f"{self.report['review_label_ar']} — {self.report['indicator_match_count']} مؤشرات أسماء للمراجعة",
+                       "report": self.report}
+            req = urllib.request.Request(endpoint, data=json.dumps(payload).encode("utf-8"),
+                headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(req, timeout=25) as response:
+                result = json.loads(response.read().decode("utf-8"))
+            self.report["dashboard_report_id"] = result.get("report_id")
+            self.delivery_status = "sent"
+            self.metric_state.set("SENT")
+            self.session_badge.configure(text="●  تم الإرسال", bg="#142b28", fg="#62e0b0")
+            self.status.set("تم إرسال التقرير إلى لوحة التحكم.")
+            messagebox.showinfo(APP, "تم إرسال التقرير بنجاح.")
+        except Exception as exc:
+            self.delivery_status = "failed: " + type(exc).__name__
+            self.send_button.configure(state="normal")
+            self.session_badge.configure(text="●  تعذر الإرسال", bg="#351521", fg="#ff8093")
+            self.status.set("تعذر الإرسال. تحقق من الاتصال والجلسة.")
+            messagebox.showerror(APP, "تعذر إرسال التقرير: " + str(exc))
 
     def export_pdf(self):
         if not self.report:
