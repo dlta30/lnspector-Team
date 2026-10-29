@@ -1176,7 +1176,7 @@ def users_page():
             username=request.form.get("username","").strip()
             password=request.form.get("password","")
             role=request.form.get("role","viewer")
-            allowed_roles = ("deputy", "inspector", "viewer") if actor["role"] == "owner" else ("inspector",)
+            allowed_roles = ("owner", "deputy", "inspector", "viewer") if actor["role"] == "owner" else ("inspector",)
             if len(username)<3 or len(password)<3 or role not in allowed_roles:
                 flash("اسم المستخدم 3 خانات على الأقل، وكلمة المرور 3 خانات على الأقل، والرتبة حسب صلاحيتك.")
             else:
@@ -1201,7 +1201,7 @@ def users_page():
             if actor["role"] != "owner": abort(403)
             uid=request.form.get("user_id","")
             role=request.form.get("role","viewer")
-            if role not in ("deputy","inspector","viewer"):
+            if role not in ("owner","deputy","inspector","viewer"):
                 flash("Invalid role.")
             else:
                 with db() as con:
