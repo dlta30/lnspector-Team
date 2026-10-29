@@ -103,6 +103,7 @@ def db():
 
 def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+    print(f"Inspector database path: {DB_PATH} (persistent storage requires a mounted persistent disk)")
     with db() as con:
         con.executescript(SCHEMA)
         user_columns = {row["name"] for row in con.execute("PRAGMA table_info(users)").fetchall()}
