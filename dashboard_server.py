@@ -1281,7 +1281,6 @@ def users_page():
               <input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <div><label>دور الموظف</label><select name="role">
                 {% if actor_role == 'owner' %}<option value="deputy" {% if u['role']=='deputy' %}selected{% endif %}>نائب الإدارة</option>{% endif %}
-                <option value="team" {% if u['role']=='team' %}selected{% endif %}>موظف فريق</option>
                 <option value="inspector" {% if u['role']=='inspector' %}selected{% endif %}>موظف فحص</option>
                 {% if actor_role == 'owner' %}<option value="viewer" {% if u['role']=='viewer' %}selected{% endif %}>مشاهدة فقط</option>{% endif %}
               </select></div>
