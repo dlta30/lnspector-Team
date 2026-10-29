@@ -157,12 +157,25 @@ def notify_discord(report_id, session_code, computer, summary, report=None):
     def safe(value, limit=900):
         return str(value or 'غير متاح').replace('\x00', '')[:limit]
 
+    target_name, report_time, report_source = 'غير مسجل', now(), '3eN Inspector desktop client'
+    try:
+        with db() as con:
+            row = con.execute("SELECT r.created_at,r.submitted_by,s.target_label FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id WHERE r.id=?", (report_id,)).fetchone()
+        if row:
+            report_time = row['created_at'] or report_time
+            report_source = row['submitted_by'] or report_source
+            target_name = row['target_label'] or target_name
+    except Exception as exc:
+        print('Discord metadata lookup failed:', type(exc).__name__)
     fields = [
-        {'name': 'رقم التقرير', 'value': safe(report_id, 80), 'inline': True},
-        {'name': 'الجلسة', 'value': safe(session_code, 100), 'inline': True},
-        {'name': 'الجهاز', 'value': safe(computer, 100), 'inline': True},
-        {'name': 'العمليات المفحوصة', 'value': safe(report.get('process_count', len(processes)), 80), 'inline': True},
-        {'name': 'مؤشرات تحتاج مراجعة', 'value': safe(len(findings), 80), 'inline': True},
+        {'name': '👤 الاسم المعروف', 'value': safe(target_name, 180), 'inline': True},
+        {'name': '🧾 رقم التقرير', 'value': safe(report_id, 80), 'inline': True},
+        {'name': '🕒 وقت التقرير (UTC)', 'value': safe(report_time, 100), 'inline': True},
+        {'name': '📡 مصدر التقرير', 'value': safe(report_source, 150), 'inline': True},
+        {'name': '🎫 الجلسة', 'value': safe(session_code, 100), 'inline': True},
+        {'name': '💻 الجهاز', 'value': safe(computer, 100), 'inline': True},
+        {'name': '📦 العمليات المفحوصة', 'value': safe(report.get('process_count', len(processes)), 80), 'inline': True},
+        {'name': '🔎 مؤشرات تحتاج مراجعة', 'value': safe(len(findings), 80), 'inline': True},
     ]
 
     # Include a few matched items directly in the Discord embed. A name match is
@@ -195,18 +208,44 @@ def notify_discord(report_id, session_code, computer, summary, report=None):
         'embeds': [embed],
         'allowed_mentions': {'parse': []}
     }
-    req = urllib.request.Request(
-        webhook,
-        data=json.dumps(message, ensure_ascii=False).encode('utf-8'),
-        headers={'Content-Type': 'application/json'},
-        method='POST'
-    )
     try:
-        with urllib.request.urlopen(req, timeout=10) as response:
-            ok = 200 <= response.status < 300
-            if not ok:
-                print('Discord notification returned HTTP', response.status)
-            return ok
+        from io import BytesIO
+        from xml.sax.saxutils import escape
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import mm
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Preformatted
+        pdf_buffer = BytesIO()
+        doc = SimpleDocTemplate(pdf_buffer, pagesize=A4, rightMargin=15*mm, leftMargin=15*mm, topMargin=15*mm, bottomMargin=15*mm, title='3eN report ' + str(report_id))
+        styles = getSampleStyleSheet()
+        styles.add(ParagraphStyle(name='DiscordMeta', parent=styles['BodyText'], fontSize=9, leading=13, spaceAfter=5))
+        styles.add(ParagraphStyle(name='DiscordPayload', parent=styles['BodyText'], fontName='Courier', fontSize=6.5, leading=8, wordWrap='CJK'))
+        raw = json.dumps(report, ensure_ascii=False, indent=2, default=str)[:90000]
+        story = [Paragraph('3eN INCEPTOR — INSPECTION REPORT', styles['Title']),
+            Paragraph('Report #' + escape(str(report_id)), styles['Heading1']), Spacer(1, 4*mm),
+            Paragraph('<b>Known name:</b> ' + escape(str(target_name)), styles['DiscordMeta']),
+            Paragraph('<b>Device:</b> ' + escape(str(computer)), styles['DiscordMeta']),
+            Paragraph('<b>Session:</b> ' + escape(str(session_code)), styles['DiscordMeta']),
+            Paragraph('<b>Time (UTC):</b> ' + escape(str(report_time)), styles['DiscordMeta']),
+            Paragraph('<b>Source:</b> ' + escape(str(report_source)), styles['DiscordMeta']),
+            Paragraph('<b>Processes reviewed:</b> ' + escape(str(report.get('process_count', len(processes)))), styles['DiscordMeta']),
+            Paragraph('<b>Review leads:</b> ' + escape(str(len(findings))), styles['DiscordMeta']),
+            Spacer(1, 3*mm), Paragraph('Collected report data (JSON)', styles['Heading2']),
+            Preformatted(raw, styles['DiscordPayload'], maxLineLength=110)]
+        doc.build(story)
+        pdf_data = pdf_buffer.getvalue()
+        boundary = '----3eNReport' + str(report_id)
+        body = (('--' + boundary + '\\r\\nContent-Disposition: form-data; name="payload_json"\\r\\nContent-Type: application/json\\r\\n\\r\\n').encode()
+            + json.dumps(message, ensure_ascii=False).encode('utf-8') + b'\\r\\n'
+            + ('--' + boundary + '\\r\\nContent-Disposition: form-data; name="files[0]"; filename="3eN-Report-' + str(report_id) + '.pdf"\\r\\nContent-Type: application/pdf\\r\\n\\r\\n').encode()
+            + pdf_data + b'\\r\\n' + ('--' + boundary + '--\\r\\n').encode())
+        req = urllib.request.Request(webhook, data=body, headers={'Content-Type': 'multipart/form-data; boundary=' + boundary}, method='POST')
+    except Exception as exc:
+        print('Discord PDF creation failed, sending embed only:', type(exc).__name__, str(exc)[:160])
+        req = urllib.request.Request(webhook, data=json.dumps(message, ensure_ascii=False).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+    try:
+        with urllib.request.urlopen(req, timeout=20) as response:
+            return 200 <= response.status < 300
     except Exception as exc:
         print('Discord notification failed:', type(exc).__name__, str(exc)[:200])
         return False
