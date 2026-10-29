@@ -261,6 +261,7 @@ class InspectorApp(tk.Tk):
         if not self.active_session_code or not self.active_dashboard_url.startswith("https://"):
             messagebox.showerror(APP, "هذا الملف غير مرتبط بجلسة فحص. اطلب من المسؤول إنشاء جلسة وتنزيل ملفها المخصص.")
             return
+        self.capture_screenshot = bool(self.screenshot_consent.get())
         self.metric_state.set("SCANNING")
         self.session_badge.configure(text="●  الفحص جارٍ", bg="#332616", fg="#ffbd69")
         self.start_button.configure(state="disabled")
@@ -275,7 +276,7 @@ class InspectorApp(tk.Tk):
             matches = [p for p in processes if p["indicator_matches"]]
             startup_entries = collect_startup_entries()
             screenshot_b64 = None
-            if self.screenshot_consent.get():
+            if getattr(self, 'capture_screenshot', False):
                 try:
                     from PIL import ImageGrab
                     shot = ImageGrab.grab(all_screens=True)
