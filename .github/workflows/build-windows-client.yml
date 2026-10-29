@@ -64,10 +64,20 @@ jobs:
             python -m PyInstaller --noconfirm --clean --onefile --windowed --name $name inspector_client.py
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - name: Upload EXE artifact
+      - name: Generate SHA-256 checksum
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem "dist/*.exe" | Select-Object -First 1
+          if (-not $exe) { throw "EXE was not created." }
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($exe.Name)" | Set-Content -Encoding ascii "$($exe.FullName).sha256"
+          Write-Host "SHA-256: $hash"
+      - name: Upload EXE and checksum artifact
         uses: actions/upload-artifact@v4
         with:
           name: 3eN-Inspector-${{ inputs.session_code || 'Generic' }}
-          path: dist/*.exe
+          path: |
+            dist/*.exe
+            dist/*.sha256
           if-no-files-found: error
           retention-days: 14
