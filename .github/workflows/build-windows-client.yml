@@ -57,7 +57,7 @@ jobs:
         env:
           SESSION_CODE: ${{ inputs.session_code }}
         run: |
-          $name = "3eN-Inspector"
+          $name = "3eN-Inspect"
           if ($env:SESSION_CODE) { $name = "$name-$($env:SESSION_CODE.ToUpper())" }
           # Build a single, uncompressed-by-UPX EXE. PyInstaller onefile may unpack
           # runtime support files into a temporary directory when launched; the
@@ -81,7 +81,7 @@ jobs:
       - name: Upload standalone EXE and checksum
         uses: actions/upload-artifact@v4
         with:
-          name: 3eN-Inspector-${{ inputs.session_code || 'Generic' }}
+          name: 3eN-Inspect-${{ inputs.session_code || 'Generic' }}
           path: |
             dist/*.exe
             dist/*.sha256
