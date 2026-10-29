@@ -366,17 +366,26 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         body += ('--' + boundary + '--\r\n').encode()
         req = urllib.request.Request(webhook, data=body, headers={'Content-Type': 'multipart/form-data; boundary=' + boundary}, method='POST')
     except Exception as exc:
-        print('Discord PDF creation failed, sending embed only:', type(exc).__name__, str(exc)[:160])
-        req = urllib.request.Request(webhook, data=json.dumps(message, ensure_ascii=False).encode('utf-8'), headers={'Content-Type': 'application/json'}, method='POST')
+        # Strict all-or-nothing: never send a partial embed if the PDF could not be built.
+        print('Discord PDF creation failed; nothing was sent:', type(exc).__name__, str(exc)[:240])
+        return False
+
+    if not isinstance(body, bytes) or not isinstance(pdf_data, bytes) or not pdf_data:
+        print('Discord report not sent: multipart body or PDF is empty:', report_id)
+        return False
+
     try:
         with urllib.request.urlopen(req, timeout=25) as response:
             if 200 <= response.status < 300:
-                if isinstance(body, bytes) and isinstance(pdf_data, bytes) and pdf_data:
-                    print('Discord report sent:', report_id, 'pdf=True', 'screenshot=' + str(bool(screenshot_data)))
-                    return True
-                print('Discord sent embed only because PDF generation failed:', report_id)
-            else:
-                print('Discord report upload returned HTTP', response.status)
+                print('Discord report sent:', report_id, 'pdf=True', 'screenshot=' + str(bool(screenshot_data)))
+                return True
+            print('Discord report upload returned HTTP', response.status)
+    except urllib.error.HTTPError as exc:
+        try:
+            detail = exc.read(1200).decode('utf-8', errors='replace')
+        except Exception:
+            detail = ''
+        print('Discord webhook HTTP error:', exc.code, detail[:1200])
     except Exception as exc:
         print('Discord combined attachment upload failed:', type(exc).__name__, str(exc)[:240])
 
