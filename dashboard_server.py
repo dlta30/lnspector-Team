@@ -143,7 +143,7 @@ def init_db():
 
 
 def notify_discord(report_id, session_code, computer, summary, report=None):
-    webhook = os.environ.get('DISCORD_WEBHOOK_URL', '').strip()
+    webhook = os.environ.get('DISCORD_WEBHOOK_URL', '').strip().strip('"').strip("'")
     if not webhook.startswith(('https://discord.com/api/webhooks/', 'https://discordapp.com/api/webhooks/')):
         print('Discord notification skipped: DISCORD_WEBHOOK_URL is missing or invalid')
         return False
