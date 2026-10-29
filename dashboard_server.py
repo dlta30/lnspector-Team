@@ -376,9 +376,13 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         print('Discord report upload failed:', type(exc).__name__, str(exc)[:240])
 
     try:
+        fallback_message = dict(message)
+        fallback_message["embeds"] = [dict(embed_item) for embed_item in message.get("embeds", [])]
+        for embed_item in fallback_message["embeds"]:
+            embed_item.pop("image", None)
         fallback_req = urllib.request.Request(
             webhook,
-            data=json.dumps(message, ensure_ascii=False).encode('utf-8'),
+            data=json.dumps(fallback_message, ensure_ascii=False).encode('utf-8'),
             headers={'Content-Type': 'application/json', 'User-Agent': '3eN-Inceptor-Dashboard'},
             method='POST'
         )
