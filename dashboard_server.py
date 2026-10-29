@@ -756,8 +756,9 @@ def ingest_session_report():
         report_id = cur.lastrowid
         con.execute("UPDATE inspection_sessions SET status='used',used_at=? WHERE id=?", (now(), session_row["id"]))
     log_action("session:" + session_row["display_code"], "received report #" + str(report_id))
-    notified = notify_discord(report_id, session_row["display_code"], label, summary, payload if isinstance(payload, dict) else {})
-    return {"ok": True, "report_id": report_id, "discord_notified": notified}, 201
+    # Do not post to Discord on intake. An owner must open the report,
+    # click "إرسال في Discord", choose hack/clean, and confirm manually.
+    return {"ok": True, "report_id": report_id, "discord_notified": False}, 201
 
 @app.route("/reports")
 @app.route("/reports/")
