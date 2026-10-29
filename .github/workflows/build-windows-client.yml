@@ -70,6 +70,7 @@ jobs:
           $exe = Join-Path "dist" "$name.exe"
           if (-not (Test-Path $exe)) { throw "EXE was not created: $exe" }
           # The ZIP contains only the EXE; checksum is published separately.
+          Compress-Archive -Path $exe -DestinationPath (Join-Path "dist" "$name.zip") -CompressionLevel Optimal
       - name: Generate SHA-256 checksums
         shell: pwsh
         run: |
