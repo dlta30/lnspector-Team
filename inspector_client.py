@@ -10,6 +10,7 @@ import io
 import json
 import os
 import platform
+import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
@@ -409,7 +410,40 @@ class InspectorApp(tk.Tk):
     def update_progress(self, value, text):
         self.after(0, lambda: (self.progress.configure(value=value), self.status.set(text)))
 
+    def _completion_marker_path(self):
+        # Per-user, per-session marker. The user can remove it to reset the session.
+        root = os.environ.get("APPDATA") or os.path.expanduser("~")
+        code_hash = hashlib.sha256(str(SESSION_CODE).encode("utf-8")).hexdigest()[:20]
+        return os.path.join(root, "3eN Inspect Team", "completed-" + code_hash + ".json")
+
+    def _close_then_offer_folder(self):
+        executable = os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__)
+        self.destroy()
+        prompt = tk.Tk()
+        prompt.withdraw()
+        try:
+            if messagebox.askyesno(
+                APP,
+                "اكتمل الفحص وأُرسل التقرير. هل تريد فتح مكان ملف الفحص لحذفه يدويًا إذا رغبت؟",
+                parent=prompt
+            ):
+                if platform.system() == "Windows":
+                    import subprocess
+                    subprocess.Popen(["explorer", "/select,", executable])
+                else:
+                    import subprocess
+                    subprocess.Popen(["xdg-open", os.path.dirname(executable)])
+        except Exception:
+            pass
+        finally:
+            prompt.destroy()
+
     def start(self):
+        marker = self._completion_marker_path()
+        if os.path.isfile(marker):
+            messagebox.showinfo(APP, "تم الانتهاء من فحصك مسبقًا. لن تتم إعادة الفحص لهذه الجلسة.")
+            self.destroy()
+            return
         if not self.consent.get():
             messagebox.showwarning(APP, "Please confirm consent before starting.")
             return
@@ -528,6 +562,18 @@ class InspectorApp(tk.Tk):
             self.metric_state.set("SENT")
             self.session_badge.configure(text="●  تم الإرسال", bg="#142b28", fg="#62e0b0")
             self.status.set("تم إرسال التقرير تلقائيًا إلى لوحة التحكم.")
+            marker = self._completion_marker_path()
+            try:
+                os.makedirs(os.path.dirname(marker), exist_ok=True)
+                with open(marker, "w", encoding="utf-8") as marker_file:
+                    json.dump({
+                        "completed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                        "session_code_hash": hashlib.sha256(str(SESSION_CODE).encode("utf-8")).hexdigest()
+                    }, marker_file)
+            except OSError:
+                self.status.set("تم إرسال التقرير، لكن تعذر حفظ منع إعادة الفحص على هذا الجهاز.")
+            self.start_button.configure(state="disabled")
+            self.after(1200, self._close_then_offer_folder)
         except Exception as exc:
             self.delivery_status = "failed: " + type(exc).__name__
             self.session_badge.configure(text="●  تعذر الإرسال", bg="#351521", fg="#ff8093")
