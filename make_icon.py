@@ -51,5 +51,6 @@ draw.rounded_rectangle((70*SCALE, 157*SCALE, 186*SCALE, 160*SCALE),
 centered_text("Inspect Team", 171, load_font(19), (255, 255, 255, 255))
 
 image = image.resize((SIZE, SIZE), Image.Resampling.LANCZOS)
+image.save("3en.png", format="PNG")
 image.save("3en.ico", format="ICO",
            sizes=[(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)])
