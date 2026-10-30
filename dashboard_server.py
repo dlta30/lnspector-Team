@@ -721,7 +721,6 @@ async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_s
 </script>""", code=code)
 
 @app.get("/api/session-build/<code>")
-@login_required
 def session_build_status(code):
     with db() as con:
         row = con.execute("SELECT created_at FROM inspection_sessions WHERE display_code=?", (code.upper(),)).fetchone()
@@ -753,7 +752,6 @@ def session_build_status(code):
         return {"state":"api_error","message":"تعذر الاتصال بـ GitHub للتحقق من البناء. تحقق من اتصال الاستضافة ثم أعد المحاولة."}
 
 @app.get("/sessions/<code>/download")
-@login_required
 def download_session_build(code):
     if not GITHUB_ACTIONS_TOKEN: abort(503, "GitHub build token is not configured.")
     code = code.upper()
