@@ -655,7 +655,7 @@ def sessions_page():
         log_action(user["username"], "created inspection session for " + target_label)
         build_started, build_message = trigger_session_build(code)
         log_action(user["username"], "requested session-specific client build for " + code)
-        return page("""<div class="card"><div class="eyebrow">3eN INSPECT · SESSION READY</div><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p>كود الجلسة</p><div class="metric" style="font-size:42px;letter-spacing:5px">{{ code }}</div><p class="muted">صالح لمدة ساعتين ويقبل تقريراً واحداً. شارك الملف مع صاحب الجهاز فقط وبعد موافقته.</p><div class="notice"><b>ملف الفحص الخاص بهذه الجلسة</b><p id="build-state">{{ build_message }}</p><a id="download-build" class="btn" style="display:none" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل ملف الفحص (EXE)</a><p class="muted">بعد التحميل، شغّل ملف 3eN-Inspect-{{ code }}.exe مباشرة بعد موافقة صاحب الجهاز.</p></div><button class="btn" type="button" onclick="navigator.clipboard.writeText('{{ code }}')">نسخ كود الجلسة</button> <a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div><script>
+        return page("""<div class="card"><div class="eyebrow">3eN INSPECT · SESSION READY</div><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p>كود الجلسة</p><div class="metric" style="font-size:42px;letter-spacing:5px">{{ code }}</div><p class="muted">صالح لمدة ساعتين ويقبل تقريراً واحداً. شارك الملف مع صاحب الجهاز فقط وبعد موافقته.</p><div class="notice"><b>ملف الفحص الخاص بهذه الجلسة</b><p id="build-state">{{ build_message }}</p><a id="download-build" class="btn" style="display:none" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل حزمة الفحص (ZIP)</a><p class="muted">بعد التحميل، فك ضغط ZIP ثم شغّل 3eN-Inspect-{{ code }}.exe من داخل المجلد، وبعد موافقة صاحب الجهاز.</p></div><button class="btn" type="button" onclick="navigator.clipboard.writeText('{{ code }}')">نسخ كود الجلسة</button> <a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div><script>
 const state=document.getElementById('build-state'), download=document.getElementById('download-build');
 async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{method:'GET',credentials:'same-origin',cache:'no-store',headers:{'Accept':'application/json'}});const ct=r.headers.get('content-type')||'';if(!ct.includes('application/json'))throw new Error('استجابة غير متوقعة من لوحة التحكم (HTTP '+r.status+').');const d=await r.json();if(!r.ok)throw new Error(d.message||'تعذر قراءة حالة البناء (HTTP '+r.status+').');state.textContent=d.message||({'ready':'اكتمل تجهيز الملف.','building':'يتم تجهيز الملف المخصص…','checking':'جارٍ التحقق من البناء…','failed':'فشل بناء الملف. راجع إعدادات GitHub Actions.','needs_setup':'يلزم ضبط GITHUB_ACTIONS_TOKEN وPUBLIC_DASHBOARD_URL في Render.'}[d.state]||'جارٍ تجهيز الملف…');if(d.state==='ready'){download.style.display='inline-block';state.textContent='اكتمل تجهيز الملف المخصص لهذه الجلسة.';return;}if(['failed','needs_setup','missing','api_error'].includes(d.state))return;}catch(e){state.textContent='تعذر التحقق من حالة البناء: '+(e.message||'خطأ اتصال')+' — أعد المحاولة بعد قليل.';return;}setTimeout(checkBuild,10000)}checkBuild();
 </script>""", code=code, target_label=target_label, build_message=("بدأنا طلب بناء الملف المخصص." if build_started else build_message))
@@ -747,21 +747,26 @@ def download_session_build(code):
         from io import BytesIO
         import zipfile
         from flask import send_file
-        with zipfile.ZipFile(BytesIO(data)) as archive:
-            exe_names = [name for name in archive.namelist()
+        with zipfile.ZipFile(BytesIO(data)) as artifact_archive:
+            package_name = "3eN-Inspect-" + code + ".zip"
+            package_member = next((name for name in artifact_archive.namelist()
+                                   if name.rsplit("/", 1)[-1].lower() == package_name.lower()), None)
+            if not package_member:
+                raise RuntimeError("The matching session ZIP package was not found in the workflow artifact")
+            package_data = artifact_archive.read(package_member)
+        if not package_data or not package_data.startswith(b"PK"):
+            raise RuntimeError("The session package is empty or not a ZIP archive")
+        with zipfile.ZipFile(BytesIO(package_data)) as package_archive:
+            expected_exe = "3eN-Inspect-" + code + ".exe"
+            exe_names = [name for name in package_archive.namelist()
                          if name.lower().endswith(".exe") and not name.startswith("__MACOSX/")]
-            expected_name = "3eN-Inspect-" + code + ".exe"
-            exe_name = next((name for name in exe_names if name.rsplit("/", 1)[-1].lower() == expected_name.lower()), None)
-            if not exe_name:
-                raise RuntimeError("The matching session EXE was not found in the workflow artifact")
-            exe_data = archive.read(exe_name)
-        if not exe_data or not exe_data.startswith(b"MZ"):
-            raise RuntimeError("The downloaded session EXE is empty or invalid")
+            if not any(name.rsplit("/", 1)[-1].lower() == expected_exe.lower() for name in exe_names):
+                raise RuntimeError("The matching session EXE was not found inside the package")
         with db() as con:
             con.execute("UPDATE inspection_sessions SET downloaded_at=? WHERE display_code=?", (now(), code))
-        log_action("session-download", "downloaded inspection EXE for session " + code)
-        return send_file(BytesIO(exe_data), mimetype="application/vnd.microsoft.portable-executable",
-                         as_attachment=True, download_name=expected_name)
+        log_action("session-download", "downloaded inspection ZIP package for session " + code)
+        return send_file(BytesIO(package_data), mimetype="application/zip",
+                         as_attachment=True, download_name=package_name)
     except Exception as exc:
         if getattr(exc, "code", None) in (503, 404):
             raise
