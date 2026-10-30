@@ -697,19 +697,32 @@ def sessions_page():
         log_action(user["username"], "created inspection session for " + target_label)
         build_started, build_message = trigger_session_build(code)
         log_action(user["username"], "requested session-specific client build for " + code)
-        return page("""<div class="card"><div class="eyebrow">3eN INSPECT · SESSION READY</div><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p>كود الجلسة</p><div class="metric" style="font-size:42px;letter-spacing:5px">{{ code }}</div><p class="muted">صالح لمدة ساعتين ويقبل تقريراً واحداً. شارك الملف مع صاحب الجهاز فقط وبعد موافقته.</p><div class="notice"><b>ملف الفحص الخاص بهذه الجلسة</b><p id="build-state">{{ build_message }}</p><a id="download-build" class="btn" style="display:none" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل ملف الفحص (EXE)</a><p class="muted">بعد التحميل، شغّل ملف 3eN-Inspect-{{ code }}.exe بعد موافقة صاحب الجهاز.</p></div><button class="btn" type="button" onclick="navigator.clipboard.writeText('{{ code }}')">نسخ كود الجلسة</button> <a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div><script>
-const state=document.getElementById('build-state'), download=document.getElementById('download-build');
-async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{method:'GET',credentials:'same-origin',cache:'no-store',headers:{'Accept':'application/json'}});const ct=r.headers.get('content-type')||'';if(!ct.includes('application/json'))throw new Error('استجابة غير متوقعة من لوحة التحكم (HTTP '+r.status+').');const d=await r.json();if(!r.ok)throw new Error(d.message||'تعذر قراءة حالة البناء (HTTP '+r.status+').');state.textContent=d.message||({'ready':'اكتمل تجهيز الملف.','building':'يتم تجهيز الملف المخصص…','checking':'جارٍ التحقق من البناء…','failed':'فشل بناء الملف. راجع إعدادات GitHub Actions.','needs_setup':'يلزم ضبط GITHUB_ACTIONS_TOKEN وPUBLIC_DASHBOARD_URL في Render.'}[d.state]||'جارٍ تجهيز الملف…');if(d.state==='ready'){download.style.display='inline-block';state.textContent='اكتمل تجهيز الملف المخصص لهذه الجلسة.';return;}if(['failed','needs_setup','missing','api_error'].includes(d.state))return;}catch(e){state.textContent='تعذر التحقق من حالة البناء: '+(e.message||'خطأ اتصال')+' — أعد المحاولة بعد قليل.';return;}setTimeout(checkBuild,10000)}checkBuild();
-</script>""", code=code, target_label=target_label, build_message=("بدأنا طلب بناء الملف المخصص." if build_started else build_message))
+        share_url = request.url_root.rstrip("/") + url_for("public_session_page", code=code)
+        return page("""<div class="card"><div class="eyebrow">3EN INSPECT · SESSION CREATED</div><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p>رابط صفحة الجلسة</p><div class="notice" dir="ltr" style="text-align:left;overflow-wrap:anywhere"><a href="{{ share_url }}">{{ share_url }}</a></div><button class="btn" type="button" onclick="navigator.clipboard.writeText('{{ share_url }}')">نسخ رابط الجلسة</button><p class="muted">أرسل الرابط للشخص. سيفتح صفحة 3EN أولاً، والتنزيل يبدأ فقط عند ضغط زر التحميل داخلها.</p><p id="build-state">{{ build_message }}</p><a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div><script>
+const state=document.getElementById('build-state');
+async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{cache:'no-store'});const d=await r.json();state.textContent=d.message||({'ready':'اكتمل تجهيز البرنامج.','building':'يتم تجهيز البرنامج…','failed':'فشل البناء.','needs_setup':'إعدادات البناء غير مكتملة.'}[d.state]||'جارٍ التجهيز…');if(['failed','needs_setup','missing','api_error'].includes(d.state))return;}catch(e){state.textContent='تعذر التحقق من البناء؛ أعد المحاولة.';return;}setTimeout(checkBuild,10000)}checkBuild();
+</script>""", code=code, target_label=target_label, share_url=share_url, build_message=("بدأنا تجهيز البرنامج المخصص." if build_started else build_message))
     with db() as con:
         rows = con.execute("SELECT display_code,target_label,created_by,created_at,expires_at,used_at,downloaded_at,status FROM inspection_sessions ORDER BY id DESC LIMIT 100").fetchall()
     return page("""<div class="card"><h2>جلسات الفحص</h2><p class="muted">أنشئ كوداً مؤقتاً لفحص بموافقة صاحب الجهاز. يلزم أخذ موافقة صاحب الجهاز قبل التشغيل.</p><form method="post"><label>اسم الشخص أو معرّفه</label><input name="target_label" minlength="2" maxlength="120" required placeholder="اسم المستخدم أو ID"><button class="btn">إنشاء جلسة وملف فحص</button></form></div><div class="card"><table><tr><th>الكود</th><th>الشخص</th><th>أنشأها</th><th>الإنشاء (UTC)</th><th>ينتهي (UTC)</th><th>تحميل الملف (UTC)</th><th>استلام التقرير (UTC)</th><th>الحالة</th></tr>{% for r in rows %}<tr><td>{{ r['display_code'] }}</td><td>{{ r['target_label'] }}</td><td>{{ r['created_by'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['expires_at'] }}</td><td>{{ r['downloaded_at'] or '—' }}</td><td>{{ r['used_at'] or '—' }}</td><td>{{ r['status'] }}</td></tr>{% endfor %}</table></div>""", rows=rows)
 
 
+@app.get("/public/session/<code>")
+def public_session_page(code):
+    code = code.upper()
+    with db() as con:
+        row = con.execute("SELECT display_code,expires_at,status FROM inspection_sessions WHERE display_code=?", (code,)).fetchone()
+    if not row: abort(404)
+    if row["status"] != "open" or datetime.fromisoformat(row["expires_at"].replace("Z","+00:00")) < datetime.now(timezone.utc):
+        return page("""<section class="card" style="max-width:650px;margin:8vh auto;text-align:center"><div style="font-size:48px;color:#ff3656;font-weight:900">3EN</div><h2>الرابط غير متاح</h2><p class="muted">انتهت صلاحية الجلسة أو تم استخدامها.</p></section>"""), 410
+    return page("""<section class="card" style="max-width:680px;margin:7vh auto;text-align:center;padding:34px"><div style="font-size:58px;font-weight:900;letter-spacing:5px;color:#ff3656">3EN</div><div class="eyebrow">INSPECT TEAM</div><h2 style="margin-top:28px">برنامج الفحص الخاص بك</h2><p class="muted">لن يبدأ تنزيل البرنامج إلا عند الضغط على الزر.</p><p id="build-state" class="notice">يتم التحقق من جاهزية البرنامج…</p><a id="download-build" class="btn" style="display:none;font-size:15px;padding:14px 24px" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل البرنامج</a><p class="muted" style="margin-top:22px;font-size:12px">شغّل البرنامج فقط إذا وافقت على الفحص الموضح في شاشة الموافقة داخله.</p></section><script>
+const state=document.getElementById('build-state'), download=document.getElementById('download-build');
+async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{cache:'no-store'});const d=await r.json();state.textContent=d.message||({'ready':'البرنامج جاهز للتحميل.','building':'يتم تجهيز البرنامج…','failed':'تعذر تجهيز البرنامج.','needs_setup':'الخدمة غير مكتملة الإعداد.'}[d.state]||'جارٍ التجهيز…');if(d.state==='ready'){download.style.display='inline-block';state.textContent='اكتمل التجهيز. اضغط تحميل البرنامج.';return;}if(['failed','needs_setup','missing','api_error'].includes(d.state))return;}catch(e){state.textContent='تعذر الاتصال بالخدمة. أعد تحميل الصفحة.';return;}setTimeout(checkBuild,10000)}checkBuild();
+</script>""", code=code)
+
 @app.get("/api/session-build/<code>")
 @login_required
 def session_build_status(code):
-    if current_user()["role"] not in ("owner", "deputy", "inspector"): abort(403)
     with db() as con:
         row = con.execute("SELECT created_at FROM inspection_sessions WHERE display_code=?", (code.upper(),)).fetchone()
     if not row: return {"state":"missing"}, 404
@@ -742,12 +755,12 @@ def session_build_status(code):
 @app.get("/sessions/<code>/download")
 @login_required
 def download_session_build(code):
-    if current_user()["role"] not in ("owner", "deputy", "inspector"): abort(403)
     if not GITHUB_ACTIONS_TOKEN: abort(503, "GitHub build token is not configured.")
     code = code.upper()
     with db() as con:
-        row = con.execute("SELECT id,created_at FROM inspection_sessions WHERE display_code=?", (code,)).fetchone()
+        row = con.execute("SELECT id,created_at,expires_at,status FROM inspection_sessions WHERE display_code=?", (code,)).fetchone()
     if not row: abort(404)
+    if row["status"] != "open" or datetime.fromisoformat(row["expires_at"].replace("Z","+00:00")) < datetime.now(timezone.utc): abort(410, "Session expired or already used.")
     try:
         # The workflow uploads a standalone EXE plus a SHA-256 file, not a nested ZIP.
         runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?event=workflow_dispatch&per_page=50") or {}
