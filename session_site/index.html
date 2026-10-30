@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#09090d"><title>3EN | INSPECT TEAM</title>
+<style>
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(ellipse at 50% 15%,#251016 0,#09090d 55%);color:#f4f4f5;font-family:Tahoma,Arial,sans-serif;padding:22px}
+.card{width:min(100%,650px);text-align:center;padding:42px 26px;border:1px solid #39212a;border-radius:22px;background:rgba(17,17,22,.94);box-shadow:0 24px 90px #0009}
+.brand{font-size:clamp(58px,13vw,90px);font-weight:1000;letter-spacing:8px;color:#ff3656;text-shadow:0 0 34px #ff174455;line-height:1}
+.sub{letter-spacing:5px;color:#aaa;font-size:12px;margin-top:10px}
+h1{font-size:25px;margin:38px 0 12px}.muted{color:#a1a1aa;line-height:1.9;font-size:14px}
+.state{margin:24px 0;padding:14px;border:1px solid #3b3035;border-radius:12px;background:#111116;color:#ddd}
+.btn{display:none;text-decoration:none;background:#e8294b;color:white;font-weight:bold;padding:15px 28px;border-radius:12px;box-shadow:0 8px 28px #e8294b33}
+.error{color:#ff7188}.foot{font-size:11px;color:#71717a;margin-top:28px}
+</style></head>
+<body><main class="card">
+<div class="brand">3EN</div><div class="sub">INSPECT TEAM</div>
+<h1>برنامج الفحص الخاص بك</h1>
+<p class="muted">لن يبدأ تنزيل البرنامج إلا بعد الضغط على زر التحميل.</p>
+<div id="state" class="state">يتم التحقق من جاهزية البرنامج…</div>
+<a id="download" class="btn" href="#">⬇ تحميل البرنامج</a>
+<p class="foot">شغّل البرنامج فقط إذا كنت توافق على الفحص الموضح في شاشة الموافقة داخله.</p>
+</main>
+<script>
+const API="https://threeen-fight.onrender.com";
+const params=new URLSearchParams(location.search), code=(params.get("code")||"").toUpperCase();
+const state=document.getElementById("state"), button=document.getElementById("download");
+if(!/^[A-Z0-9]{8}$/.test(code)){state.textContent="رابط الجلسة غير صحيح.";state.classList.add("error");}
+else{
+ async function poll(){try{
+  const res=await fetch(API+"/api/session-build/"+encodeURIComponent(code),{cache:"no-store"});
+  const data=await res.json();
+  if(data.state==="ready"){state.textContent="اكتمل تجهيز البرنامج. اضغط للتحميل.";button.href=API+"/sessions/"+encodeURIComponent(code)+"/download";button.style.display="inline-block";return;}
+  if(["failed","needs_setup","missing","api_error"].includes(data.state)){state.textContent=data.message||"تعذر تجهيز البرنامج. تواصل مع فريق الفحص.";state.classList.add("error");return;}
+  state.textContent=data.message||"يتم تجهيز البرنامج…";setTimeout(poll,10000);
+ }catch(e){state.textContent="تعذر الاتصال بخدمة الفحص. حاول تحديث الصفحة.";state.classList.add("error");}}
+ poll();
+}
+</script></body></html>
