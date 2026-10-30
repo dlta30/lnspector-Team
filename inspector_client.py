@@ -228,6 +228,8 @@ def collect_file_artifacts(progress):
         counts[source] = counts.get(source, 0) + len(rows)
 
     for profile in profiles:
+        # Scan both the requested legacy-style path and Windows' standard Recent folder.
+        add(os.path.join(profile, "Recent"), "Recent", limits["Recent"])
         add(os.path.join(profile, "AppData", "Roaming", "Microsoft", "Windows", "Recent"),
             "Recent", limits["Recent"])
         add(os.path.join(profile, "Downloads"), "Downloads", limits["Downloads"])
