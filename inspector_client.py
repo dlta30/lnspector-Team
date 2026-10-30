@@ -241,9 +241,28 @@ def collect_file_artifacts(progress):
                 for filename in files:
                     if not filename.startswith("$I"):
                         continue
-                    row = _file_metadata(os.path.join(current_dir, filename), "Recycle Bin")
+                    metadata_path = os.path.join(current_dir, filename)
+                    row = _file_metadata(metadata_path, "Recycle Bin")
+                    try:
+                        # Windows $I metadata: version, original size, deletion FILETIME, UTF-16 path.
+                        with open(metadata_path, "rb") as metadata_file:
+                            raw = metadata_file.read(8192)
+                        if len(raw) >= 26:
+                            version = int.from_bytes(raw[0:8], "little")
+                            original_size = int.from_bytes(raw[8:16], "little")
+                            deleted_filetime = int.from_bytes(raw[16:24], "little")
+                            original_path = raw[24:].decode("utf-16-le", errors="ignore").split(chr(0), 1)[0]
+                            if row and version in (1, 2) and original_path:
+                                row["name"] = os.path.basename(original_path)[:240]
+                                row["path"] = original_path[:1200]
+                                row["size_bytes"] = original_size
+                                row["deleted_at"] = utc_timestamp((deleted_filetime - 116444736000000000) / 10000000)
+                                row["indicator_matches"] = [term for term in FILE_INDICATOR_TERMS if term in original_path.lower()][:20]
+                                row["assessment"] = "review" if row["indicator_matches"] else "deleted_metadata"
+                    except (OSError, ValueError, OverflowError):
+                        pass
                     if row:
-                        row["note"] = "Recycle Bin metadata record; original deleted item may or may not remain recoverable"
+                        row["note"] = "Recycle Bin metadata only; recovery of deleted content is not attempted"
                         results.append(row)
                         counts["Recycle Bin"] = counts.get("Recycle Bin", 0) + 1
                         if counts["Recycle Bin"] >= limits["Recycle Bin"] or len(results) >= cap:
