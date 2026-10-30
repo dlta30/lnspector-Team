@@ -299,8 +299,13 @@ def collect_file_artifacts(progress):
 class InspectorApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title(APP)
+        self.title("3EN Inspect Team")
         self.geometry("1080x790")
+        try:
+            icon_path = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))), "3en.ico")
+            self.iconbitmap(icon_path)
+        except Exception:
+            pass
         self.minsize(900, 680)
         self.configure(bg="#090a10")
         self.report = None
@@ -338,14 +343,19 @@ class InspectorApp(tk.Tk):
         header.pack(fill="x", padx=16, pady=(16, 0))
         hero = tk.Frame(header, bg=PANEL)
         hero.pack(fill="x")
-        tk.Label(hero, text="3eN", bg=RED, fg="white", font=("Segoe UI", 19, "bold"),
-                 padx=13, pady=11).pack(side="left", padx=(0, 15))
+        logo = tk.Frame(hero, bg="#250812", padx=15, pady=10,
+                        highlightbackground=RED, highlightthickness=2)
+        logo.pack(side="left", padx=(0, 16))
+        tk.Label(logo, text="3EN", bg="#250812", fg="#ffffff",
+                 font=("Segoe UI", 25, "bold")).pack()
+        tk.Label(logo, text="INSPECT TEAM", bg="#250812", fg="#ff4968",
+                 font=("Segoe UI", 7, "bold")).pack()
         brand = tk.Frame(hero, bg=PANEL)
         brand.pack(side="left", fill="x", expand=True)
-        tk.Label(brand, text="3eN INSPECT TEAM", bg=PANEL, fg=WHITE,
-                 font=("Segoe UI", 20, "bold")).pack(anchor="w")
-        tk.Label(brand, text="DEVICE SECURITY REVIEW  /  by ROITH", bg=PANEL,
-                 fg=RED, font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(3, 0))
+        tk.Label(brand, text="3EN  /  INSPECT TEAM", bg=PANEL, fg=WHITE,
+                 font=("Segoe UI", 21, "bold")).pack(anchor="w")
+        tk.Label(brand, text="CYBERSECURITY  •  DEVICE INSPECTION", bg=PANEL,
+                 fg=RED, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(3, 0))
         tk.Label(brand, text="فحص واضح للعمليات والملفات التنفيذية — بموافقتك فقط",
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", pady=(5, 0))
         self.session_badge = tk.Label(hero, text="●  جاهز للفحص", bg="#142b28", fg=GREEN,
@@ -395,8 +405,15 @@ class InspectorApp(tk.Tk):
         self.status = tk.StringVar(value="جاهز — وافق على الفحص ثم ابدأ.")
         tk.Label(topstatus, textvariable=self.status, bg=PANEL, fg=MUTED,
                  font=("Segoe UI", 9)).pack(side="right")
-        self.progress = ttk.Progressbar(scanbox, maximum=100, mode="determinate")
-        self.progress.pack(fill="x", pady=(11, 0))
+        progress_row = tk.Frame(scanbox, bg=PANEL)
+        progress_row.pack(fill="x", pady=(12, 0))
+        self.progress = ttk.Progressbar(progress_row, maximum=100, mode="determinate")
+        self.progress.pack(side="left", fill="x", expand=True)
+        self.progress_percent = tk.Label(progress_row, text="0%", bg=PANEL, fg=RED,
+                                          font=("Segoe UI", 11, "bold"), width=5)
+        self.progress_percent.pack(side="right", padx=(12, 0))
+        tk.Label(scanbox, text="LIVE SCAN PROGRESS  /  3EN SECURITY ENGINE",
+                 bg=PANEL, fg="#69758c", font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(8, 0))
 
         controls = tk.Frame(body, bg=BG)
         controls.pack(fill="x", pady=(0, 12))
@@ -408,7 +425,12 @@ class InspectorApp(tk.Tk):
         tk.Label(self, text="3eN INSPECT TEAM    •    by ROITH    •    فحص ظاهر وبموافقة المستخدم",
                  bg="#0d1018", fg="#7e899f", font=("Segoe UI", 8, "bold"), pady=9).pack(fill="x")
     def update_progress(self, value, text):
-        self.after(0, lambda: (self.progress.configure(value=value), self.status.set(text)))
+        def paint():
+            value = max(0, min(100, int(value)))
+            self.progress.configure(value=value)
+            self.progress_percent.configure(text=f"{value}%")
+            self.status.set(text)
+        self.after(0, paint)
 
     def _completion_marker_path(self):
         # Per-user, per-session marker. The user can remove it to reset the session.
