@@ -136,9 +136,10 @@ def collect_processes(progress):
 
 FILE_INDICATOR_TERMS = tuple(sorted(set(SUSPICIOUS_TERMS + (
     "executor", "triggerbot", "spoofer", "hwid", "bypass", "unlock all",
-    "external", "internal", "nexus", "midnight", "susano", "2take1",
-    "cherax", "menyoo", "simple trainer", "modest menu", "gta cheat",
-    "fivem cheat", "redengine", "eulen", "xenos", "aimware", "rewasd"
+    "nexus", "midnight", "susano", "2take1", "cherax", "menyoo",
+    "simple trainer", "modest menu", "gta cheat", "fivem cheat",
+    "redengine", "eulen", "xenos", "aimware", "rewasd", "cheat table",
+    "extreme injector", "process hacker", "unknowncheats"
 ))))
 
 def _file_metadata(path, source):
