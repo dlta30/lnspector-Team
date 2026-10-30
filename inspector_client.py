@@ -348,10 +348,20 @@ class InspectorApp(tk.Tk):
         logo = tk.Frame(hero, bg="#250812", padx=15, pady=10,
                         highlightbackground=RED, highlightthickness=2)
         logo.pack(side="left", padx=(0, 16))
-        tk.Label(logo, text="3EN", bg="#250812", fg="#ffffff",
-                 font=("Segoe UI", 25, "bold")).pack()
+        emblem = tk.Canvas(logo, width=112, height=54, bg="#250812",
+                           highlightthickness=0, bd=0)
+        emblem.pack()
+        emblem.create_arc(7, 2, 48, 42, start=200, extent=140,
+                          style="arc", outline="#ff4968", width=3)
+        emblem.create_arc(7, 2, 48, 42, start=20, extent=140,
+                          style="arc", outline="#ff4968", width=3)
+        emblem.create_oval(20, 9, 35, 34, outline="#ff4968", width=2)
+        emblem.create_oval(25, 12, 31, 31, fill="#ff365c", outline="")
+        emblem.create_oval(27, 15, 29, 27, fill="#090a10", outline="")
+        emblem.create_text(78, 25, text="3EN", fill="#ffffff",
+                           font=("Segoe UI", 22, "bold"))
         tk.Label(logo, text="INSPECT TEAM", bg="#250812", fg="#ff4968",
-                 font=("Segoe UI", 7, "bold")).pack()
+                 font=("Segoe UI", 8, "bold")).pack()
         brand = tk.Frame(hero, bg=PANEL)
         brand.pack(side="left", fill="x", expand=True)
         tk.Label(brand, text="3EN  /  INSPECT TEAM", bg=PANEL, fg=WHITE,
