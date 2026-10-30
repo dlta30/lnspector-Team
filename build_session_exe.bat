@@ -19,11 +19,13 @@ if errorlevel 1 (
 )
 python -m pip install -r requirements.txt
 if errorlevel 1 goto fail
-python -m pip install pyinstaller
+python -m pip install pyinstaller pillow
+if errorlevel 1 goto fail
+python make_icon.py
 if errorlevel 1 goto fail
 echo SESSION_CODE = "%SESSION_CODE%" > session_config.py
 REM Build one standalone EXE without obfuscation or packers.
-python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name "3eN-Inspection-%SESSION_CODE%" --hidden-import session_config inspector_client.py
+python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name "3eN-Inspection-%SESSION_CODE%" --icon 3en.ico --hidden-import session_config inspector_client.py
 if errorlevel 1 goto fail
 if exist session_config.py del session_config.py
 echo.
