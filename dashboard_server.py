@@ -697,7 +697,7 @@ def sessions_page():
         log_action(user["username"], "created inspection session for " + target_label)
         build_started, build_message = trigger_session_build(code)
         log_action(user["username"], "requested session-specific client build for " + code)
-        share_url = request.url_root.rstrip("/") + url_for("public_session_page", code=code)
+        share_url = "https://3en-security.onrender.com/?code=" + code
         return page("""<div class="card"><div class="eyebrow">3EN INSPECT · SESSION CREATED</div><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p>رابط صفحة الجلسة</p><div class="notice" dir="ltr" style="text-align:left;overflow-wrap:anywhere"><a href="{{ share_url }}">{{ share_url }}</a></div><button class="btn" type="button" onclick="navigator.clipboard.writeText('{{ share_url }}')">نسخ رابط الجلسة</button><p class="muted">أرسل الرابط للشخص. سيفتح صفحة 3EN أولاً، والتنزيل يبدأ فقط عند ضغط زر التحميل داخلها.</p><p id="build-state">{{ build_message }}</p><a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div><script>
 const state=document.getElementById('build-state');
 async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{cache:'no-store'});const d=await r.json();state.textContent=d.message||({'ready':'اكتمل تجهيز البرنامج.','building':'يتم تجهيز البرنامج…','failed':'فشل البناء.','needs_setup':'إعدادات البناء غير مكتملة.'}[d.state]||'جارٍ التجهيز…');if(['failed','needs_setup','missing','api_error'].includes(d.state))return;}catch(e){state.textContent='تعذر التحقق من البناء؛ أعد المحاولة.';return;}setTimeout(checkBuild,10000)}checkBuild();
@@ -719,6 +719,13 @@ def public_session_page(code):
 const state=document.getElementById('build-state'), download=document.getElementById('download-build');
 async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{cache:'no-store'});const d=await r.json();state.textContent=d.message||({'ready':'البرنامج جاهز للتحميل.','building':'يتم تجهيز البرنامج…','failed':'تعذر تجهيز البرنامج.','needs_setup':'الخدمة غير مكتملة الإعداد.'}[d.state]||'جارٍ التجهيز…');if(d.state==='ready'){download.style.display='inline-block';state.textContent='اكتمل التجهيز. اضغط تحميل البرنامج.';return;}if(['failed','needs_setup','missing','api_error'].includes(d.state))return;}catch(e){state.textContent='تعذر الاتصال بالخدمة. أعد تحميل الصفحة.';return;}setTimeout(checkBuild,10000)}checkBuild();
 </script>""", code=code)
+
+@app.after_request
+def add_session_status_cors(response):
+    if request.path.startswith("/api/session-build/"):
+        response.headers["Access-Control-Allow-Origin"] = "https://3en-security.onrender.com"
+        response.headers["Vary"] = "Origin"
+    return response
 
 @app.get("/api/session-build/<code>")
 def session_build_status(code):
