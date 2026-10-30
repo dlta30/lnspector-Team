@@ -52,39 +52,35 @@ jobs:
           SESSION_CODE = "$($env:SESSION_CODE.ToUpper())"
           DASHBOARD_URL = "$($env:DASHBOARD_URL.TrimEnd('/'))"
           "@ | Set-Content -Encoding utf8 session_config.py
-      - name: Build transparent folder package
+      - name: Build standalone EXE
         shell: pwsh
         env:
           SESSION_CODE: ${{ inputs.session_code }}
         run: |
           $name = "3eN-Inspect"
           if ($env:SESSION_CODE) { $name = "$name-$($env:SESSION_CODE.ToUpper())" }
-          # Standard onedir packaging: the EXE runs beside its visible support files.
-          # This avoids a self-extracting onefile launcher; it does not alter scan behavior.
+          # A single transparent executable; no packer or obfuscation is used.
           if (Test-Path "session_config.py") {
-            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --hidden-import session_config inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --hidden-import session_config inspector_client.py
           } else {
-            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name inspector_client.py
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $bundle = Join-Path "dist" $name
-          $exe = Join-Path $bundle "$name.exe"
+          $exe = Join-Path "dist" "$name.exe"
           if (-not (Test-Path $exe)) { throw "EXE was not created: $exe" }
-          Compress-Archive -Path $bundle -DestinationPath (Join-Path "dist" "$name.zip") -CompressionLevel Optimal
-          if (-not (Test-Path (Join-Path "dist" "$name.zip"))) { throw "ZIP package was not created." }
       - name: Generate SHA-256 checksum
         shell: pwsh
         run: |
-          $zip = Get-Item "dist/*.zip"
-          $zipHash = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash.ToLower()
-          "$zipHash  $($zip.Name)" | Set-Content -Encoding ascii (Join-Path "dist" "$($zip.Name).sha256")
-          Write-Host "Package SHA-256: $zipHash"
-      - name: Upload folder package and checksum
+          $exe = Get-Item "dist/*.exe"
+          $exeHash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          "$exeHash  $($exe.Name)" | Set-Content -Encoding ascii (Join-Path "dist" "$($exe.Name).sha256")
+          Write-Host "EXE SHA-256: $exeHash"
+      - name: Upload standalone EXE and checksum
         uses: actions/upload-artifact@v4
         with:
           name: 3eN-Inspect-${{ inputs.session_code || 'Generic' }}
           path: |
-            dist/*.zip
+            dist/*.exe
             dist/*.sha256
           if-no-files-found: error
           retention-days: 14
