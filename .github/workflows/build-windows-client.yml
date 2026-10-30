@@ -64,9 +64,9 @@ jobs:
           if ($env:SESSION_CODE) { $name = "$name-$($env:SESSION_CODE.ToUpper())" }
           # A single transparent executable; no packer or obfuscation is used.
           if (Test-Path "session_config.py") {
-            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --icon 3en.ico --hidden-import session_config inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --hidden-import session_config inspector_client.py
           } else {
-            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --icon 3en.ico inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --icon 3en.ico --add-data "3en.ico;." inspector_client.py
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $exe = Join-Path "dist" "$name.exe"
