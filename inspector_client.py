@@ -396,7 +396,7 @@ class InspectorApp(tk.Tk):
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على فحص أمني شامل لبيانات الجهاز الوصفية: العمليات والبرامج ومداخل بدء التشغيل وأسماء ومسارات الملفات وتواريخها في Recent وDownloads وTemp وسلة المحذوفات وآثار مجلدات FiveM/GTA V والألعاب المعروفة. لن تُقرأ محتويات الملفات الشخصية أو كلمات المرور أو بيانات المتصفح. يُرسل التقرير تلقائيًا بعد الفحص.",
+            text="أوافق على فحص بيانات الجهاز الوصفية (العمليات والبرامج والملفات وآثار الألعاب) وإرسال التقرير إلى لوحة التحكم. لن تُقرأ محتويات ملفاتي أو كلمات المرور أو بيانات المتصفح.",
             variable=self.consent, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
