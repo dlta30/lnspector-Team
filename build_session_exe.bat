@@ -25,7 +25,7 @@ python make_icon.py
 if errorlevel 1 goto fail
 echo SESSION_CODE = "%SESSION_CODE%" > session_config.py
 REM Build one standalone EXE without obfuscation or packers.
-python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name "3eN-Inspection-%SESSION_CODE%" --icon 3en.ico --hidden-import session_config inspector_client.py
+python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name "3eN-Inspection-%SESSION_CODE%" --icon 3en.ico --add-data "3en.ico;." --hidden-import session_config inspector_client.py
 if errorlevel 1 goto fail
 if exist session_config.py del session_config.py
 echo.
