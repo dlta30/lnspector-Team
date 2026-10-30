@@ -30,8 +30,3 @@ services:
       - key: DISCORD_WEBHOOK_URL
         sync: false
 
-  - type: web
-    name: 3en-security
-    runtime: static
-    buildCommand: ""
-    staticPublishPath: ./session_site
