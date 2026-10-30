@@ -490,7 +490,7 @@ BASE = """
    if(btn){btn.textContent=english?'العربية':'English';btn.style.right=english?'auto':'22px';btn.style.left=english?'22px':'auto';}
    const walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
    const nodes=[];while(walker.nextNode())nodes.push(walker.currentNode);
-   nodes.forEach(node=>{if(!node.__originalText)node.__originalText=node.nodeValue;node.nodeValue=english?translateValue(node.__originalText):node.__originalText;});
+   nodes.forEach(node=>{if(node.__originalText===undefined)node.__originalText=node.nodeValue;const next=english?translateValue(node.__originalText):node.__originalText;if(node.nodeValue!==next)node.nodeValue=next;});
    document.querySelectorAll('[placeholder],[aria-label],[title]').forEach(el=>{['placeholder','aria-label','title'].forEach(attr=>{if(el.hasAttribute(attr)){const key='data-original-'+attr;if(!el.hasAttribute(key))el.setAttribute(key,el.getAttribute(attr));el.setAttribute(attr,english?translateValue(el.getAttribute(key)):el.getAttribute(key));}});});
  }
  document.addEventListener('DOMContentLoaded',function(){
