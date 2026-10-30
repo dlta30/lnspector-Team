@@ -133,6 +133,148 @@ def collect_processes(progress):
         progress(int(i * 100 / total), f"Checking process metadata {i}/{total}")
     return rows
 
+
+FILE_INDICATOR_TERMS = tuple(sorted(set(SUSPICIOUS_TERMS + (
+    "executor", "triggerbot", "spoofer", "hwid", "bypass", "unlock all",
+    "external", "internal", "nexus", "midnight", "susano", "2take1",
+    "cherax", "menyoo", "simple trainer", "modest menu", "gta cheat",
+    "fivem cheat", "redengine", "eulen", "xenos", "aimware", "rewasd"
+))))
+
+def _file_metadata(path, source):
+    try:
+        st = os.stat(path, follow_symlinks=False)
+        if not os.path.isfile(path):
+            return None
+        name = os.path.basename(path)
+        full = os.path.abspath(path)
+        haystack = (name + " " + full).lower()
+        matches = [term for term in FILE_INDICATOR_TERMS if term in haystack]
+        return {
+            "source": source, "name": name[:240], "path": full[:1200],
+            "size_bytes": int(st.st_size),
+            "created_at": utc_timestamp(st.st_ctime),
+            "modified_at": utc_timestamp(st.st_mtime),
+            "accessed_at": utc_timestamp(st.st_atime),
+            "indicator_matches": matches[:20],
+            "assessment": "review" if matches else "metadata_only"
+        }
+    except (OSError, PermissionError, ValueError):
+        return None
+
+def _scan_directory(root, source, limit, recursive=False):
+    rows = []
+    if not root or not os.path.isdir(root):
+        return rows
+    try:
+        if recursive:
+            for current, dirs, files in os.walk(root):
+                dirs[:] = [d for d in dirs if d.lower() not in ("node_modules", ".git", "__pycache__")]
+                for filename in files:
+                    row = _file_metadata(os.path.join(current, filename), source)
+                    if row:
+                        rows.append(row)
+                        if len(rows) >= limit:
+                            return rows
+        else:
+            with os.scandir(root) as entries:
+                for entry in entries:
+                    try:
+                        if entry.is_file(follow_symlinks=False):
+                            row = _file_metadata(entry.path, source)
+                            if row:
+                                rows.append(row)
+                                if len(rows) >= limit:
+                                    break
+                    except OSError:
+                        continue
+    except (OSError, PermissionError):
+        pass
+    return rows
+
+def collect_file_artifacts(progress):
+    """Bounded metadata-only scan of common Windows user and game artifact locations."""
+    if platform.system() != "Windows":
+        return {"items": [], "counts_by_source": {}, "item_count": 0,
+                "indicator_match_count": 0, "truncated": False}
+    profiles = []
+    users_root = os.path.join(os.environ.get("SystemDrive", "C:"), os.sep, "Users")
+    try:
+        with os.scandir(users_root) as entries:
+            for entry in entries:
+                if entry.is_dir(follow_symlinks=False) and entry.name.lower() not in (
+                    "public", "default", "default user", "all users"
+                ):
+                    profiles.append(entry.path)
+    except OSError:
+        pass
+    current = os.path.expanduser("~")
+    if current and os.path.isdir(current) and current not in profiles:
+        profiles.insert(0, current)
+    profiles = profiles[:20]
+    limits = {"Recent": 400, "Downloads": 600, "Temp": 900,
+              "Recycle Bin": 500, "Game folders": 900}
+    results, counts = [], {}
+    cap = 3300
+
+    def add(root, source, limit, recursive=False):
+        remaining = cap - len(results)
+        if remaining <= 0:
+            return
+        rows = _scan_directory(root, source, min(limit, remaining), recursive)
+        results.extend(rows)
+        counts[source] = counts.get(source, 0) + len(rows)
+
+    for profile in profiles:
+        add(os.path.join(profile, "AppData", "Roaming", "Microsoft", "Windows", "Recent"),
+            "Recent", limits["Recent"])
+        add(os.path.join(profile, "Downloads"), "Downloads", limits["Downloads"])
+        add(os.path.join(profile, "AppData", "Local", "Temp"), "Temp", limits["Temp"], True)
+        add(os.path.join(profile, "AppData", "Local", "FiveM", "FiveM.app", "data", "cache"),
+            "Temp", limits["Temp"], True)
+
+        # $I entries are Windows Recycle Bin metadata records; never inspect $R file contents.
+        recycle = os.path.join(os.environ.get("SystemDrive", "C:"), "$Recycle.Bin")
+        try:
+            for current_dir, dirs, files in os.walk(recycle):
+                for filename in files:
+                    if not filename.startswith("$I"):
+                        continue
+                    row = _file_metadata(os.path.join(current_dir, filename), "Recycle Bin")
+                    if row:
+                        row["note"] = "Recycle Bin metadata record; original deleted item may or may not remain recoverable"
+                        results.append(row)
+                        counts["Recycle Bin"] = counts.get("Recycle Bin", 0) + 1
+                        if counts["Recycle Bin"] >= limits["Recycle Bin"] or len(results) >= cap:
+                            break
+                if counts.get("Recycle Bin", 0) >= limits["Recycle Bin"] or len(results) >= cap:
+                    break
+        except OSError:
+            pass
+
+        game_roots = (
+            os.path.join(profile, "AppData", "Local", "FiveM"),
+            os.path.join(profile, "AppData", "Roaming", "CitizenFX"),
+            os.path.join(profile, "Documents", "Rockstar Games", "GTA V"),
+            os.path.join(profile, "AppData", "Local", "Rockstar Games"),
+            os.path.join(profile, "AppData", "Local", "FortniteGame"),
+            os.path.join(profile, "AppData", "Local", "EpicGamesLauncher"),
+        )
+        for root in game_roots:
+            add(root, "Game folders", limits["Game folders"], True)
+            if len(results) >= cap:
+                break
+        progress(min(99, int(len(results) * 100 / cap)), "Collecting Recent / Temp / game file metadata")
+        if len(results) >= cap:
+            break
+
+    flagged = sum(1 for item in results if item.get("indicator_matches"))
+    return {
+        "items": results[:cap], "counts_by_source": counts, "item_count": len(results[:cap]),
+        "indicator_match_count": flagged, "truncated": len(results) >= cap,
+        "note": "Metadata only. Recent entries are shortcut files; Recycle Bin entries are $I metadata files. This cannot recover permanently deleted files. No ordinary file contents, browser databases, or credentials were read."
+    }
+
 class InspectorApp(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -211,7 +353,7 @@ class InspectorApp(tk.Tk):
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على فحص أسماء العمليات ومسارات الملفات التنفيذية وبصمات SHA-256 ومداخل بدء التشغيل، وإرسال تقرير الفحص تلقائيًا إلى لوحة التحكم بعد اكتماله.",
+            text="أوافق على فحص أمني شامل لبيانات الجهاز الوصفية: العمليات والبرامج ومداخل بدء التشغيل وأسماء ومسارات الملفات وتواريخها في Recent وDownloads وTemp وسلة المحذوفات وآثار مجلدات FiveM/GTA V والألعاب المعروفة. لن تُقرأ محتويات الملفات الشخصية أو كلمات المرور أو بيانات المتصفح. يُرسل التقرير تلقائيًا بعد الفحص.",
             variable=self.consent, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
@@ -252,7 +394,7 @@ class InspectorApp(tk.Tk):
             messagebox.showwarning(APP, "Please confirm consent before starting.")
             return
         screenshot_note = "\\nتم اختيار التقاط صورة سطح المكتب وإرفاقها بالتقرير." if self.screenshot_consent.get() else "\\nلن تُلتقط أي صورة لسطح المكتب."
-        if not messagebox.askyesno(APP, "بدء الفحص الظاهر؟ سيجمع أسماء العمليات ومسارات ملفاتها التنفيذية وبصمات SHA-256 ومداخل بدء التشغيل، ثم يرسل تقرير الفحص تلقائيًا إلى لوحة التحكم." + screenshot_note + "\\n\\nStart the visible scan and automatically submit the report?"):
+        if not messagebox.askyesno(APP, "بدء الفحص الأمني الشامل؟ سيجمع بيانات وصفية عن العمليات والبرامج وآثار الملفات في Recent وDownloads وTemp وسلة المحذوفات ومجلدات الألعاب المعروفة، دون قراءة محتويات الملفات الشخصية أو كلمات المرور، ثم يرسل التقرير تلقائيًا إلى لوحة التحكم." + screenshot_note + "\\n\\nStart the visible scan and automatically submit the report?"):
             return
         # Session-specific builds contain the session code and dashboard URL.
         # Never prompt the scanned person to enter either value.
@@ -275,6 +417,7 @@ class InspectorApp(tk.Tk):
             processes = collect_processes(self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
             startup_entries = collect_startup_entries()
+            file_artifacts = collect_file_artifacts(self.update_progress)
             screenshot_b64 = None
             if getattr(self, 'capture_screenshot', False):
                 try:
@@ -299,13 +442,19 @@ class InspectorApp(tk.Tk):
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "running process metadata, readable executable SHA-256, and Windows startup entry names/commands",
+                "scan_scope": "process metadata and executable SHA-256, startup entries, Recent, Downloads, Temp, Recycle Bin metadata, and known FiveM/GTA V/game folders across accessible Windows profiles",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
                 "startup_entry_count": len(startup_entries),
+                "file_artifact_count": file_artifacts["item_count"],
+                "file_indicator_match_count": file_artifacts["indicator_match_count"],
+                "file_artifact_counts_by_source": file_artifacts["counts_by_source"],
+                "file_artifacts_truncated": file_artifacts["truncated"],
+                "file_artifacts_note": file_artifacts["note"],
+                "file_artifacts": file_artifacts["items"],
                 "startup_entries": startup_entries,
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Name-based indicators are not proof of cheating. Manual review is required.",
+                "note": "Name/path-based indicators are leads, not proof of cheating. Metadata-only bounded scan; manual review is required.",
                 "desktop_screenshot_base64": screenshot_b64,
                 "desktop_screenshot_included": bool(screenshot_b64),
                 "processes": processes,
@@ -348,7 +497,7 @@ class InspectorApp(tk.Tk):
             endpoint = self.active_dashboard_url.rstrip("/") + "/api/v1/session-report"
             payload = {"session_code": self.active_session_code,
                        "computer_label": self.report["device_label"],
-                       "summary": f"{self.report['review_label_ar']} — {self.report['indicator_match_count']} مؤشرات أسماء للمراجعة",
+                       "summary": f"{self.report['review_label_ar']} — {self.report['indicator_match_count']} مؤشرات عمليات و{self.report.get('file_indicator_match_count', 0)} مؤشرات ملفات للمراجعة",
                        "report": self.report}
             req = urllib.request.Request(endpoint, data=json.dumps(payload).encode("utf-8"),
                 headers={"Content-Type": "application/json"}, method="POST")
