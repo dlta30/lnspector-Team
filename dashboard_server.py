@@ -501,14 +501,6 @@ document.addEventListener('DOMContentLoaded', function(){
    apply();
  });
  apply();
- if(document.body && window.MutationObserver){
-   let applying=false;
-   new MutationObserver(function(){
-     if(applying)return;
-     applying=true;
-     Promise.resolve().then(function(){apply();applying=false;});
-   }).observe(document.body,{childList:true,subtree:true,characterData:true});
- }
 });
 </script>
 <div class="wrap">{% for msg in get_flashed_messages() %}<div class="notice">{{ msg }}</div>{% endfor %}{{ body|safe }}</div></html>
