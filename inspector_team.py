@@ -755,10 +755,54 @@ def password_gate(root):
     return False
 
 
+def consent_gate(root):
+    """Require explicit device-owner consent before showing the inspection app."""
+    dialog = tk.Toplevel(root)
+    dialog.title("3EN INSPECT TEAM")
+    dialog.configure(bg="#090a0f")
+    dialog.resizable(False, False)
+    dialog.transient(root)
+    dialog.grab_set()
+    dialog.protocol("WM_DELETE_WINDOW", lambda: decision.set(False))
+
+    decision = tk.BooleanVar(value=False)
+    shell = tk.Frame(dialog, bg="#12141c", padx=30, pady=26,
+                     highlightbackground="#ff4057", highlightthickness=2)
+    shell.pack(fill="both", expand=True, padx=2, pady=2)
+    tk.Label(shell, text="3EN", bg="#12141c", fg="#ffffff",
+             font=("Segoe UI", 28, "bold")).pack(pady=(0, 2))
+    tk.Label(shell, text="INSPECT TEAM", bg="#12141c", fg="#ff4057",
+             font=("Segoe UI", 10, "bold")).pack(pady=(0, 22))
+    tk.Label(shell, text="هل توافق على فحص جهازك؟", bg="#12141c", fg="#f4f5f8",
+             font=("Segoe UI", 17, "bold")).pack(pady=(0, 12))
+    tk.Label(shell, text="لن يبدأ الفحص إلا بعد موافقتك.", bg="#12141c", fg="#969daf",
+             font=("Segoe UI", 10)).pack(pady=(0, 24))
+    buttons = tk.Frame(shell, bg="#12141c")
+    buttons.pack(fill="x")
+    tk.Button(buttons, text="موافق", command=lambda: decision.set(True),
+              bg="#ff4057", fg="white", activebackground="#e72e49",
+              relief="flat", font=("Segoe UI", 11, "bold"), padx=28, pady=10,
+              cursor="hand2").pack(side="right", expand=True, padx=6)
+    tk.Button(buttons, text="رفض", command=lambda: decision.set(False),
+              bg="#292d3a", fg="white", activebackground="#3b4050",
+              relief="flat", font=("Segoe UI", 11, "bold"), padx=28, pady=10,
+              cursor="hand2").pack(side="left", expand=True, padx=6)
+    dialog.update_idletasks()
+    width, height = dialog.winfo_width(), dialog.winfo_height()
+    x = (dialog.winfo_screenwidth() - width) // 2
+    y = (dialog.winfo_screenheight() - height) // 2
+    dialog.geometry(f"{width}x{height}+{x}+{y}")
+    dialog.wait_variable(decision)
+    accepted = decision.get()
+    dialog.grab_release()
+    dialog.destroy()
+    return accepted
+
+
 if __name__ == "__main__":
     root = tk.Tk()
     root.withdraw()
-    if password_gate(root):
+    if consent_gate(root) and password_gate(root):
         root.deiconify()
         app = InspectorApp(root)
         root.mainloop()
