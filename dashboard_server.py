@@ -997,9 +997,16 @@ def report_detail(report_id):
         item["process_started_at"] = str(item.get("process_started_at") or "غير متاح")
         item["download_mark"] = bool(item.get("download_mark"))
     startup = []
-    match_count = int(report_data.get("indicator_match_count", len(findings)) or 0)
+    artifacts = report_data.get("file_artifacts", []) if isinstance(report_data.get("file_artifacts", []), list) else []
+    artifact_findings = [item for item in artifacts if isinstance(item, dict) and item.get("indicator_matches")]
+    try:
+        match_count = max(int(report_data.get("indicator_match_count", len(findings)) or 0),
+                          int(report_data.get("file_indicator_match_count", len(artifact_findings)) or 0))
+    except (ValueError, TypeError):
+        match_count = len(findings) + len(artifact_findings)
     process_count = int(report_data.get("process_count", len(processes)) or 0)
-    if findings or match_count:
+    file_artifact_count = int(report_data.get("file_artifact_count", len(artifacts)) or 0)
+    if findings or artifact_findings or match_count:
         status_title, status_class = ("⚠️ فيه عناصر مشتبه فيها", "warn")
         status_detail = "الفحص وجد مؤشرات مطابقة تستحق المراجعة. هذا اشتباه وليس تأكيدًا نهائيًا بوجود هاك."
     else:
@@ -1058,7 +1065,7 @@ def report_detail(report_id):
       <div class="report-metrics">
         <div class="report-metric">العمليات المفحوصة<strong>{{ process_count }}</strong></div>
         <div class="report-metric">مؤشرات المطابقة<strong>{{ match_count }}</strong></div>
-        <div class="report-metric">العمليات المعروضة<strong>{{ processes|length }}</strong></div>
+        <div class="report-metric">عناصر الملفات المفحوصة<strong>{{ file_artifact_count }}</strong></div>
       </div>
       <div class="card"><h2>النتيجة والتوصية</h2><p>{{ status_detail }}</p><p class="muted">{{ report_data.get('note', 'النتائج الآلية مؤشرات أولية وتحتاج إلى مراجعة بشرية.') }}</p></div>
       <div class="card" id="process-list">
@@ -1081,9 +1088,24 @@ def report_detail(report_id):
         {% else %}<div class="empty-state">لا توجد بيانات عمليات في هذا التقرير.</div>{% endfor %}
         </div><div class="reports-empty" id="file-none" style="display:none">ما فيه ملفات تطابق البحث.</div>
       </div>
+      <div class="card" id="artifact-list">
+        <h2>آثار الملفات والألعاب · Recent / Downloads / Temp / Recycle Bin</h2>
+        <p class="muted">بيانات وصفية فقط: الاسم والمسار والحجم والتواريخ. لا يمكن ضمان ظهور كل ملف محذوف نهائيًا.</p>
+        <div class="muted" style="margin:8px 0">حسب المصدر: {% for source,count in report_data.get('file_artifact_counts_by_source', {}).items() %}<span class="tag">{{ source }}: {{ count }}</span>{% endfor %}</div>
+        {% if report_data.get('file_artifacts_truncated') %}<p class="muted">وصل الفحص إلى الحد الأعلى للعناصر؛ قد توجد عناصر إضافية لم تُدرج.</p>{% endif %}
+        {% for item in artifacts %}
+          <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}" data-file-search="{{ (item.get('name','') ~ ' ' ~ item.get('path','') ~ ' ' ~ item.get('source','') ~ ' ' ~ item.get('indicator_matches',[])|join(' '))|e }}">
+            <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}📁{% endif %}</span><span class="process-embed-title">{{ item.get('name') or 'عنصر غير معروف' }}</span><span class="process-embed-meta">{{ item.get('source') or 'غير محدد' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">مؤشر يحتاج مراجعة</span>{% endif %}</div>
+            <div class="field"><b>المسار</b><span dir="ltr">{{ item.get('path') or 'غير متاح' }}</span></div>
+            <div class="field"><b>الحجم</b><span dir="ltr">{{ item.get('size_bytes', 'غير متاح') }} bytes</span></div>
+            <div class="field"><b>آخر تعديل (UTC)</b><span dir="ltr">{{ item.get('modified_at') or 'غير متاح' }}</span></div>
+            {% if item.get('indicator_matches') %}<div class="field"><b>سبب الاشتباه</b><span>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
+          </article>
+        {% else %}<div class="empty-state">لم تُجمع عناصر ملفات من المواقع المحددة أو أن النظام ليس Windows.</div>{% endfor %}
+      </div>
       <script>(function(){const input=document.getElementById('file-search'),items=Array.from(document.querySelectorAll('[data-file-search]')),none=document.getElementById('file-none');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase();let n=0;items.forEach(el=>{const ok=el.dataset.fileSearch.toLocaleLowerCase().includes(q);el.style.display=ok?'block':'none';if(ok)n++;});if(none)none.style.display=n?'none':'block';});})();</script>
     </div>
-    """,r=r,report_data=report_data,processes=processes,process_count=process_count,match_count=match_count,startup=startup,findings=findings,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"])
+    """,r=r,report_data=report_data,processes=processes,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"])
 
 @app.post("/reports/<int:report_id>/send-discord")
 @login_required
