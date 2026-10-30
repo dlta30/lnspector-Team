@@ -464,7 +464,7 @@ BASE = """
 
 
 <script>
-(function(){
+document.addEventListener('DOMContentLoaded', function(){
  const translations = {
  "منصة الجلسات والتقارير":"Sessions & Reports Platform","الرئيسية":"Home","التقارير":"Reports","اختبار Discord":"Discord Test","الجلسات":"Sessions","الموظفون والحسابات":"Staff & Accounts","سجل الأحداث":"Activity Log","تسجيل الخروج":"Log out",
  "اختبار Webhook ديسكورد":"Discord Webhook Test","يرسل رسالة اختبار فقط إلى الروم المرتبط بالرابط المخزن في Render، بدون إرسال أي بيانات فحص أو إظهار الرابط السري.":"Sends a test message only to the channel connected to the Webhook stored in Render. No inspection data or secret URL is shared.","إرسال رسالة اختبار للروم":"Send test message to channel","ملاحظة: وجود الرابط لا يضمن صلاحيته؛ زر الاختبار يتحقق من الرد الفعلي من Discord.":"Note: A configured URL does not guarantee validity. The test button checks Discord's actual response.",
@@ -509,7 +509,7 @@ BASE = """
      Promise.resolve().then(function(){apply();applying=false;});
    }).observe(document.body,{childList:true,subtree:true,characterData:true});
  }
-})();
+});
 </script>
 <div class="wrap">{% for msg in get_flashed_messages() %}<div class="notice">{{ msg }}</div>{% endfor %}{{ body|safe }}</div></html>
 """
