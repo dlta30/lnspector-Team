@@ -79,7 +79,8 @@ jobs:
           $exe = Get-ChildItem $appDir.FullName -Filter "*.exe" -File | Select-Object -First 1
           if (-not $exe) { throw "EXE was not found inside the application folder." }
           $zipPath = Join-Path "dist" "$($appDir.Name).zip"
-          Compress-Archive -Path (Join-Path $appDir.FullName "*") -DestinationPath $zipPath -CompressionLevel Optimal -Force
+          # Keep the application inside one clearly named folder so users can remove it in one action.
+          Compress-Archive -Path $appDir.FullName -DestinationPath $zipPath -CompressionLevel Optimal -Force
           $zipHash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
           "$zipHash  $([IO.Path]::GetFileName($zipPath))" | Set-Content -Encoding ascii "$zipPath.sha256"
           Write-Host "Package SHA-256: $zipHash"
