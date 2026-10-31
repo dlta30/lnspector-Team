@@ -1207,6 +1207,7 @@ def report_detail(report_id):
     if not r: abort(404)
     if actor["role"] == "inspector" and r["submitted_by"] != "session:" + actor["username"]:
         abort(403)
+    source_label = report_source_label(r["submitted_by"])
     try:
         envelope = json.loads(r["payload"])
         if not isinstance(envelope, dict):
