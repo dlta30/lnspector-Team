@@ -346,9 +346,6 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
     fields = [
         {'name': '🧑‍⚖️ التصنيف النهائي', 'value': verdict_title, 'inline': False},
         {'name': '📝 سبب التصنيف', 'value': reason, 'inline': False},
-        {'name': '👤 اسم الشخص (Server Nickname)', 'value': safe(target_name, 180), 'inline': True},
-        {'name': '🔖 Discord Username', 'value': '@' + safe(target_username, 160) if target_username else 'غير مسجل', 'inline': True},
-        {'name': '🆔 Discord User ID', 'value': safe(target_discord_id, 40), 'inline': True},
         {'name': '🧾 رقم التقرير', 'value': safe(report_id, 80), 'inline': True},
         {'name': '🕒 وقت التقرير (UTC)', 'value': safe(report_time, 100), 'inline': True},
         {'name': '📡 مصدر التقرير', 'value': safe(report_source, 150), 'inline': True},
