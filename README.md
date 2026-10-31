@@ -17,6 +17,22 @@ The optional Flask dashboard in `dashboard_server.py` supports staff login/permi
 
 Required deployment environment variables:
 - `INSPECTOR_OWNER_PASSWORD`: strong owner password
+- `DISCORD_OAUTH_CLIENT_ID`: OAuth2 application client ID from the Discord Developer Portal
+- `DISCORD_OAUTH_CLIENT_SECRET`: OAuth2 application client secret (keep it only in Render secrets)
+- `DISCORD_OAUTH_REDIRECT_URI`: exact HTTPS callback URL, e.g. `https://YOUR-DOMAIN/auth/discord/callback`
+- `DISCORD_GUILD_ID`: Discord server ID (defaults to the configured Inspect server)
+- `DISCORD_ALLOWED_ROLE_ID`: role required for dashboard access (defaults to the configured Inspect role)
+
+### Discord sign-in setup (no bot required)
+
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications) and create an application for Inspect.
+2. Open **OAuth2 → General** and copy the Application ID and Client Secret.
+3. Add the exact callback URL `https://YOUR-DOMAIN/auth/discord/callback` under **Redirects**. Replace `YOUR-DOMAIN` with the real HTTPS Render/custom domain.
+4. In Render → **Environment**, set `DISCORD_OAUTH_CLIENT_ID`, `DISCORD_OAUTH_CLIENT_SECRET`, and `DISCORD_OAUTH_REDIRECT_URI`. Keep the secret private; never commit it.
+5. The app requests only `identify` and `guilds.members.read`. It uses the signed-in user's OAuth access token to verify their server membership and required role; it does not use a bot token or require a bot to join the server.
+6. Existing Inspect Manager accounts must first sign in with their current credentials, then open `/auth/discord/link` once to link their Discord account. New authorized users are created as **Inspect Team** accounts and choose a password on first sign-in. On later sign-ins they must pass both Discord role verification and their saved password.
+7. Test with an authorized account and an account without the role. The latter must be denied before an Inspect account is created.
+
 - `INSPECTOR_SECRET_KEY`: long random Flask session secret
 - `DISCORD_WEBHOOK_URL`: optional; configure only in the hosting provider's secret/environment settings
 - `INSPECTOR_OWNER_USER`: optional owner username (defaults to `owner`)
