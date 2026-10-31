@@ -240,8 +240,8 @@ def init_db():
         schema_row = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
         if schema_row and "'deputy'" not in (schema_row['sql'] or ''):
             con.execute('ALTER TABLE users RENAME TO users_old')
-            con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','deputy','team','inspector','viewer')), can_view INTEGER NOT NULL DEFAULT 1, can_ingest INTEGER NOT NULL DEFAULT 0, login_token TEXT, created_by TEXT, created_at TEXT NOT NULL)")
-            con.execute('INSERT INTO users(id,username,password_hash,role,can_view,can_ingest,created_at) SELECT id,username,password_hash,role,can_view,can_ingest,created_at FROM users_old')
+            con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('owner','deputy','team','inspector','viewer')), can_view INTEGER NOT NULL DEFAULT 1, can_ingest INTEGER NOT NULL DEFAULT 0, login_token TEXT, created_by TEXT, discord_id TEXT, discord_avatar TEXT, has_password INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL)")
+            con.execute('INSERT INTO users(id,username,password_hash,role,can_view,can_ingest,login_token,created_by,discord_id,discord_avatar,has_password,created_at) SELECT id,username,password_hash,role,can_view,can_ingest,login_token,created_by,discord_id,discord_avatar,has_password,created_at FROM users_old')
             con.execute('DROP TABLE users_old')
         row = con.execute("SELECT id FROM users WHERE role='owner' LIMIT 1").fetchone()
         if not row:
@@ -536,6 +536,7 @@ def login():
     if request.method == "POST":
         username = request.form.get("username","").strip()
         password = request.form.get("password","")
+        user = None
         with db() as con:
             user = con.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
             owners = con.execute("SELECT COUNT(*) n FROM users WHERE role='owner'").fetchone()["n"]
@@ -543,9 +544,9 @@ def login():
                 con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
                             (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
                 user = con.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-            if user and int(user["has_password"] or 0) == 1 and check_password_hash(user["password_hash"], password):
-                establish_login(user, "password login")
-                return redirect(request.args.get("next") or url_for("home"))
+        if user and int(user["has_password"] or 0) == 1 and check_password_hash(user["password_hash"], password):
+            establish_login(user, "password login")
+            return redirect(request.args.get("next") or url_for("home"))
         flash("بيانات الدخول غير صحيحة.")
     return page("""<div class="login-shell"><section class="login-hero"><div><div class="eyebrow">SECURITY OPERATIONS PLATFORM</div><div class="hero-mark">3eN<span>.</span></div><h2>INSPECT</h2><p class="muted">تسجيل دخول آمن لفريق Inspect.</p></div><div class="status-pill"><i></i> PRIVATE TEAM ACCESS</div></section><section class="login-form"><div class="eyebrow">WELCOME TO INSPECT</div><h2>تسجيل الدخول</h2><p class="muted">استخدم حساب Discord المرتبط بالسيرفر والرتبة المسموحة.</p><a class="btn" style="display:block;text-align:center;padding:14px;margin:18px 0" href="{{ url_for('discord_login') }}">◉ تسجيل الدخول بواسطة Discord</a><div class="muted" style="text-align:center;font-size:11px;margin:18px 0">أو دخول المدير الاحتياطي</div><form method="post"><label>اسم المستخدم</label><input name="username" required autocomplete="username"><label>كلمة المرور</label><input name="password" type="password" required autocomplete="current-password"><button class="btn">دخول</button></form><p class="muted" style="font-size:11px;margin-top:20px">يتم التحقق من عضوية Discord والرتبة قبل السماح بإنشاء الحساب أو الدخول.</p></section></div>""")
 
@@ -665,6 +666,7 @@ def discord_callback():
         flash("تم ربط حساب Discord بحساب Inspect Manager.")
         return redirect(url_for("home"))
 
+    created_account = False
     with db() as con:
         user = con.execute("SELECT * FROM users WHERE discord_id=?", (discord_id,)).fetchone()
         if not user:
@@ -672,10 +674,12 @@ def discord_callback():
             con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,discord_id,discord_avatar,has_password,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
                         (base_name, generate_password_hash(secrets.token_urlsafe(48)), "inspector", 1, 0, discord_id, avatar_url, 0, "Discord OAuth", now()))
             user = con.execute("SELECT * FROM users WHERE discord_id=?", (discord_id,)).fetchone()
-            log_action(base_name, "created account after Discord guild-role verification")
+            created_account = True
         else:
             con.execute("UPDATE users SET discord_avatar=? WHERE id=?", (avatar_url, user["id"]))
             user = con.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
+    if created_account:
+        log_action(user["username"], "created account after Discord guild-role verification")
 
     session.clear()
     session["pending_discord_user_id"] = discord_id
@@ -1540,6 +1544,7 @@ def users_page():
       <div class="eyebrow">TEAM ACCESS / ADMINISTRATION</div>
       <h2 style="font-size:24px;margin:8px 0">إدارة حسابات الموظفين</h2>
       <p class="muted" style="margin:0 0 22px">أنشئ حسابًا جديدًا، حدّد صلاحياته، وراجع أعضاء الفريق من مكان واحد.</p>
+      {% if actor_role == 'owner' %}<a class="btn" href="{{ url_for('discord_link') }}">◉ ربط حساب Inspect Manager بديسكورد</a><p class="muted" style="font-size:11px">اربط حساب المدير مرة واحدة بعد تسجيل الدخول الحالي، وبعدها يقدر يدخل عبر Discord وكلمة مروره.</p>{% endif %}
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px">
         <div style="background:#0b0d14;border:1px solid #303443;border-radius:14px;padding:20px">
           <h3 style="margin:0 0 5px">＋ إنشاء حساب جديد</h3>
