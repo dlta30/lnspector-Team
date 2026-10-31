@@ -383,7 +383,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
     if str(reviewer_discord_id or '').strip() in mention_ids:
         mention_lines.append('**المراجع:** <@' + str(reviewer_discord_id).strip() + '>')
     if mention_lines:
-        fields.insert(0, {'name': '👥 أطراف الفحص', 'value': '\\n'.join(mention_lines), 'inline': False})
+        fields.insert(0, {'name': '👥 أطراف الفحص', 'value': '\n'.join(mention_lines), 'inline': False})
 
     embed = {
         'title': verdict_title + ' • تقرير الفحص #' + safe(report_id, 50),
