@@ -66,15 +66,16 @@ jobs:
           if (Test-Path "session_config.py") {
             python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --hidden-import session_config inspector_client.py
           } else {
-            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --icon 3en.ico --add-data "3en.ico;." inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --icon 3en.ico --add-data "3en.ico;." inspector_client.py
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $exe = Join-Path "dist" "$name.exe"
-          if (-not (Test-Path $exe)) { throw "EXE was not created: $exe" }
+          $exe = Get-ChildItem "dist" -Filter "$name.exe" -File -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "EXE was not created for: $name" }
       - name: Generate SHA-256 checksum
         shell: pwsh
         run: |
           $exe = Get-ChildItem "dist" -Filter "*.exe" -File -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "No executable found in dist." }
           $exeHash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
           "$exeHash  $($exe.Name)" | Set-Content -Encoding ascii (Join-Path "dist" "$($exe.Name).sha256")
           Write-Host "EXE SHA-256: $exeHash"
