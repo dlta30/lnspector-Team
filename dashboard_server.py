@@ -1601,9 +1601,11 @@ def users_page():
       <input id="staff-search" type="search" placeholder="ابحث باسم الموظف أو رتبته…" aria-label="بحث في حسابات الموظفين">
       <div id="staff-list" style="display:grid;gap:14px;margin-top:18px">
       {% for u in users %}
-        <article class="staff-item" data-staff-search="{{ (u['username'] ~ ' ' ~ u['role'])|e }}" style="border:1px solid #303443;border-radius:13px;background:#0b0d14;padding:17px">
+        <article class="staff-item" data-staff-search="{{ (u['username'] ~ ' ' ~ (u['discord_server_name'] or '') ~ ' ' ~ (u['discord_username'] or '') ~ ' ' ~ u['role'])|e }}" style="border:1px solid #303443;border-radius:13px;background:#0b0d14;padding:17px">
           <div style="display:flex;justify-content:space-between;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
-            <div><b style="font-size:16px">{{ u['username'] }}</b><div class="muted" style="margin-top:5px">تم إنشاء الحساب: {{ u['created_at'][:10] }}<br><span class="muted">أنشأه: {{ u['created_by'] or 'النظام' }}</span></div></div>
+            <div style="min-width:0"><b style="font-size:16px">{{ u['discord_server_name'] or u['discord_username'] or u['username'] }}</b>
+              {% if u['discord_username'] %}<div class="muted" style="margin-top:4px;direction:ltr;text-align:right">@{{ u['discord_username'] }}</div>{% endif %}
+              <div class="muted" style="margin-top:5px">حساب الدخول: <b>{{ u['username'] }}</b>{% if not u['discord_id'] %}<span style="color:#ffb454"> · غير مربوط بديسكورد</span>{% endif %}<br>تم إنشاء الحساب: {{ u['created_at'][:10] }}<br><span class="muted">أنشأه: {{ u['created_by'] or 'النظام' }}</span></div></div>
             <span class="badge">{% if u['role']=='owner' %}Inspect Manager{% elif u['role']=='deputy' %}Assistant Inspect{% elif u['role']=='team' %}Inspect Team{% elif u['role']=='inspector' %}Inspect Team{% elif u['role']=='viewer' %}مشاهدة فقط{% else %}{{ u['role'] }}{% endif %}</span>
           </div>
           {% if actor_role == 'owner' and u['username'] != actor_username %}
