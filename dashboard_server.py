@@ -274,6 +274,13 @@ def init_db():
         END;
         """)
 
+def inspection_target_label(session_code):
+    """Return the Discord server name saved when this inspection session was created."""
+    with db() as con:
+        row = con.execute("SELECT target_label FROM inspection_sessions WHERE display_code=?", (str(session_code or ""),)).fetchone()
+    return (row["target_label"] or "") if row else ""
+
+
 def report_source_label(submitted_by):
     """Resolve stored session source IDs to the member's current Discord server display name."""
     raw = str(submitted_by or "").strip()
@@ -919,11 +926,11 @@ async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_s
 def public_session_page(code):
     code = code.upper()
     with db() as con:
-        row = con.execute("SELECT display_code,expires_at,status FROM inspection_sessions WHERE display_code=?", (code,)).fetchone()
+        row = con.execute("SELECT display_code,target_label,expires_at,status FROM inspection_sessions WHERE display_code=?", (code,)).fetchone()
     if not row: abort(404)
     if row["status"] != "open" or datetime.fromisoformat(row["expires_at"].replace("Z","+00:00")) < datetime.now(timezone.utc):
         return page("""<section class="card" style="max-width:650px;margin:8vh auto;text-align:center"><div style="font-size:48px;color:#ff3656;font-weight:900">3EN</div><h2>الرابط غير متاح</h2><p class="muted">انتهت صلاحية الجلسة أو تم استخدامها.</p></section>"""), 410
-    return page("""<section class="card" style="max-width:680px;margin:7vh auto;text-align:center;padding:34px"><div style="font-size:58px;font-weight:900;letter-spacing:5px;color:#ff3656">3EN</div><div class="eyebrow">INSPECT TEAM</div><h2 style="margin-top:28px">برنامج الفحص الخاص بك</h2><p class="muted">لن يبدأ تنزيل البرنامج إلا عند الضغط على الزر.</p><p id="build-state" class="notice">يتم التحقق من جاهزية البرنامج…</p><a id="download-build" class="btn" style="display:none;font-size:15px;padding:14px 24px" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل البرنامج</a><p class="muted" style="margin-top:22px;font-size:12px">شغّل البرنامج فقط إذا وافقت على الفحص الموضح في شاشة الموافقة داخله.</p></section><script>
+    return page("""<section class="card" style="max-width:680px;margin:7vh auto;text-align:center;padding:34px"><div style="font-size:58px;font-weight:900;letter-spacing:5px;color:#ff3656">3EN</div><div class="eyebrow">INSPECT TEAM</div><h2 style="margin-top:28px">برنامج الفحص الخاص بك</h2><p class="muted">الجلسة مخصصة لـ: <b>{{ row['target_label'] or 'عضو السيرفر' }}</b></p><p class="muted">لن يبدأ تنزيل البرنامج إلا عند الضغط على الزر.</p><p id="build-state" class="notice">يتم التحقق من جاهزية البرنامج…</p><a id="download-build" class="btn" style="display:none;font-size:15px;padding:14px 24px" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل البرنامج</a><p class="muted" style="margin-top:22px;font-size:12px">شغّل البرنامج فقط إذا وافقت على الفحص الموضح في شاشة الموافقة داخله.</p></section><script>
 const state=document.getElementById('build-state'), download=document.getElementById('download-build');
 async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{cache:'no-store'});const d=await r.json();state.textContent=d.message||({'ready':'البرنامج جاهز للتحميل.','building':'يتم تجهيز البرنامج…','failed':'تعذر تجهيز البرنامج.','needs_setup':'الخدمة غير مكتملة الإعداد.'}[d.state]||'جارٍ التجهيز…');if(d.state==='ready'){download.style.display='inline-block';state.textContent='اكتمل التجهيز. اضغط تحميل البرنامج.';return;}if(['failed','needs_setup','missing','api_error'].includes(d.state))return;}catch(e){state.textContent='تعذر الاتصال بالخدمة. أعد تحميل الصفحة.';return;}setTimeout(checkBuild,10000)}checkBuild();
 </script>""", code=code)
@@ -1252,6 +1259,7 @@ def report_detail(report_id):
     if actor["role"] == "inspector" and r["submitted_by"] != "session:" + actor["username"]:
         abort(403)
     source_label = report_source_label(r["submitted_by"])
+    target_label = inspection_target_label(r["session_id"])
     try:
         envelope = json.loads(r["payload"])
         if not isinstance(envelope, dict):
@@ -1353,8 +1361,9 @@ def report_detail(report_id):
         <h2 style="margin-top:10px">نتيجة فحص الجهاز</h2>
         <span class="report-status {{ status_class }}">{{ status_title }}</span>
         <p>{{ status_detail }}</p>
+        <p class="muted">الشخص المفتَّش: {{ target_label or 'اسم الشخص غير مسجل' }}</p>
         <p class="muted">الجهاز: {{ r['computer_label'] }} · الجلسة: {{ r['session_id'] }}</p>
-         <p class="muted">مصدر التقرير: {{ source_label }}</p>
+        <p class="muted">مصدر التقرير: {{ source_label }}</p>
         <p class="muted">وقت الاستلام: {{ r['created_at'] }} UTC</p>
       </div>
       <div class="report-metrics">
@@ -1410,7 +1419,7 @@ def report_detail(report_id):
       </div>
       <script>(function(){const input=document.getElementById('file-search'),items=Array.from(document.querySelectorAll('[data-file-search]')),none=document.getElementById('file-none');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase();let n=0;items.forEach(el=>{const ok=el.dataset.fileSearch.toLocaleLowerCase().includes(q);el.style.display=ok?'block':'none';if(ok)n++;});if(none)none.style.display=n?'none':'block';});})();</script>
     </div>
-    """,r=r,report_data=report_data,processes=processes,visible_processes=visible_processes,process_page=process_page,process_pages=process_pages,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,visible_artifacts=visible_artifacts,artifact_page=artifact_page,artifact_pages=artifact_pages,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"],source_label=source_label)
+    """,r=r,report_data=report_data,processes=processes,visible_processes=visible_processes,process_page=process_page,process_pages=process_pages,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,visible_artifacts=visible_artifacts,artifact_page=artifact_page,artifact_pages=artifact_pages,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"],source_label=source_label,target_label=target_label)
 
 @app.post("/reports/<int:report_id>/send-discord")
 @login_required
@@ -1457,6 +1466,7 @@ def report_pdf(report_id):
     if actor["role"] == "inspector" and r["submitted_by"] != "session:" + actor["username"]:
         abort(403)
     source_label = report_source_label(r["submitted_by"])
+    target_label = inspection_target_label(r["session_id"])
     try:
         payload = json.dumps(json.loads(r["payload"]), indent=2, ensure_ascii=False)
     except Exception:
@@ -1478,6 +1488,7 @@ def report_pdf(report_id):
         Paragraph("3eN INSPECTOR TEAM", styles["Title"]),
         Paragraph("Inspection التقرير رقم" + str(report_id), styles["Heading1"]),
         Spacer(1, 6*mm),
+        Paragraph("<b>الشخص المفتَّش:</b> " + escape(str(target_label or "اسم الشخص غير مسجل")), styles["SmallMeta"]),
         Paragraph("<b>الجلسة:</b> " + escape(str(r["session_id"])), styles["SmallMeta"]),
         Paragraph("<b>الجهاز:</b> " + escape(str(r["computer_label"])), styles["SmallMeta"]),
         Paragraph("<b>Received (UTC):</b> " + escape(str(r["created_at"])), styles["SmallMeta"]),
