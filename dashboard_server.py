@@ -543,24 +543,11 @@ document.addEventListener('DOMContentLoaded', function(){
 def page(body, **context):
     return render_template_string(BASE, body=render_template_string(body, **context), user=current_user())
 
-@app.route("/login", methods=["GET","POST"])
+@app.get("/login")
 def login():
-    if request.method == "POST":
-        username = request.form.get("username","").strip()
-        password = request.form.get("password","")
-        user = None
-        with db() as con:
-            user = con.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-            owners = con.execute("SELECT COUNT(*) n FROM users WHERE role='owner'").fetchone()["n"]
-            if not owners and username == OWNER_USER and OWNER_PASSWORD and password == OWNER_PASSWORD:
-                con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
-                            (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
-                user = con.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-        if user and int(user["has_password"] or 0) == 1 and check_password_hash(user["password_hash"], password):
-            establish_login(user, "password login")
-            return redirect(request.args.get("next") or url_for("home"))
-        flash("بيانات الدخول غير صحيحة.")
-    return page("""<div class="login-shell"><section class="login-hero"><div><div class="eyebrow">SECURITY OPERATIONS PLATFORM</div><div class="hero-mark">3eN<span>.</span></div><h2>INSPECT</h2><p class="muted">تسجيل دخول آمن لفريق Inspect.</p></div><div class="status-pill"><i></i> PRIVATE TEAM ACCESS</div></section><section class="login-form"><div class="eyebrow">WELCOME TO INSPECT</div><h2>تسجيل الدخول</h2><p class="muted">استخدم حساب Discord المرتبط بالسيرفر والرتبة المسموحة.</p><a class="btn" style="display:block;text-align:center;padding:14px;margin:18px 0" href="{{ url_for('discord_login') }}">◉ تسجيل الدخول بواسطة Discord</a><div class="muted" style="text-align:center;font-size:11px;margin:18px 0">أو دخول المدير الاحتياطي</div><form method="post"><label>اسم المستخدم</label><input name="username" required autocomplete="username"><label>كلمة المرور</label><input name="password" type="password" required autocomplete="current-password"><button class="btn">دخول</button></form><p class="muted" style="font-size:11px;margin-top:20px">يتم التحقق من عضوية Discord والرتبة قبل السماح بإنشاء الحساب أو الدخول.</p></section></div>""")
+    if current_user():
+        return redirect(url_for("home"))
+    return page("""<div class="login-shell"><section class="login-hero"><div><div class="eyebrow">SECURITY OPERATIONS PLATFORM</div><div class="hero-mark">3eN<span>.</span></div><h2>INSPECT</h2><p class="muted">تسجيل دخول آمن لفريق Inspect.</p></div><div class="status-pill"><i></i> PRIVATE TEAM ACCESS</div></section><section class="login-form"><div class="eyebrow">WELCOME TO INSPECT</div><h2>تسجيل الدخول</h2><p class="muted">الدخول متاح حصريًا عبر Discord للحسابات التي تملك الرتبة المصرح بها في السيرفر.</p><a class="btn" style="display:block;text-align:center;padding:15px;margin:24px 0" href="{{ url_for('discord_login') }}">◉ تسجيل الدخول بواسطة Discord</a><p class="muted" style="font-size:11px;margin-top:20px;text-align:center">سيتم التحقق من عضويتك والرتبة المطلوبة تلقائيًا.</p></section></div>""")
 
 def establish_login(user, reason):
     login_token = secrets.token_urlsafe(32)
@@ -699,57 +686,8 @@ def discord_callback():
     if created_account:
         log_action(user["username"], "created account after Discord guild-role verification")
 
-    session.clear()
-    session["pending_discord_user_id"] = discord_id
-    session["pending_discord_name"] = display_name
-    return redirect(url_for("discord_password"))
-
-@app.route("/auth/discord/password", methods=["GET", "POST"])
-def discord_password():
-    discord_id = session.get("pending_discord_user_id")
-    if not discord_id:
-        return redirect(url_for("login"))
-    with db() as con:
-        user = con.execute("SELECT * FROM users WHERE discord_id=?", (discord_id,)).fetchone()
-    if not user:
-        session.clear()
-        return redirect(url_for("login"))
-    first_setup = int(user["has_password"] or 0) == 0
-    if request.method == "POST":
-        password = request.form.get("password", "")
-        if first_setup:
-            confirm = request.form.get("confirm_password", "")
-            if len(password) < 10:
-                flash("كلمة المرور يجب أن تكون 10 خانات على الأقل.")
-            elif password != confirm:
-                flash("كلمتا المرور غير متطابقتين.")
-            else:
-                with db() as con:
-                    con.execute("UPDATE users SET password_hash=?,has_password=1 WHERE id=?",
-                                (generate_password_hash(password), user["id"]))
-                user = current_user_by_id(user["id"])
-                session.pop("pending_discord_user_id", None)
-                session.pop("pending_discord_name", None)
-                establish_login(user, "Discord first password set")
-                log_action(user["username"], "set initial password after Discord role verification")
-                return redirect(url_for("home"))
-        elif check_password_hash(user["password_hash"], password):
-            session.pop("pending_discord_user_id", None)
-            session.pop("pending_discord_name", None)
-            establish_login(user, "Discord OAuth and password verified")
-            return redirect(url_for("home"))
-        else:
-            flash("كلمة المرور غير صحيحة.")
-    heading = "إنشاء كلمة المرور" if first_setup else "تأكيد كلمة المرور"
-    description = "هذه أول مرة تدخل فيها. أنشئ كلمة مرور لحسابك." if first_setup else "تم التحقق من Discord والرتبة. أدخل كلمة مرور حساب Inspect."
-    fields = '<label>كلمة المرور الجديدة</label><input type="password" name="password" minlength="10" autocomplete="new-password" required>'
-    if first_setup:
-        fields += '<label>تأكيد كلمة المرور</label><input type="password" name="confirm_password" minlength="10" autocomplete="new-password" required>'
-    return page('<div class="card" style="max-width:520px;margin:8vh auto"><div class="eyebrow">DISCORD VERIFIED</div><h2>' + heading + '</h2><p class="muted">' + description + '</p><form method="post">' + fields + '<button class="btn" style="width:100%;margin-top:15px">متابعة</button></form></div>')
-
-def current_user_by_id(user_id):
-    with db() as con:
-        return con.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    establish_login(user, "Discord OAuth role verified")
+    return redirect(request.args.get("next") or url_for("home"))
 
 @app.route("/logout")
 def logout():
