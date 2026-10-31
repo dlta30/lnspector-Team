@@ -1,7 +1,7 @@
 """
 3eN Inspect Team — transparent local inspection client.
-Scans running process metadata only (process name, executable path, SHA-256 where readable).
-It does not read personal documents, browser data, credentials, or memory.
+Scans process metadata and Downloads/Recent file metadata and hashes, excluding .txt files.
+An optional desktop screenshot is captured only after separate user consent.
 Run: python inspector_client.py
 """
 import base64
@@ -52,6 +52,74 @@ def utc_timestamp(value):
         return datetime.fromtimestamp(float(value), timezone.utc).isoformat(timespec="seconds")
     except (TypeError, ValueError, OSError, OverflowError):
         return None
+
+
+def collect_files(progress, max_files=10000):
+    """Collect metadata and SHA-256 from Downloads and Windows Recent; exclude .txt files."""
+    home = os.path.expanduser("~")
+    roots = [os.path.join(home, "Downloads"),
+             os.path.join(os.environ.get("APPDATA", home), "Microsoft", "Windows", "Recent")]
+    candidates, seen = [], set()
+    for root in roots:
+        if not os.path.isdir(root):
+            continue
+        for current, dirs, names in os.walk(root, topdown=True, followlinks=False):
+            dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(current, d))]
+            for name in names:
+                if name.lower().endswith(".txt"):
+                    continue
+                path = os.path.join(current, name)
+                try:
+                    if os.path.islink(path) or not os.path.isfile(path):
+                        continue
+                    key = os.path.normcase(os.path.abspath(path))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    candidates.append(path)
+                    if len(candidates) >= max_files:
+                        break
+                except OSError:
+                    continue
+            if len(candidates) >= max_files:
+                break
+        if len(candidates) >= max_files:
+            break
+    rows, total = [], max(len(candidates), 1)
+    for i, path in enumerate(candidates, 1):
+        try:
+            st = os.stat(path)
+            too_large = st.st_size > 250 * 1024 * 1024
+            rows.append({
+                "file_name": os.path.basename(path)[:260],
+                "path": path[:1500],
+                "size_bytes": int(st.st_size),
+                "modified_at": utc_timestamp(st.st_mtime),
+                "sha256": None if too_large else sha256_file(path),
+                "hash_skipped_large_file": too_large,
+                "indicator_matches": [term for term in SUSPICIOUS_TERMS if term in (os.path.basename(path) + " " + path).lower()],
+            })
+        except OSError:
+            pass
+        progress(50 + int(i * 25 / total), f"Checking Downloads/Recent files {i}/{total}")
+    return rows
+
+
+def capture_desktop_screenshot():
+    """Capture a resized JPEG only after separate user consent."""
+    try:
+        from PIL import ImageGrab
+        image = ImageGrab.grab(all_screens=True)
+        image.thumbnail((1600, 900))
+        output = io.BytesIO()
+        image.convert("RGB").save(output, format="JPEG", quality=55, optimize=True)
+        data = output.getvalue()
+        if len(data) > 5500000:
+            raise RuntimeError("Screenshot is too large to upload.")
+        return base64.b64encode(data).decode("ascii")
+    except Exception as exc:
+        raise RuntimeError("تعذر التقاط صورة سطح المكتب: " + type(exc).__name__) from exc
+
 
 def collect_processes(progress):
     try:
@@ -194,10 +262,16 @@ class InspectorApp(tk.Tk):
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على فحص أسماء العمليات ومسارات ملفاتها التنفيذية وبصمات SHA-256 واسم الجهاز ونظام التشغيل، وإرسال هذه البيانات إلى لوحة التحكم. لن تُجمع سطور الأوامر أو أسماء المستخدمين أو كلمات المرور أو محتويات الملفات أو بيانات المتصفح.",
+            text="أوافق على فحص بيانات العمليات وبيانات وبصمات الملفات داخل Downloads وRecent باستثناء ملفات TXT، وإرسال أسماء الملفات ومساراتها وأحجامها وتواريخها وبصماتها إلى لوحة التحكم. لا تُرسل محتويات الملفات.",
             variable=self.consent, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
+        self.screenshot_consent = tk.BooleanVar(value=False)
+        tk.Checkbutton(consent_box,
+            text="أوافق بشكل منفصل على التقاط صورة كاملة لسطح المكتب وإرفاقها بالتقرير المرسل إلى لوحة التحكم. قد تظهر بالصورة نوافذ أو معلومات شخصية.",
+            variable=self.screenshot_consent, bg=PANEL, fg=AMBER, selectcolor=PANEL_ALT,
+            activebackground=PANEL, activeforeground=WHITE, wraplength=900,
+            font=("Segoe UI", 10, "bold"), relief="flat", padx=0).pack(anchor="w", pady=(9, 0))
 
 
         # Progress and controls
@@ -274,7 +348,8 @@ class InspectorApp(tk.Tk):
         if not self.consent.get():
             messagebox.showwarning(APP, "Please confirm consent before starting.")
             return
-        if not messagebox.askyesno(APP, "سيتم فحص أسماء العمليات الجارية ومسارات ملفاتها التنفيذية وبصمات SHA-256 فقط. لن تُقرأ سطور الأوامر أو محتويات الملفات أو كلمات المرور، ولن تُلتقط صور أو تُعدّل ملفات أو تُنهى عمليات. سيُرسل التقرير إلى لوحة التحكم.\\n\\nStart the visible, consent-based metadata scan?"):
+        screenshot_notice = "\\nستُلتقط صورة لسطح المكتب وتُرسل مع التقرير." if self.screenshot_consent.get() else "\\nلن تُلتقط أي صورة."
+        if not messagebox.askyesno(APP, "سيتم فحص بيانات العمليات والملفات داخل Downloads وRecent باستثناء ملفات TXT. ستُرسل أسماء الملفات ومساراتها وأحجامها وتواريخها وبصماتها، دون إرسال محتويات الملفات." + screenshot_notice + "\\nلن تُعدّل الملفات أو تُنهى العمليات. هل توافق على المتابعة؟"):
             return
         # Session-specific builds contain the session code and dashboard URL.
         # Never prompt the scanned person to enter either value.
@@ -294,18 +369,25 @@ class InspectorApp(tk.Tk):
     def _scan_worker(self):
         try:
             processes = collect_processes(self.update_progress)
+            files = collect_files(self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
+            file_matches = [item for item in files if item["indicator_matches"]]
+            desktop_screenshot = capture_desktop_screenshot() if self.screenshot_consent.get() else None
             self.report = {
                 "product": APP,
                 "signature": "3eN INSPECT TEAM",
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "running process names, executable paths, and SHA-256 hashes only; command lines, usernames, file contents, and process memory are not collected",
+                "scan_scope": "process metadata plus file names, paths, sizes, modification timestamps and SHA-256 hashes in Downloads and Windows Recent; .txt files excluded; file contents are never uploaded",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
+                "file_count": len(files),
+                "file_indicator_match_count": len(file_matches),
+                "files": files,
+                "desktop_screenshot_base64": desktop_screenshot,
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Name/path-based indicators are leads, not proof of cheating. The scan does not collect command lines, usernames, file contents, credentials, browser data, or process memory; it does not modify files or terminate processes. Manual review is required.",
+                "note": "Process and file name/path indicators are leads, not proof of cheating. File scan covers Downloads and Windows Recent, excluding .txt; it uploads metadata and SHA-256 only, never file contents. Desktop screenshot is included only after separate opt-in. No files are modified and no processes are terminated. Manual review is required.",
                 "processes": processes,
             }
             self.delivery_status = "pending"
