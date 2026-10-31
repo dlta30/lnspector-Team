@@ -355,6 +355,7 @@ class InspectorApp(tk.Tk):
         # Never prompt the scanned person to enter either value.
         self.active_session_code = str(SESSION_CODE or "").strip().upper()
         self.active_dashboard_url = str(DASHBOARD_URL or "").strip().rstrip("/")
+        self.include_desktop_screenshot = bool(self.screenshot_consent.get())
         if not self.active_session_code or not self.active_dashboard_url.startswith("https://"):
             messagebox.showerror(APP, "هذا الملف غير مرتبط بجلسة فحص. اطلب من المسؤول إنشاء جلسة وتنزيل ملفها المخصص.")
             return
@@ -372,7 +373,7 @@ class InspectorApp(tk.Tk):
             files = collect_files(self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
             file_matches = [item for item in files if item["indicator_matches"]]
-            desktop_screenshot = capture_desktop_screenshot() if self.screenshot_consent.get() else None
+            desktop_screenshot = capture_desktop_screenshot() if self.include_desktop_screenshot else None
             self.report = {
                 "product": APP,
                 "signature": "3eN INSPECT TEAM",
