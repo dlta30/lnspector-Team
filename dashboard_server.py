@@ -88,6 +88,8 @@ CREATE TABLE IF NOT EXISTS inspection_sessions (
  display_code TEXT NOT NULL,
  target_label TEXT NOT NULL DEFAULT '',
  target_discord_id TEXT NOT NULL DEFAULT '',
+ target_nickname TEXT NOT NULL DEFAULT '',
+ target_username TEXT NOT NULL DEFAULT '',
  created_by TEXT NOT NULL,
  created_at TEXT NOT NULL,
  expires_at TEXT NOT NULL,
@@ -186,7 +188,8 @@ def init_db():
         );
         CREATE TABLE IF NOT EXISTS inspection_sessions (
           id BIGSERIAL PRIMARY KEY, code_hash TEXT UNIQUE NOT NULL, display_code TEXT NOT NULL,
-          target_label TEXT NOT NULL DEFAULT '', target_discord_id TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL, created_at TEXT NOT NULL,
+          target_label TEXT NOT NULL DEFAULT '', target_discord_id TEXT NOT NULL DEFAULT '',
+          target_nickname TEXT NOT NULL DEFAULT '', target_username TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL, 
           expires_at TEXT NOT NULL, used_at TEXT, downloaded_at TEXT, status TEXT NOT NULL DEFAULT 'open'
         );
         CREATE TABLE IF NOT EXISTS reports (
@@ -213,6 +216,8 @@ def init_db():
             con.execute("UPDATE users SET role='inspector' WHERE role='team'")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_label TEXT NOT NULL DEFAULT ''")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_discord_id TEXT NOT NULL DEFAULT ''")
+            con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_nickname TEXT NOT NULL DEFAULT ''")
+            con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_username TEXT NOT NULL DEFAULT ''")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS downloaded_at TEXT")
             row = con.execute("SELECT id FROM users WHERE role='owner' LIMIT 1").fetchone()
             if not row and OWNER_PASSWORD:
@@ -248,6 +253,10 @@ def init_db():
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN target_label TEXT NOT NULL DEFAULT ''")
         if "target_discord_id" not in session_columns:
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN target_discord_id TEXT NOT NULL DEFAULT ''")
+        if "target_nickname" not in session_columns:
+            con.execute("ALTER TABLE inspection_sessions ADD COLUMN target_nickname TEXT NOT NULL DEFAULT ''")
+        if "target_username" not in session_columns:
+            con.execute("ALTER TABLE inspection_sessions ADD COLUMN target_username TEXT NOT NULL DEFAULT ''")
         if "downloaded_at" not in session_columns:
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN downloaded_at TEXT")
         schema_row = con.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='users'").fetchone()
@@ -882,33 +891,22 @@ def sessions_page():
         abort(403)
     if request.method == "POST":
         target_discord_id = request.form.get("target_discord_id", "").strip()
+        target_nickname = request.form.get("target_nickname", "").strip()[:120]
+        target_username = request.form.get("target_username", "").strip().lstrip("@").strip()[:120]
         if not re.fullmatch(r"\d{17,20}", target_discord_id):
             flash("أدخل Discord User ID الصحيح للشخص الذي ستفحصه.")
             return redirect(url_for("sessions_page"))
-        try:
-            target_label = discord_guild_member_name(target_discord_id)
-        except urllib.error.HTTPError as exc:
-            if exc.code == 404:
-                flash("لم أجد هذا العضو في سيرفر Discord المحدد. تأكد من الآيدي وأن الشخص موجود في السيرفر.")
-            elif exc.code == 403:
-                flash("البوت لا يملك صلاحية قراءة أعضاء السيرفر. راجع صلاحيات البوت وإعدادات Discord.")
-            else:
-                flash("تعذر جلب اسم العضو من Discord (HTTP " + str(exc.code) + ").")
+        if not target_nickname or not target_username:
+            flash("أدخل Server Nickname وDiscord Username.")
             return redirect(url_for("sessions_page"))
-        except Exception as exc:
-            print("Target Discord member lookup failed:", type(exc).__name__, str(exc)[:180])
-            if isinstance(exc, RuntimeError):
-                flash("يلزم إضافة DISCORD_BOT_TOKEN في Render حتى يتم جلب اسم الشخص تلقائيًا.")
-            else:
-                flash("تعذر التحقق من Discord User ID. تأكد من الآيدي وإعدادات البوت.")
-            return redirect(url_for("sessions_page"))
+        target_label = target_nickname
         code = secrets.token_urlsafe(6).replace("-", "").replace("_", "")[:8].upper()
         code_hash = hashlib.sha256(code.encode()).hexdigest()
         created = datetime.now(timezone.utc)
         expires_at = datetime.fromtimestamp(created.timestamp() + 2 * 60 * 60, timezone.utc).isoformat(timespec="seconds")
         with db() as con:
-            con.execute("INSERT INTO inspection_sessions(code_hash,display_code,target_label,target_discord_id,created_by,created_at,expires_at,status) VALUES(?,?,?,?,?,?,?,?)",
-                        (code_hash, code, target_label, target_discord_id, user["username"], now(), expires_at, "open"))
+            con.execute("INSERT INTO inspection_sessions(code_hash,display_code,target_label,target_discord_id,target_nickname,target_username,created_by,created_at,expires_at,status) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (code_hash, code, target_label, target_discord_id, target_nickname, target_username, user["username"], now(), expires_at, "open"))
         log_action(user["username"], "created inspection session for " + target_label)
         build_started, build_message = trigger_session_build(code)
         log_action(user["username"], "requested session-specific client build for " + code)
@@ -918,8 +916,8 @@ const state=document.getElementById('build-state');
 async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{cache:'no-store'});const d=await r.json();state.textContent=d.message||({'ready':'اكتمل تجهيز البرنامج.','building':'يتم تجهيز البرنامج…','failed':'فشل البناء.','needs_setup':'إعدادات البناء غير مكتملة.'}[d.state]||'جارٍ التجهيز…');if(['failed','needs_setup','missing','api_error'].includes(d.state))return;}catch(e){state.textContent='تعذر التحقق من البناء؛ أعد المحاولة.';return;}setTimeout(checkBuild,10000)}checkBuild();
 </script>""", code=code, target_label=target_label, creator_name=(user["discord_server_name"] or user["discord_username"] or user["username"]), creator_username=user["discord_username"], share_url=share_url, build_message=("بدأنا تجهيز البرنامج المخصص." if build_started else build_message))
     with db() as con:
-        rows = con.execute("SELECT s.display_code,s.target_label,COALESCE(u.discord_server_name,u.discord_username,s.created_by) AS creator_name,u.discord_username AS creator_username,s.created_at,s.expires_at,s.used_at,s.downloaded_at,s.status,(SELECT MAX(r.id) FROM reports r WHERE r.session_id=s.display_code) AS report_id FROM inspection_sessions s LEFT JOIN users u ON u.username=s.created_by OR u.discord_username=s.created_by ORDER BY s.id DESC LIMIT 100").fetchall()
-    return page("""<div class="card"><h2>جلسات الفحص</h2><p class="muted">أنشئ كوداً مؤقتاً لفحص بموافقة صاحب الجهاز. يلزم أخذ موافقة صاحب الجهاز قبل التشغيل.</p><form method="post"><label>Discord User ID للشخص المراد فحصه</label><input name="target_discord_id" inputmode="numeric" pattern="[0-9]{17,20}" minlength="17" maxlength="20" required placeholder="الصق Copy User ID هنا"><small class="muted">سيتم جلب اسم الشخص من سيرفر Discord تلقائيًا.</small><button class="btn">إنشاء جلسة وملف فحص</button></form></div><div class="card"><table><tr><th>الكود</th><th>الشخص</th><th>أنشأها</th><th>الإنشاء (UTC)</th><th>ينتهي (UTC)</th><th>تحميل الملف (UTC)</th><th>استلام التقرير (UTC)</th><th>الحالة</th></tr>{% for r in rows %}<tr><td>{% if r['report_id'] %}<a class="btn" href="{{ url_for('report_detail',report_id=r['report_id']) }}">{{ r['display_code'] }}</a>{% else %}<span title="لم يصل تقرير لهذه الجلسة بعد">{{ r['display_code'] }}</span>{% endif %}</td><td>{{ r['target_label'] }}</td><td><strong>{{ r['creator_name'] or r['created_by'] }}</strong>{% if r['creator_username'] %}<br><small class="muted">@{{ r['creator_username'] }}</small>{% endif %}</td><td>{{ r['created_at'] }}</td><td>{{ r['expires_at'] }}</td><td>{{ r['downloaded_at'] or '—' }}</td><td>{{ r['used_at'] or '—' }}</td><td>{{ r['status'] }}</td></tr>{% endfor %}</table></div>""", rows=rows)
+        rows = con.execute("SELECT s.display_code,s.target_label,s.target_nickname,s.target_username,COALESCE(u.discord_server_name,u.discord_username,s.created_by) AS creator_name,u.discord_username AS creator_username,s.created_at,s.expires_at,s.used_at,s.downloaded_at,s.status,(SELECT MAX(r.id) FROM reports r WHERE r.session_id=s.display_code) AS report_id FROM inspection_sessions s LEFT JOIN users u ON u.username=s.created_by OR u.discord_username=s.created_by ORDER BY s.id DESC LIMIT 100").fetchall()
+    return page("""<div class="card"><h2>جلسات الفحص</h2><p class="muted">أنشئ كوداً مؤقتاً لفحص بموافقة صاحب الجهاز. يلزم أخذ موافقة صاحب الجهاز قبل التشغيل.</p><form method="post"><label>Discord User ID للشخص المراد فحصه</label><input name="target_discord_id" inputmode="numeric" pattern="[0-9]{17,20}" minlength="17" maxlength="20" required placeholder="الصق Copy User ID هنا"><label>Server Nickname</label><input name="target_nickname" maxlength="120" required placeholder="اسم الشخص داخل السيرفر"><label>Discord Username</label><input name="target_username" maxlength="120" required placeholder="مثال: username"><small class="muted">أدخل الاسمين كما يظهران في Discord؛ لا يلزم وجود بوت.</small><button class="btn">إنشاء جلسة وملف فحص</button></form></div><div class="card"><table><tr><th>الكود</th><th>Server Nickname</th><th>Discord Username</th><th>أنشأها</th><th>الإنشاء (UTC)</th><th>ينتهي (UTC)</th><th>تحميل الملف (UTC)</th><th>استلام التقرير (UTC)</th><th>الحالة</th></tr>{% for r in rows %}<tr><td>{% if r['report_id'] %}<a class="btn" href="{{ url_for('report_detail',report_id=r['report_id']) }}">{{ r['display_code'] }}</a>{% else %}<span title="لم يصل تقرير لهذه الجلسة بعد">{{ r['display_code'] }}</span>{% endif %}</td><td>{{ r['target_nickname'] or r['target_label'] }}</td><td>@{{ r['target_username'] or '—' }}</td><td><strong>{{ r['creator_name'] or r['created_by'] }}</strong>{% if r['creator_username'] %}<br><small class="muted">@{{ r['creator_username'] }}</small>{% endif %}</td><td>{{ r['created_at'] }}</td><td>{{ r['expires_at'] }}</td><td>{{ r['downloaded_at'] or '—' }}</td><td>{{ r['used_at'] or '—' }}</td><td>{{ r['status'] }}</td></tr>{% endfor %}</table></div>""", rows=rows)
 
 
 @app.get("/public/session/<code>")
