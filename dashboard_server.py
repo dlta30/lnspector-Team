@@ -269,6 +269,27 @@ def init_db():
         END;
         """)
 
+def report_source_label(submitted_by):
+    """Resolve stored session source IDs to the member's current Discord server display name."""
+    raw = str(submitted_by or "").strip()
+    if not raw.startswith("session:"):
+        return raw or "غير معروف"
+    identifier = raw[len("session:"):].strip()
+    if not identifier:
+        return "غير معروف"
+    try:
+        with db() as con:
+            member = con.execute(
+                "SELECT discord_server_name,discord_username,username FROM users "
+                "WHERE username=? OR discord_username=? OR discord_id=? LIMIT 1",
+                (identifier, identifier, identifier)
+            ).fetchone()
+        if member:
+            return (member["discord_server_name"] or member["discord_username"] or member["username"] or identifier)
+    except Exception as exc:
+        print("Report source lookup failed:", type(exc).__name__)
+    return identifier
+
 def notify_discord(report_id, session_code, computer, summary, report=None, verdict="review", reason=""):
     webhook_key = 'DISCORD_WEBHOOK_URL' if verdict == 'clean' else 'DISCORD_HACK_WEBHOOK_URL'
     webhook = os.environ.get(webhook_key, '').strip().strip('"').strip("'")
@@ -291,7 +312,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
             row = con.execute("SELECT r.created_at,r.submitted_by,s.target_label FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id WHERE r.id=?", (report_id,)).fetchone()
         if row:
             report_time = row['created_at'] or report_time
-            report_source = row['submitted_by'] or report_source
+            report_source = report_source_label(row['submitted_by']) or report_source
             target_name = row['target_label'] or target_name
     except Exception as exc:
         print('Discord metadata lookup failed:', type(exc).__name__)
@@ -1066,7 +1087,7 @@ def reports():
             str(item.get("submitted_by") or ""), str(data.get("platform") or ""),
             file_search
         ])
-        item["match_count"] = matches
+        item["source_label"] = report_source_label(item.get("submitted_by"))\n        item["match_count"] = matches
         item["process_count"] = data.get("process_count", len(processes))
         item["status_label"] = "تحتاج مراجعة" if matches else "لم تظهر مؤشرات"
         item["status_class"] = "warn" if matches else "good"
@@ -1129,7 +1150,7 @@ def reports():
             <div><small>وقت الاستلام (UTC)</small><span>{{ r['created_at'] }}</span></div>
             <div><small>العمليات المفحوصة</small><span>{{ r['process_count'] }}</span></div>
             <div><small>المؤشرات المطابقة</small><span>{{ r['match_count'] }}</span></div>
-            <div><small>مصدر التقرير</small><span>{{ r['submitted_by'] }}</span></div>
+            <div><small>مصدر التقرير</small><span>{{ r['source_label'] }}</span></div>
           </div>
           <div class="report-summary">{{ r['summary'] or 'لم يرسل البرنامج ملخصًا نصيًا.' }}</div>
           <div class="report-actions">
@@ -1338,7 +1359,7 @@ def report_detail(report_id):
       </div>
       <script>(function(){const input=document.getElementById('file-search'),items=Array.from(document.querySelectorAll('[data-file-search]')),none=document.getElementById('file-none');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase();let n=0;items.forEach(el=>{const ok=el.dataset.fileSearch.toLocaleLowerCase().includes(q);el.style.display=ok?'block':'none';if(ok)n++;});if(none)none.style.display=n?'none':'block';});})();</script>
     </div>
-    """,r=r,report_data=report_data,processes=processes,visible_processes=visible_processes,process_page=process_page,process_pages=process_pages,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,visible_artifacts=visible_artifacts,artifact_page=artifact_page,artifact_pages=artifact_pages,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"])
+    """,r=r,report_data=report_data,processes=processes,visible_processes=visible_processes,process_page=process_page,process_pages=process_pages,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,visible_artifacts=visible_artifacts,artifact_page=artifact_page,artifact_pages=artifact_pages,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"],source_label=source_label)
 
 @app.post("/reports/<int:report_id>/send-discord")
 @login_required
@@ -1408,7 +1429,7 @@ def report_pdf(report_id):
         Paragraph("<b>الجلسة:</b> " + escape(str(r["session_id"])), styles["SmallMeta"]),
         Paragraph("<b>الجهاز:</b> " + escape(str(r["computer_label"])), styles["SmallMeta"]),
         Paragraph("<b>Received (UTC):</b> " + escape(str(r["created_at"])), styles["SmallMeta"]),
-        Paragraph("<b>أُرسل بواسطة:</b> " + escape(str(r["submitted_by"])), styles["SmallMeta"]),
+        Paragraph("<b>أُرسل بواسطة:</b> " + escape(str(source_label)), styles["SmallMeta"]),
         Paragraph("<b>الملخص:</b> " + escape(str(r["summary"] or "No summary provided")), styles["SmallMeta"]),
         Spacer(1, 4*mm),
         Paragraph("Inspection data", styles["Heading2"]),
