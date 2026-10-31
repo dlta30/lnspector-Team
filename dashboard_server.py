@@ -1583,20 +1583,29 @@ def users_page():
                         con.execute("DELETE FROM users WHERE id=?", (uid,))
                         log_action(actor["username"], "deleted created owner account " + target["username"])
                         flash("تم حذف حساب المالك الذي أنشأته.")
+                elif actor["role"] == "owner":
+                    # Inspect Manager can delete every account below their rank,
+                    # including accounts linked/created through Discord OAuth.
+                    # Other Inspect Managers are protected from peer deletion.
+                    if target["role"] == "owner":
+                        abort(403)
+                    con.execute("DELETE FROM users WHERE id=?", (uid,))
+                    log_action(actor["username"], "deleted subordinate staff account " + target["username"])
+                    flash("تم حذف حساب الموظف نهائيًا.")
                 elif actor["username"].strip().lower() == "roith":
                     con.execute("DELETE FROM users WHERE id=?", (uid,))
                     log_action(actor["username"], "deleted staff account " + target["username"])
                     flash("تم حذف الحساب نهائيًا.")
-                elif actor["role"] == "deputy" and target["role"] not in ("inspector", "viewer"):
-                    abort(403)
-                elif actor["role"] not in ("owner", "deputy"):
-                    abort(403)
-                elif (target["created_by"] or "").strip().lower() != actor["username"].strip().lower() and actor["role"] != "owner":
-                    abort(403)
-                else:
+                elif actor["role"] == "deputy":
+                    if target["role"] not in ("inspector", "viewer"):
+                        abort(403)
+                    if (target["created_by"] or "").strip().lower() != actor["username"].strip().lower():
+                        abort(403)
                     con.execute("DELETE FROM users WHERE id=?", (uid,))
                     log_action(actor["username"], "deleted staff account " + target["username"])
                     flash("تم حذف الحساب نهائيًا.")
+                else:
+                    abort(403)
 
         return redirect(url_for("users_page"))
     with db() as con: users=con.execute("SELECT * FROM users ORDER BY role,username").fetchall()
