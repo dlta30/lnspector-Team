@@ -71,19 +71,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $exe = Get-ChildItem "dist" -Filter "$name.exe" -File -Recurse | Select-Object -First 1
           if (-not $exe) { throw "EXE was not created for: $name" }
-      - name: Generate SHA-256 checksum
+      - name: Package complete application folder
         shell: pwsh
         run: |
-          $exe = Get-ChildItem "dist" -Filter "*.exe" -File -Recurse | Select-Object -First 1
-          if (-not $exe) { throw "No executable found in dist." }
-          $exeHash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
-          "$exeHash  $($exe.Name)" | Set-Content -Encoding ascii (Join-Path "dist" "$($exe.Name).sha256")
-          Write-Host "EXE SHA-256: $exeHash"
-      - name: Upload standalone EXE and checksum
+          $appDir = Get-ChildItem "dist" -Directory | Select-Object -First 1
+          if (-not $appDir) { throw "PyInstaller application folder was not created." }
+          $exe = Get-ChildItem $appDir.FullName -Filter "*.exe" -File | Select-Object -First 1
+          if (-not $exe) { throw "EXE was not found inside the application folder." }
+          $zipPath = Join-Path "dist" "$($appDir.Name).zip"
+          Compress-Archive -Path (Join-Path $appDir.FullName "*") -DestinationPath $zipPath -CompressionLevel Optimal -Force
+          $zipHash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
+          "$zipHash  $([IO.Path]::GetFileName($zipPath))" | Set-Content -Encoding ascii "$zipPath.sha256"
+          Write-Host "Package SHA-256: $zipHash"
+      - name: Upload complete application ZIP
         uses: actions/upload-artifact@v4
         with:
           name: 3eN-Inspect-${{ inputs.session_code || 'Generic' }}
           path: |
-            dist/
+            dist/*.zip
+            dist/*.zip.sha256
           if-no-files-found: error
           retention-days: 14
