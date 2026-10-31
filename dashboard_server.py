@@ -381,7 +381,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
     if target_discord_id in mention_ids:
         mention_lines.append('**الشخص المفحوص:** <@' + target_discord_id + '>')
     if str(reviewer_discord_id or '').strip() in mention_ids:
-        mention_lines.append('**المراجع:** <@' + str(reviewer_discord_id).strip() + '>')
+        mention_lines.append('**المفتش:** <@' + str(reviewer_discord_id).strip() + '>')
     if mention_lines:
         fields.insert(0, {'name': '👥 أطراف الفحص', 'value': '\n'.join(mention_lines), 'inline': False})
 
