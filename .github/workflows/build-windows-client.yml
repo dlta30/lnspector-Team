@@ -62,9 +62,9 @@ jobs:
         run: |
           $name = "3eN-Inspect"
           if ($env:SESSION_CODE) { $name = "$name-$($env:SESSION_CODE.ToUpper())" }
-          # A single transparent executable; no packer or obfuscation is used.
+          # A standard application directory; no self-extracting one-file bundle, packer, or obfuscation is used.
           if (Test-Path "session_config.py") {
-            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --hidden-import session_config inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --hidden-import session_config inspector_client.py
           } else {
             python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --icon 3en.ico --add-data "3en.ico;." inspector_client.py
           }
@@ -74,7 +74,7 @@ jobs:
       - name: Generate SHA-256 checksum
         shell: pwsh
         run: |
-          $exe = Get-Item "dist/*.exe"
+          $exe = Get-ChildItem "dist" -Filter "*.exe" -File -Recurse | Select-Object -First 1
           $exeHash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
           "$exeHash  $($exe.Name)" | Set-Content -Encoding ascii (Join-Path "dist" "$($exe.Name).sha256")
           Write-Host "EXE SHA-256: $exeHash"
@@ -83,7 +83,6 @@ jobs:
         with:
           name: 3eN-Inspect-${{ inputs.session_code || 'Generic' }}
           path: |
-            dist/*.exe
-            dist/*.sha256
+            dist/
           if-no-files-found: error
           retention-days: 14
