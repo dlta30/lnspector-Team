@@ -1045,6 +1045,7 @@ def reports():
         else:
             rows=con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,r.submitted_by,s.target_label,r.payload FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id ORDER BY r.id DESC").fetchall()
     report_rows = []
+    source_label_cache = {}
     for row in rows:
         item = dict(row)
         try:
@@ -1087,7 +1088,10 @@ def reports():
             str(item.get("submitted_by") or ""), str(data.get("platform") or ""),
             file_search
         ])
-        item["source_label"] = report_source_label(item.get("submitted_by"))
+        source_key = item.get("submitted_by") or ""
+        if source_key not in source_label_cache:
+            source_label_cache[source_key] = report_source_label(source_key)
+        item["source_label"] = source_label_cache[source_key]
         item["match_count"] = matches
         item["process_count"] = data.get("process_count", len(processes))
         item["status_label"] = "تحتاج مراجعة" if matches else "لم تظهر مؤشرات"
@@ -1407,6 +1411,7 @@ def report_pdf(report_id):
         abort(404)
     if actor["role"] == "inspector" and r["submitted_by"] != "session:" + actor["username"]:
         abort(403)
+    source_label = report_source_label(r["submitted_by"])
     try:
         payload = json.dumps(json.loads(r["payload"]), indent=2, ensure_ascii=False)
     except Exception:
