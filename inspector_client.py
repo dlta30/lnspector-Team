@@ -87,7 +87,7 @@ def collect_processes(progress):
     except ImportError as exc:
         raise RuntimeError("Missing dependency: install requirements with: pip install -r requirements.txt") from exc
     rows = []
-    processes = list(psutil.process_iter(["pid", "name", "exe", "username", "cmdline", "create_time"]))
+    processes = list(psutil.process_iter(["pid", "name", "exe", "create_time"]))
     total = max(len(processes), 1)
     for i, proc in enumerate(processes, 1):
         try:
@@ -123,7 +123,6 @@ def collect_processes(progress):
                 "file_created_at": file_created,
                 "file_modified_at": file_modified,
                 "download_mark": bool(download_mark),
-                "command_line": " ".join(str(part) for part in (info.get("cmdline") or []))[:2000] or None,
                 "sha256": digest,
                 "indicator_matches": matches,
                 "game_context": classify_game_context(name, exe),
@@ -396,7 +395,7 @@ class InspectorApp(tk.Tk):
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على فحص بيانات الجهاز الوصفية (العمليات والبرامج والملفات وآثار الألعاب) وإرسال التقرير إلى لوحة التحكم. لن تُقرأ محتويات ملفاتي أو كلمات المرور أو بيانات المتصفح.",
+            text="أوافق على فحص أسماء العمليات ومسارات ملفاتها التنفيذية وبصمات SHA-256 واسم الجهاز ونظام التشغيل، وإرسال هذه البيانات إلى لوحة التحكم. لن تُجمع سطور الأوامر أو أسماء المستخدمين أو كلمات المرور أو محتويات الملفات أو بيانات المتصفح.",
             variable=self.consent, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
@@ -476,7 +475,7 @@ class InspectorApp(tk.Tk):
         if not self.consent.get():
             messagebox.showwarning(APP, "Please confirm consent before starting.")
             return
-        if not messagebox.askyesno(APP, "بدء فحص بيانات العمليات الجارية وأسماء ملفاتها التنفيذية وبصمات SHA-256 فقط؟ لن يتم فحص مجلداتك الشخصية أو سلة المحذوفات أو سجل بدء التشغيل، ولن تُلتقط صور أو تُقرأ كلمات مرور. سيُرسل التقرير بعد موافقتك إلى لوحة التحكم.\\n\\nStart the visible, consent-based process metadata scan?"):
+        if not messagebox.askyesno(APP, "سيتم فحص أسماء العمليات الجارية ومسارات ملفاتها التنفيذية وبصمات SHA-256 فقط. لن تُقرأ سطور الأوامر أو محتويات الملفات أو كلمات المرور، ولن تُلتقط صور أو تُعدّل ملفات أو تُنهى عمليات. سيُرسل التقرير إلى لوحة التحكم.\\n\\nStart the visible, consent-based metadata scan?"):
             return
         # Session-specific builds contain the session code and dashboard URL.
         # Never prompt the scanned person to enter either value.
@@ -503,11 +502,11 @@ class InspectorApp(tk.Tk):
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "running process names, executable paths, and SHA-256 hashes only",
+                "scan_scope": "running process names, executable paths, and SHA-256 hashes only; command lines, usernames, file contents, and process memory are not collected",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Name/path-based indicators are leads, not proof of cheating. Metadata-only bounded scan; manual review is required.",
+                "note": "Name/path-based indicators are leads, not proof of cheating. The scan does not collect command lines, usernames, file contents, credentials, browser data, or process memory; it does not modify files or terminate processes. Manual review is required.",
                 "processes": processes,
             }
             self.delivery_status = "pending"
