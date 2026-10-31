@@ -29,4 +29,14 @@ services:
         sync: false
       - key: DISCORD_WEBHOOK_URL
         sync: false
+      - key: DISCORD_OAUTH_CLIENT_ID
+        sync: false
+      - key: DISCORD_OAUTH_CLIENT_SECRET
+        sync: false
+      - key: DISCORD_OAUTH_REDIRECT_URI
+        sync: false
+      - key: DISCORD_GUILD_ID
+        value: 1556983204219715614
+      - key: DISCORD_ALLOWED_ROLE_ID
+        value: 1556984184558325830
 
