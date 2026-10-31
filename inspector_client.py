@@ -400,12 +400,7 @@ class InspectorApp(tk.Tk):
             variable=self.consent, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
-        self.screenshot_consent = tk.BooleanVar(value=False)
-        tk.Checkbutton(consent_box,
-            text="اختياري ومنفصل: أوافق على التقاط صورة كاملة لسطح المكتب الحالي وإرفاقها بتقرير Discord عند إرسال التقرير. قد تظهر بالصورة نوافذ أو معلومات خاصة؛ لن تُلتقط الصورة ما لم أحدد هذا الخيار.",
-            variable=self.screenshot_consent, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
-            activebackground=PANEL, activeforeground=WHITE, wraplength=900,
-            font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
+
 
         # Progress and controls
         scanbox = tk.Frame(body, bg=PANEL, highlightbackground=LINE, highlightthickness=1, padx=17, pady=13)
@@ -481,8 +476,7 @@ class InspectorApp(tk.Tk):
         if not self.consent.get():
             messagebox.showwarning(APP, "Please confirm consent before starting.")
             return
-        screenshot_note = "\\nتم اختيار التقاط صورة سطح المكتب وإرفاقها بالتقرير." if self.screenshot_consent.get() else "\\nلن تُلتقط أي صورة لسطح المكتب."
-        if not messagebox.askyesno(APP, "بدء الفحص الأمني الشامل؟ سيجمع بيانات وصفية عن العمليات والبرامج وآثار الملفات في Recent وDownloads وTemp وسلة المحذوفات ومجلدات الألعاب المعروفة، دون قراءة محتويات الملفات الشخصية أو كلمات المرور، ثم يرسل التقرير تلقائيًا إلى لوحة التحكم." + screenshot_note + "\\n\\nStart the visible scan and automatically submit the report?"):
+        if not messagebox.askyesno(APP, "بدء فحص بيانات العمليات الجارية وأسماء ملفاتها التنفيذية وبصمات SHA-256 فقط؟ لن يتم فحص مجلداتك الشخصية أو سلة المحذوفات أو سجل بدء التشغيل، ولن تُلتقط صور أو تُقرأ كلمات مرور. سيُرسل التقرير بعد موافقتك إلى لوحة التحكم.\\n\\nStart the visible, consent-based process metadata scan?"):
             return
         # Session-specific builds contain the session code and dashboard URL.
         # Never prompt the scanned person to enter either value.
@@ -491,7 +485,6 @@ class InspectorApp(tk.Tk):
         if not self.active_session_code or not self.active_dashboard_url.startswith("https://"):
             messagebox.showerror(APP, "هذا الملف غير مرتبط بجلسة فحص. اطلب من المسؤول إنشاء جلسة وتنزيل ملفها المخصص.")
             return
-        self.capture_screenshot = bool(self.screenshot_consent.get())
         self.metric_state.set("SCANNING")
         self.session_badge.configure(text="●  الفحص جارٍ", bg="#332616", fg="#ffbd69")
         self.start_button.configure(state="disabled")
@@ -504,47 +497,17 @@ class InspectorApp(tk.Tk):
         try:
             processes = collect_processes(self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
-            startup_entries = collect_startup_entries()
-            file_artifacts = collect_file_artifacts(self.update_progress)
-            screenshot_b64 = None
-            if getattr(self, 'capture_screenshot', False):
-                try:
-                    from PIL import ImageGrab
-                    shot = ImageGrab.grab(all_screens=True)
-                    buffer = io.BytesIO()
-                    shot.convert("RGB").save(buffer, format="JPEG", quality=55, optimize=True)
-                    screenshot_bytes = buffer.getvalue()
-                    if len(screenshot_bytes) > 3_500_000:
-                        buffer = io.BytesIO()
-                        shot.convert("RGB").save(buffer, format="JPEG", quality=35, optimize=True)
-                        screenshot_bytes = buffer.getvalue()
-                    if len(screenshot_bytes) <= 3_500_000:
-                        screenshot_b64 = base64.b64encode(screenshot_bytes).decode("ascii")
-                    else:
-                        self.after(0, lambda: messagebox.showwarning(APP, "تعذر إرفاق صورة سطح المكتب لأن حجمها كبير جدًا. سيُرسل التقرير دون صورة."))
-                except Exception as shot_exc:
-                    self.after(0, lambda: messagebox.showwarning(APP, "تعذر التقاط صورة سطح المكتب. سيُرسل التقرير دون صورة."))
             self.report = {
                 "product": APP,
                 "signature": "3eN INSPECT TEAM",
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "process metadata and executable SHA-256, startup entries, Recent, Downloads, Temp, Recycle Bin metadata, and known FiveM/GTA V/game folders across accessible Windows profiles",
+                "scan_scope": "running process names, executable paths, and SHA-256 hashes only",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
-                "startup_entry_count": len(startup_entries),
-                "file_artifact_count": file_artifacts["item_count"],
-                "file_indicator_match_count": file_artifacts["indicator_match_count"],
-                "file_artifact_counts_by_source": file_artifacts["counts_by_source"],
-                "file_artifacts_truncated": file_artifacts["truncated"],
-                "file_artifacts_note": file_artifacts["note"],
-                "file_artifacts": file_artifacts["items"],
-                "startup_entries": startup_entries,
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
                 "note": "Name/path-based indicators are leads, not proof of cheating. Metadata-only bounded scan; manual review is required.",
-                "desktop_screenshot_base64": screenshot_b64,
-                "desktop_screenshot_included": bool(screenshot_b64),
                 "processes": processes,
             }
             self.delivery_status = "pending"
