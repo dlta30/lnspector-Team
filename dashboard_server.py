@@ -1087,7 +1087,8 @@ def reports():
             str(item.get("submitted_by") or ""), str(data.get("platform") or ""),
             file_search
         ])
-        item["source_label"] = report_source_label(item.get("submitted_by"))\n        item["match_count"] = matches
+        item["source_label"] = report_source_label(item.get("submitted_by"))
+        item["match_count"] = matches
         item["process_count"] = data.get("process_count", len(processes))
         item["status_label"] = "تحتاج مراجعة" if matches else "لم تظهر مؤشرات"
         item["status_class"] = "warn" if matches else "good"
@@ -1304,6 +1305,7 @@ def report_detail(report_id):
         <span class="report-status {{ status_class }}">{{ status_title }}</span>
         <p>{{ status_detail }}</p>
         <p class="muted">الجهاز: {{ r['computer_label'] }} · الجلسة: {{ r['session_id'] }}</p>
+         <p class="muted">مصدر التقرير: {{ source_label }}</p>
         <p class="muted">وقت الاستلام: {{ r['created_at'] }} UTC</p>
       </div>
       <div class="report-metrics">
