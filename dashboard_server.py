@@ -659,6 +659,10 @@ def discord_callback():
         if not actor or actor["role"] != "owner":
             abort(403)
         with db() as con:
+            already_linked = con.execute("SELECT id FROM users WHERE discord_id=? AND id<>?", (discord_id, actor["id"])).fetchone()
+            if already_linked:
+                flash("حساب Discord هذا مرتبط بحساب Inspect آخر بالفعل.")
+                return redirect(url_for("users_page"))
             con.execute("UPDATE users SET discord_id=?,discord_avatar=? WHERE id=?", (discord_id, avatar_url, actor["id"]))
             linked = con.execute("SELECT * FROM users WHERE id=?", (actor["id"],)).fetchone()
         establish_login(linked, "Discord account linked")
@@ -1467,6 +1471,7 @@ def users_page():
             if len(new_password) < 10:
                 flash("كلمة المرور الجديدة يجب أن تكون 10 خانات على الأقل.")
             else:
+                reset_target_name = None
                 with db() as con:
                     target=con.execute("SELECT id,username FROM users WHERE id=?",(uid,)).fetchone()
                     if not target:
@@ -1476,8 +1481,10 @@ def users_page():
                     else:
                         con.execute("UPDATE users SET password_hash=?,has_password=1,login_token=NULL WHERE id=?",
                                     (generate_password_hash(new_password),uid))
-                        log_action(actor["username"],"changed password for staff account "+target["username"])
+                        reset_target_name = target["username"]
                         flash("تم تغيير كلمة المرور وإلغاء الجلسات السابقة للحساب.")
+                if reset_target_name:
+                    log_action(actor["username"],"changed password for staff account "+reset_target_name)
         elif action=="permissions":
             if actor["role"] != "owner": abort(403)
             uid=request.form.get("user_id","")
