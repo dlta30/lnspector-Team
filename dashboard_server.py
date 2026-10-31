@@ -453,6 +453,10 @@ def github_api_json(path):
 
 def log_action(actor, action):
     with db() as con:
+        identity = con.execute("SELECT discord_server_name,discord_username FROM users WHERE username=? OR discord_username=? LIMIT 1", (actor, actor)).fetchone()
+        if identity and identity["discord_username"]:
+            server_name = identity["discord_server_name"] or identity["discord_username"]
+            actor = server_name + " (@" + identity["discord_username"] + ")"
         con.execute("INSERT INTO audit(actor,action,created_at) VALUES(?,?,?)", (actor, action[:240], now()))
 
 def current_user():
