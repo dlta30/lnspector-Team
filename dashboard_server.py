@@ -1290,29 +1290,32 @@ def users_page():
         elif action=="delete":
             uid = request.form.get("user_id", "").strip()
             with db() as con:
-                target = con.execute("SELECT id,username,role FROM users WHERE id=?", (uid,)).fetchone()
+                target = con.execute("SELECT id,username,role,created_by FROM users WHERE id=?", (uid,)).fetchone()
                 if not target:
                     flash("الحساب غير موجود.")
-                elif target["role"] == "owner":
-                    flash("لا يمكن حذف حساب المالك.")
                 elif int(target["id"]) == int(actor["id"]):
                     flash("لا يمكنك حذف حسابك الحالي.")
-                elif actor["username"].strip().lower() == "roith":
-                    if target["role"] == "owner":
-                        owner_count = con.execute("SELECT COUNT(*) AS n FROM users WHERE role='owner'").fetchone()["n"]
-                        if int(owner_count) <= 1:
-                            flash("لا يمكن حذف آخر حساب مالك للنظام.")
-                        else:
-                            con.execute("DELETE FROM users WHERE id=?", (uid,))
-                            log_action(actor["username"], "deleted staff account " + target["username"])
-                            flash("تم حذف الحساب نهائيًا.")
+                elif target["role"] == "owner":
+                    is_creator = (target["created_by"] or "").strip().lower() == actor["username"].strip().lower()
+                    is_root_manager = actor["username"].strip().lower() == "roith"
+                    if not (is_creator or is_root_manager):
+                        abort(403)
+                    owner_count = con.execute("SELECT COUNT(*) AS n FROM users WHERE role='owner'").fetchone()["n"]
+                    if int(owner_count) <= 1:
+                        flash("لا يمكن حذف آخر حساب Inspect Manager.")
                     else:
                         con.execute("DELETE FROM users WHERE id=?", (uid,))
-                        log_action(actor["username"], "deleted staff account " + target["username"])
-                        flash("تم حذف الحساب نهائيًا.")
+                        log_action(actor["username"], "deleted created owner account " + target["username"])
+                        flash("تم حذف حساب المالك الذي أنشأته.")
+                elif actor["username"].strip().lower() == "roith":
+                    con.execute("DELETE FROM users WHERE id=?", (uid,))
+                    log_action(actor["username"], "deleted staff account " + target["username"])
+                    flash("تم حذف الحساب نهائيًا.")
                 elif actor["role"] == "deputy" and target["role"] not in ("inspector", "viewer"):
                     abort(403)
                 elif actor["role"] not in ("owner", "deputy"):
+                    abort(403)
+                elif (target["created_by"] or "").strip().lower() != actor["username"].strip().lower() and actor["role"] != "owner":
                     abort(403)
                 else:
                     con.execute("DELETE FROM users WHERE id=?", (uid,))
@@ -1368,6 +1371,12 @@ def users_page():
           </div>
           {% if u['role']=='owner' %}
             <p class="muted">صلاحيات المالك محمية ولا يمكن تعديلها من هنا.</p>
+            {% if u['username'] != actor_username and (actor_username|lower == 'roith' or (u['created_by'] or '')|lower == actor_username|lower) %}
+            <form method="post" style="margin-top:12px" onsubmit="return confirm('تأكيد حذف حساب Inspect Manager ' + {{ u['username']|tojson }} + ' نهائيًا؟');">
+              <input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}">
+              <button class="btn" style="background:#6d1728;border-color:#b82e49;color:#fff">🗑 حذف الحساب الذي أنشأته</button>
+            </form>
+            {% endif %}
           {% else %}
             {% if actor_role == 'owner' %}
             <form method="post" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end">
