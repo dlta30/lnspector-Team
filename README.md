@@ -6,9 +6,8 @@ A consent-based Windows inspection client with a Flask reporting dashboard.
 ## Current client scope
 - Requires an explicit consent checkbox and a confirmation before scanning.
 - Lists running process metadata and computes SHA-256 hashes for readable process executables.
-- Collects Windows Run-key startup entry names and command strings; it does not execute startup items.
 - Adds basic FiveM/Fortnite process context and configurable name-based indicators for manual review.
-- Hides detailed findings from the inspected user and prepares a JSON report for the administrator.
+- Scans running process names, executable paths, and SHA-256 hashes only; it does not scan personal folders, startup entries, the Recycle Bin, or capture screenshots.
 - Requires explicit confirmation before uploading the report to the dashboard.
 - Does not read browser data, credentials, personal documents, keystrokes, or memory; it does not provide remote control.
 - The current indicators are heuristics only. They are not proof of cheating, and they can miss tools or flag legitimate software.
