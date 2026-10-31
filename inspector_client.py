@@ -318,26 +318,8 @@ class InspectorApp(tk.Tk):
         return os.path.join(root, "3eN Inspect Team", "completed-" + code_hash + ".json")
 
     def _close_then_offer_folder(self):
-        executable = os.path.abspath(sys.executable if getattr(sys, "frozen", False) else __file__)
+        # Close the UI without launching a second process or changing user files.
         self.destroy()
-        prompt = tk.Tk()
-        prompt.withdraw()
-        try:
-            if messagebox.askyesno(
-                APP,
-                "اكتمل الفحص وأُرسل التقرير. هل تريد فتح مكان ملف الفحص لحذفه يدويًا إذا رغبت؟",
-                parent=prompt
-            ):
-                if platform.system() == "Windows":
-                    import subprocess
-                    subprocess.Popen(["explorer", "/select,", executable])
-                else:
-                    import subprocess
-                    subprocess.Popen(["xdg-open", os.path.dirname(executable)])
-        except Exception:
-            pass
-        finally:
-            prompt.destroy()
 
     def start(self):
         marker = self._completion_marker_path()
