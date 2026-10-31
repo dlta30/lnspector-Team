@@ -311,7 +311,7 @@ def report_source_label(submitted_by):
         print("Report source lookup failed:", type(exc).__name__)
     return identifier
 
-def notify_discord(report_id, session_code, computer, summary, report=None, verdict="review", reason=""):
+def notify_discord(report_id, session_code, computer, summary, report=None, verdict="review", reason="", reviewer_discord_id=""):
     webhook_key = 'DISCORD_WEBHOOK_URL' if verdict == 'clean' else 'DISCORD_HACK_WEBHOOK_URL'
     webhook = os.environ.get(webhook_key, '').strip().strip('"').strip("'")
     if not webhook.startswith(('https://discord.com/api/webhooks/', 'https://discordapp.com/api/webhooks/')):
@@ -327,14 +327,16 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
     def safe(value, limit=900):
         return str(value or 'غير متاح').replace('\x00', '')[:limit]
 
-    target_name, report_time, report_source = 'غير مسجل', now(), '3eN Inspect desktop client'
+    target_name, target_username, target_discord_id, report_time, report_source = 'غير مسجل', '', '', now(), '3eN Inspect desktop client'
     try:
         with db() as con:
-            row = con.execute("SELECT r.created_at,r.submitted_by,s.target_label FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id WHERE r.id=?", (report_id,)).fetchone()
+            row = con.execute("SELECT r.created_at,r.submitted_by,s.target_label,s.target_nickname,s.target_username,s.target_discord_id FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id WHERE r.id=?", (report_id,)).fetchone()
         if row:
             report_time = row['created_at'] or report_time
             report_source = report_source_label(row['submitted_by']) or report_source
-            target_name = row['target_label'] or target_name
+            target_name = row['target_nickname'] or row['target_label'] or target_name
+            target_username = row['target_username'] or ''
+            target_discord_id = str(row['target_discord_id'] or '').strip()
     except Exception as exc:
         print('Discord metadata lookup failed:', type(exc).__name__)
     verdict = verdict if verdict in ('hack', 'clean') else 'review'
@@ -344,7 +346,9 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
     fields = [
         {'name': '🧑‍⚖️ التصنيف النهائي', 'value': verdict_title, 'inline': False},
         {'name': '📝 سبب التصنيف', 'value': reason, 'inline': False},
-        {'name': '👤 الاسم المعروف', 'value': safe(target_name, 180), 'inline': True},
+        {'name': '👤 اسم الشخص (Server Nickname)', 'value': safe(target_name, 180), 'inline': True},
+        {'name': '🔖 Discord Username', 'value': '@' + safe(target_username, 160) if target_username else 'غير مسجل', 'inline': True},
+        {'name': '🆔 Discord User ID', 'value': safe(target_discord_id, 40), 'inline': True},
         {'name': '🧾 رقم التقرير', 'value': safe(report_id, 80), 'inline': True},
         {'name': '🕒 وقت التقرير (UTC)', 'value': safe(report_time, 100), 'inline': True},
         {'name': '📡 مصدر التقرير', 'value': safe(report_source, 150), 'inline': True},
@@ -379,10 +383,16 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         'fields': fields[:25],
         'footer': {'text': '3eN INSPECTOR TEAM • مؤشرات الأسماء تحتاج مراجعة يدوية ولا تثبت وحدها وجود هاك.'}
     }
+    mention_ids = []
+    for discord_id in (target_discord_id, str(reviewer_discord_id or '').strip()):
+        if discord_id.isdigit() and 17 <= len(discord_id) <= 20 and discord_id not in mention_ids:
+            mention_ids.append(discord_id)
+    mention_text = ' '.join('<@' + discord_id + '>' for discord_id in mention_ids)
     message = {
         'username': '3eN Inspect Team',
+        'content': mention_text or None,
         'embeds': [embed],
-        'allowed_mentions': {'parse': []}
+        'allowed_mentions': {'parse': [], 'users': mention_ids}
     }
     pdf_data = None
     screenshot_data = None
@@ -1441,7 +1451,8 @@ def report_send_discord(report_id):
     sent = notify_discord(
         r["id"], r["session_id"], r["computer_label"], r["summary"], report_data,
         verdict=request.form.get("verdict", "review").strip().lower(),
-        reason=request.form.get("reason", "").strip()
+        reason=request.form.get("reason", "").strip(),
+        reviewer_discord_id=actor.get("discord_id", "")
     )
     if sent:
         log_action(actor["username"], "sent report #" + str(report_id) + " to Discord")
