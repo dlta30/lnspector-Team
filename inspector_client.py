@@ -1,6 +1,6 @@
 """
 3eN Inspect Team — transparent local inspection client.
-Scans running process metadata only (name, executable path, SHA-256 where readable).
+Scans running process metadata only (process name, executable path, SHA-256 where readable).
 It does not read personal documents, browser data, credentials, or memory.
 Run: python inspector_client.py
 """
@@ -37,34 +37,6 @@ def classify_game_context(process_name, executable_path):
     text = (str(process_name or "") + " " + str(executable_path or "")).lower()
     return [game for game, terms in GAME_PROCESS_TERMS.items() if any(term in text for term in terms)]
 
-def collect_startup_entries():
-    """Collect startup entry names and command paths on Windows only; never execute anything."""
-    entries = []
-    if platform.system() != "Windows":
-        return entries
-    try:
-        import winreg
-        locations = (
-            (winreg.HKEY_CURRENT_USER, r"Software\\Microsoft\\Windows\\CurrentVersion\\Run", "HKCU Run"),
-            (winreg.HKEY_LOCAL_MACHINE, r"Software\\Microsoft\\Windows\\CurrentVersion\\Run", "HKLM Run"),
-            (winreg.HKEY_LOCAL_MACHINE, r"Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Run", "HKLM Run 32-bit"),
-        )
-        for hive, key_path, label in locations:
-            try:
-                with winreg.OpenKey(hive, key_path) as key:
-                    count = winreg.QueryInfoKey(key)[1]
-                    for index in range(min(count, 250)):
-                        try:
-                            name, value, _kind = winreg.EnumValue(key, index)
-                            entries.append({"source": label, "name": str(name)[:160], "command": str(value)[:1000]})
-                        except OSError:
-                            continue
-            except OSError:
-                continue
-    except ImportError:
-        pass
-    return entries[:500]
-
 def sha256_file(path):
     try:
         h = hashlib.sha256()
@@ -98,7 +70,6 @@ def collect_processes(progress):
             exists = bool(exe and os.path.isfile(exe))
             digest = sha256_file(exe) if exists else None
             file_created = file_modified = None
-            download_mark = False
             if exists:
                 try:
                     stat = os.stat(exe)
@@ -106,14 +77,6 @@ def collect_processes(progress):
                     file_modified = utc_timestamp(stat.st_mtime)
                 except OSError:
                     pass
-                # Windows Mark-of-the-Web indicates a file marked as downloaded,
-                # but does not establish an exact download timestamp.
-                try:
-                    with open(exe + ":Zone.Identifier", "r", encoding="utf-8", errors="ignore") as zone:
-                        zone_data = zone.read(4096)
-                    download_mark = "ZoneId=3" in zone_data or "ZoneId=4" in zone_data
-                except OSError:
-                    download_mark = False
             rows.append({
                 "pid": info.get("pid"),
                 "process_name": name,
@@ -122,7 +85,6 @@ def collect_processes(progress):
                 "process_started_at": utc_timestamp(info.get("create_time")),
                 "file_created_at": file_created,
                 "file_modified_at": file_modified,
-                "download_mark": bool(download_mark),
                 "sha256": digest,
                 "indicator_matches": matches,
                 "game_context": classify_game_context(name, exe),
@@ -133,169 +95,6 @@ def collect_processes(progress):
         progress(int(i * 100 / total), f"Checking process metadata {i}/{total}")
     return rows
 
-
-FILE_INDICATOR_TERMS = tuple(sorted(set(SUSPICIOUS_TERMS + (
-    "executor", "triggerbot", "spoofer", "hwid", "bypass", "unlock all",
-    "nexus", "midnight", "susano", "2take1", "cherax", "menyoo",
-    "simple trainer", "modest menu", "gta cheat", "fivem cheat",
-    "redengine", "eulen", "xenos", "aimware", "rewasd", "cheat table",
-    "extreme injector", "process hacker", "unknowncheats"
-))))
-
-def _file_metadata(path, source):
-    try:
-        st = os.stat(path, follow_symlinks=False)
-        if not os.path.isfile(path):
-            return None
-        name = os.path.basename(path)
-        full = os.path.abspath(path)
-        haystack = (name + " " + full).lower()
-        matches = [term for term in FILE_INDICATOR_TERMS if term in haystack]
-        return {
-            "source": source, "name": name[:240], "path": full[:1200],
-            "size_bytes": int(st.st_size),
-            "created_at": utc_timestamp(st.st_ctime),
-            "modified_at": utc_timestamp(st.st_mtime),
-            "accessed_at": utc_timestamp(st.st_atime),
-            "indicator_matches": matches[:20],
-            "assessment": "review" if matches else "metadata_only"
-        }
-    except (OSError, PermissionError, ValueError):
-        return None
-
-def _scan_directory(root, source, limit, recursive=False):
-    rows = []
-    if not root or not os.path.isdir(root):
-        return rows
-    try:
-        if recursive:
-            for current, dirs, files in os.walk(root):
-                dirs[:] = [d for d in dirs if d.lower() not in ("node_modules", ".git", "__pycache__")]
-                for filename in files:
-                    row = _file_metadata(os.path.join(current, filename), source)
-                    if row:
-                        rows.append(row)
-                        if len(rows) >= limit:
-                            return rows
-        else:
-            with os.scandir(root) as entries:
-                for entry in entries:
-                    try:
-                        if entry.is_file(follow_symlinks=False):
-                            row = _file_metadata(entry.path, source)
-                            if row:
-                                rows.append(row)
-                                if len(rows) >= limit:
-                                    break
-                    except OSError:
-                        continue
-    except (OSError, PermissionError):
-        pass
-    return rows
-
-def collect_file_artifacts(progress):
-    """Bounded metadata-only scan of common Windows user and game artifact locations."""
-    if platform.system() != "Windows":
-        return {"items": [], "counts_by_source": {}, "item_count": 0,
-                "indicator_match_count": 0, "truncated": False}
-    profiles = []
-    users_root = os.path.join(os.environ.get("SystemDrive", "C:"), os.sep, "Users")
-    try:
-        with os.scandir(users_root) as entries:
-            for entry in entries:
-                if entry.is_dir(follow_symlinks=False) and entry.name.lower() not in (
-                    "public", "default", "default user", "all users"
-                ):
-                    profiles.append(entry.path)
-    except OSError:
-        pass
-    current = os.path.expanduser("~")
-    if current and os.path.isdir(current) and current not in profiles:
-        profiles.insert(0, current)
-    profiles = profiles[:20]
-    limits = {"Recent": 400, "Downloads": 600, "Temp": 900,
-              "Recycle Bin": 500, "Game folders": 900}
-    results, counts = [], {}
-    cap = 3300
-
-    def add(root, source, limit, recursive=False):
-        remaining = cap - len(results)
-        if remaining <= 0:
-            return
-        rows = _scan_directory(root, source, min(limit, remaining), recursive)
-        results.extend(rows)
-        counts[source] = counts.get(source, 0) + len(rows)
-
-    for profile in profiles:
-        # Scan both the requested legacy-style path and Windows' standard Recent folder.
-        add(os.path.join(profile, "Recent"), "Recent", limits["Recent"])
-        add(os.path.join(profile, "AppData", "Roaming", "Microsoft", "Windows", "Recent"),
-            "Recent", limits["Recent"])
-        add(os.path.join(profile, "Downloads"), "Downloads", limits["Downloads"])
-        add(os.path.join(profile, "AppData", "Local", "Temp"), "Temp", limits["Temp"], True)
-        add(os.path.join(profile, "AppData", "Local", "FiveM", "FiveM.app", "data", "cache"),
-            "Temp", limits["Temp"], True)
-
-        # $I entries are Windows Recycle Bin metadata records; never inspect $R file contents.
-        recycle = os.path.join(os.environ.get("SystemDrive", "C:"), "$Recycle.Bin")
-        try:
-            for current_dir, dirs, files in os.walk(recycle):
-                for filename in files:
-                    if not filename.startswith("$I"):
-                        continue
-                    metadata_path = os.path.join(current_dir, filename)
-                    row = _file_metadata(metadata_path, "Recycle Bin")
-                    try:
-                        # Windows $I metadata: version, original size, deletion FILETIME, UTF-16 path.
-                        with open(metadata_path, "rb") as metadata_file:
-                            raw = metadata_file.read(8192)
-                        if len(raw) >= 26:
-                            version = int.from_bytes(raw[0:8], "little")
-                            original_size = int.from_bytes(raw[8:16], "little")
-                            deleted_filetime = int.from_bytes(raw[16:24], "little")
-                            original_path = raw[24:].decode("utf-16-le", errors="ignore").split(chr(0), 1)[0]
-                            if row and version in (1, 2) and original_path:
-                                row["name"] = os.path.basename(original_path)[:240]
-                                row["path"] = original_path[:1200]
-                                row["size_bytes"] = original_size
-                                row["deleted_at"] = utc_timestamp((deleted_filetime - 116444736000000000) / 10000000)
-                                row["indicator_matches"] = [term for term in FILE_INDICATOR_TERMS if term in original_path.lower()][:20]
-                                row["assessment"] = "review" if row["indicator_matches"] else "deleted_metadata"
-                    except (OSError, ValueError, OverflowError):
-                        pass
-                    if row:
-                        row["note"] = "Recycle Bin metadata only; recovery of deleted content is not attempted"
-                        results.append(row)
-                        counts["Recycle Bin"] = counts.get("Recycle Bin", 0) + 1
-                        if counts["Recycle Bin"] >= limits["Recycle Bin"] or len(results) >= cap:
-                            break
-                if counts.get("Recycle Bin", 0) >= limits["Recycle Bin"] or len(results) >= cap:
-                    break
-        except OSError:
-            pass
-
-        game_roots = (
-            os.path.join(profile, "AppData", "Local", "FiveM"),
-            os.path.join(profile, "AppData", "Roaming", "CitizenFX"),
-            os.path.join(profile, "Documents", "Rockstar Games", "GTA V"),
-            os.path.join(profile, "AppData", "Local", "Rockstar Games"),
-            os.path.join(profile, "AppData", "Local", "FortniteGame"),
-            os.path.join(profile, "AppData", "Local", "EpicGamesLauncher"),
-        )
-        for root in game_roots:
-            add(root, "Game folders", limits["Game folders"], True)
-            if len(results) >= cap:
-                break
-        progress(min(99, int(len(results) * 100 / cap)), "Collecting Recent / Temp / game file metadata")
-        if len(results) >= cap:
-            break
-
-    flagged = sum(1 for item in results if item.get("indicator_matches"))
-    return {
-        "items": results[:cap], "counts_by_source": counts, "item_count": len(results[:cap]),
-        "indicator_match_count": flagged, "truncated": len(results) >= cap,
-        "note": "Metadata only. Recent entries are shortcut files; Recycle Bin entries are $I metadata files. This cannot recover permanently deleted files. No ordinary file contents, browser databases, or credentials were read."
-    }
 
 class InspectorApp(tk.Tk):
     def __init__(self):
