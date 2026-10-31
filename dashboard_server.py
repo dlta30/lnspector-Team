@@ -1452,7 +1452,7 @@ def report_send_discord(report_id):
         r["id"], r["session_id"], r["computer_label"], r["summary"], report_data,
         verdict=request.form.get("verdict", "review").strip().lower(),
         reason=request.form.get("reason", "").strip(),
-        reviewer_discord_id=actor.get("discord_id", "")
+        reviewer_discord_id=actor["discord_id"] or ""
     )
     if sent:
         log_action(actor["username"], "sent report #" + str(report_id) + " to Discord")
