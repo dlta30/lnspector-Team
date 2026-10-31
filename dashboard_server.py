@@ -801,21 +801,32 @@ def download_session_build(code):
         from io import BytesIO
         import zipfile
         from flask import send_file
-        with zipfile.ZipFile(BytesIO(data)) as archive:
-            exe_names = [name for name in archive.namelist()
-                         if name.lower().endswith(".exe") and not name.startswith("__MACOSX/")]
-            expected_name = "3eN-Inspect-" + code + ".exe"
-            exe_name = next((name for name in exe_names if name.rsplit("/", 1)[-1].lower() == expected_name.lower()), None)
-            if not exe_name:
-                raise RuntimeError("The matching session EXE was not found in the workflow artifact")
-            exe_data = archive.read(exe_name)
-        if not exe_data or not exe_data.startswith(b"MZ"):
-            raise RuntimeError("The downloaded session EXE is empty or invalid")
+        # The workflow artifact contains a ZIP package with the complete onedir app.
+        # Return that package intact so the user receives the EXE and its _internal folder.
+        with zipfile.ZipFile(BytesIO(data)) as artifact_zip:
+            package_names = [name for name in artifact_zip.namelist()
+                             if name.lower().endswith(".zip") and not name.startswith("__MACOSX/")]
+            expected_package = "3eN-Inspect-" + code + ".zip"
+            package_name = next((name for name in package_names
+                                 if name.rsplit("/", 1)[-1].lower() == expected_package.lower()), None)
+            if not package_name:
+                raise RuntimeError("The matching complete application ZIP was not found in the GitHub artifact")
+            package_data = artifact_zip.read(package_name)
+        if not package_data or not package_data.startswith(b"PK"):
+            raise RuntimeError("The downloaded application package is empty or invalid")
+        # Validate the nested package before serving it.
+        with zipfile.ZipFile(BytesIO(package_data)) as app_zip:
+            names = app_zip.namelist()
+            expected_exe = "3eN-Inspect-" + code + ".exe"
+            if not any(name.rsplit("/", 1)[-1].lower() == expected_exe.lower() for name in names):
+                raise RuntimeError("The session executable is missing from the application package")
+            if not any("_internal/" in name.replace("\\\\", "/") for name in names):
+                raise RuntimeError("The PyInstaller _internal runtime folder is missing from the application package")
         with db() as con:
             con.execute("UPDATE inspection_sessions SET downloaded_at=? WHERE display_code=?", (now(), code))
-        log_action("session-download", "downloaded inspection EXE for session " + code)
-        return send_file(BytesIO(exe_data), mimetype="application/vnd.microsoft.portable-executable",
-                         as_attachment=True, download_name=expected_name)
+        log_action("session-download", "downloaded complete inspection package for session " + code)
+        return send_file(BytesIO(package_data), mimetype="application/zip",
+                         as_attachment=True, download_name=expected_package)
     except Exception as exc:
         if getattr(exc, "code", None) in (503, 404):
             raise
