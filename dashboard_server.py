@@ -23,6 +23,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 import urllib.request
 import urllib.error
+import urllib.parse
 from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
@@ -54,6 +55,11 @@ API_KEY = os.environ.get("INSPECTOR_API_KEY", "")
 OWNER_USER = os.environ.get("INSPECTOR_OWNER_USER", "owner")
 OWNER_PASSWORD = os.environ.get("INSPECTOR_OWNER_PASSWORD", "")
 DEPUTY_PASSWORD = os.environ.get("INSPECTOR_DEPUTY_PASSWORD", "")
+DISCORD_OAUTH_CLIENT_ID = os.environ.get("DISCORD_OAUTH_CLIENT_ID", "").strip()
+DISCORD_OAUTH_CLIENT_SECRET = os.environ.get("DISCORD_OAUTH_CLIENT_SECRET", "").strip()
+DISCORD_OAUTH_REDIRECT_URI = os.environ.get("DISCORD_OAUTH_REDIRECT_URI", "").strip()
+DISCORD_GUILD_ID = os.environ.get("DISCORD_GUILD_ID", "1556983204219715614").strip()
+DISCORD_ALLOWED_ROLE_ID = os.environ.get("DISCORD_ALLOWED_ROLE_ID", "1556984184558325830").strip()
 GITHUB_ACTIONS_TOKEN = os.environ.get("GITHUB_ACTIONS_TOKEN", "").strip()
 GITHUB_REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "dlta30/lnspector-Team")
 PUBLIC_DASHBOARD_URL = os.environ.get("PUBLIC_DASHBOARD_URL", "").strip().rstrip("/")
@@ -68,6 +74,9 @@ CREATE TABLE IF NOT EXISTS users (
  can_ingest INTEGER NOT NULL DEFAULT 0,
  login_token TEXT,
  created_by TEXT,
+ discord_id TEXT,
+ discord_avatar TEXT,
+ has_password INTEGER NOT NULL DEFAULT 1,
  created_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS inspection_sessions (
@@ -168,7 +177,8 @@ def init_db():
           id BIGSERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
           role TEXT NOT NULL CHECK(role IN ('owner','deputy','team','inspector','viewer')),
           can_view INTEGER NOT NULL DEFAULT 1, can_ingest INTEGER NOT NULL DEFAULT 0,
-          login_token TEXT, created_by TEXT, created_at TEXT NOT NULL
+          login_token TEXT, created_by TEXT, discord_id TEXT, discord_avatar TEXT,
+          has_password INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS inspection_sessions (
           id BIGSERIAL PRIMARY KEY, code_hash TEXT UNIQUE NOT NULL, display_code TEXT NOT NULL,
@@ -190,6 +200,10 @@ def init_db():
             # Safe additive migrations for older PostgreSQL deployments.
             con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS login_token TEXT")
             con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS created_by TEXT")
+            con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS discord_id TEXT")
+            con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS discord_avatar TEXT")
+            con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_password INTEGER NOT NULL DEFAULT 1")
+            con.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_discord_id_unique ON users(discord_id)")
             con.execute("UPDATE users SET role='inspector' WHERE role='team'")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_label TEXT NOT NULL DEFAULT ''")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS downloaded_at TEXT")
@@ -210,6 +224,13 @@ def init_db():
             con.execute("ALTER TABLE users ADD COLUMN login_token TEXT")
         if "created_by" not in user_columns:
             con.execute("ALTER TABLE users ADD COLUMN created_by TEXT")
+        if "discord_id" not in user_columns:
+            con.execute("ALTER TABLE users ADD COLUMN discord_id TEXT")
+        if "discord_avatar" not in user_columns:
+            con.execute("ALTER TABLE users ADD COLUMN discord_avatar TEXT")
+        if "has_password" not in user_columns:
+            con.execute("ALTER TABLE users ADD COLUMN has_password INTEGER NOT NULL DEFAULT 1")
+        con.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_discord_id_unique ON users(discord_id)")
         con.execute("UPDATE users SET role='inspector' WHERE role='team'")
         session_columns = {row["name"] for row in con.execute("PRAGMA table_info(inspection_sessions)").fetchall()}
         if "target_label" not in session_columns:
@@ -522,30 +543,191 @@ def login():
                 con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
                             (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
                 user = con.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
-            if not user and 2 <= len(username) <= 64:
-                role_passwords = [("deputy", DEPUTY_PASSWORD)]
-                matched_role = next((role for role, secret in role_passwords if secret and hmac.compare_digest(password, secret)), None)
-                safe_name = username.replace(" ", "_")
-                # Owner is provisioned only from the configured owner account/password.
-                if matched_role:
-                    try:
-                        con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)", (safe_name, generate_password_hash(password), matched_role, 1 if matched_role in ("owner","deputy") else 0, 1 if matched_role == "owner" else 0, now()))
-                        user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
-                        log_action(safe_name, "created account with role " + matched_role)
-                    except (sqlite3.IntegrityError, psycopg2.IntegrityError):
-                        user = con.execute("SELECT * FROM users WHERE username=?", (safe_name,)).fetchone()
-            if user and check_password_hash(user["password_hash"], password):
-                login_token = secrets.token_urlsafe(32)
-                with db() as con:
-                    con.execute("UPDATE users SET login_token=? WHERE id=?", (login_token, user["id"]))
-                session.clear()
-                session.permanent = True
-                session["username"] = user["username"]
-                session["login_token"] = login_token
-                log_action(username, "login (single active session; previous session invalidated)")
+            if user and int(user["has_password"] or 0) == 1 and check_password_hash(user["password_hash"], password):
+                establish_login(user, "password login")
                 return redirect(request.args.get("next") or url_for("home"))
-        flash("Login failed. Check credentials and server environment configuration.")
-    return page("""<div class="login-shell"><section class="login-hero"><div><div class="eyebrow">SECURITY OPERATIONS PLATFORM</div><div class="hero-mark">3eN<span>.</span></div><h2>INSPECT</h2><p class="muted">جلسات الفحص, secure reports, and team access — in one place.</p></div><div class="status-pill"><i></i> PRIVATE TEAM ACCESS</div></section><section class="login-form"><div class="eyebrow">WELCOME BACK</div><h2>Sign in</h2><p class="muted">Use your team credentials to continue.</p><form method="post"><label>Username</label><input name="username" required autocomplete="username" placeholder="Enter username"><label>Password</label><input name="password" type="password" required autocomplete="current-password" placeholder="Enter password"><button class="btn">Sign in securely &rarr;</button></form><p class="muted" style="font-size:11px;margin-top:24px">Access is controlled by your assigned role.</p></section></div>""")
+        flash("بيانات الدخول غير صحيحة.")
+    return page("""<div class="login-shell"><section class="login-hero"><div><div class="eyebrow">SECURITY OPERATIONS PLATFORM</div><div class="hero-mark">3eN<span>.</span></div><h2>INSPECT</h2><p class="muted">تسجيل دخول آمن لفريق Inspect.</p></div><div class="status-pill"><i></i> PRIVATE TEAM ACCESS</div></section><section class="login-form"><div class="eyebrow">WELCOME TO INSPECT</div><h2>تسجيل الدخول</h2><p class="muted">استخدم حساب Discord المرتبط بالسيرفر والرتبة المسموحة.</p><a class="btn" style="display:block;text-align:center;padding:14px;margin:18px 0" href="{{ url_for('discord_login') }}">◉ تسجيل الدخول بواسطة Discord</a><div class="muted" style="text-align:center;font-size:11px;margin:18px 0">أو دخول المدير الاحتياطي</div><form method="post"><label>اسم المستخدم</label><input name="username" required autocomplete="username"><label>كلمة المرور</label><input name="password" type="password" required autocomplete="current-password"><button class="btn">دخول</button></form><p class="muted" style="font-size:11px;margin-top:20px">يتم التحقق من عضوية Discord والرتبة قبل السماح بإنشاء الحساب أو الدخول.</p></section></div>""")
+
+def establish_login(user, reason):
+    login_token = secrets.token_urlsafe(32)
+    with db() as con:
+        con.execute("UPDATE users SET login_token=? WHERE id=?", (login_token, user["id"]))
+    session.clear()
+    session.permanent = True
+    session["username"] = user["username"]
+    session["login_token"] = login_token
+    log_action(user["username"], "login (" + reason + "; previous session invalidated)")
+
+def discord_api_get(path, access_token):
+    req = urllib.request.Request("https://discord.com/api/v10" + path, headers={
+        "Authorization": "Bearer " + access_token,
+        "Accept": "application/json",
+        "User-Agent": "3eN-Inspect-Team"
+    })
+    with urllib.request.urlopen(req, timeout=15) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+def discord_oauth_ready():
+    return bool(DISCORD_OAUTH_CLIENT_ID and DISCORD_OAUTH_CLIENT_SECRET and DISCORD_OAUTH_REDIRECT_URI.startswith("https://"))
+
+def discord_authorize(link_existing=False):
+    if not discord_oauth_ready():
+        flash("إعداد Discord OAuth غير مكتمل. أضف Client ID وClient Secret وRedirect URI في Render.")
+        return redirect(url_for("login"))
+    state = secrets.token_urlsafe(32)
+    session["discord_oauth_state"] = state
+    session["discord_link_existing"] = bool(link_existing)
+    params = urllib.parse.urlencode({
+        "client_id": DISCORD_OAUTH_CLIENT_ID,
+        "redirect_uri": DISCORD_OAUTH_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "identify guilds.members.read",
+        "state": state,
+        "prompt": "consent"
+    })
+    return redirect("https://discord.com/oauth2/authorize?" + params)
+
+@app.get("/auth/discord")
+def discord_login():
+    return discord_authorize(False)
+
+@app.get("/auth/discord/link")
+@login_required
+def discord_link():
+    return discord_authorize(True)
+
+@app.get("/auth/discord/callback")
+def discord_callback():
+    state = request.args.get("state", "")
+    expected = session.pop("discord_oauth_state", "")
+    if not expected or not state or not hmac.compare_digest(expected, state):
+        abort(400, "Discord OAuth state verification failed.")
+    if request.args.get("error"):
+        flash("تم إلغاء تسجيل الدخول بواسطة Discord.")
+        return redirect(url_for("login"))
+    code = request.args.get("code", "")
+    if not code or not discord_oauth_ready():
+        abort(400, "Discord OAuth configuration or authorization code is missing.")
+    token_data = urllib.parse.urlencode({
+        "client_id": DISCORD_OAUTH_CLIENT_ID,
+        "client_secret": DISCORD_OAUTH_CLIENT_SECRET,
+        "grant_type": "authorization_code",
+        "code": code,
+        "redirect_uri": DISCORD_OAUTH_REDIRECT_URI
+    }).encode()
+    token_req = urllib.request.Request("https://discord.com/api/v10/oauth2/token", data=token_data, headers={
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Accept": "application/json",
+        "User-Agent": "3eN-Inspect-Team"
+    }, method="POST")
+    try:
+        with urllib.request.urlopen(token_req, timeout=15) as response:
+            token = json.loads(response.read().decode("utf-8"))
+        access_token = token.get("access_token", "")
+        if not access_token:
+            raise ValueError("Discord did not return an access token")
+        profile = discord_api_get("/users/@me", access_token)
+        member = discord_api_get("/users/@me/guilds/" + DISCORD_GUILD_ID + "/member", access_token)
+    except urllib.error.HTTPError as exc:
+        print("Discord OAuth verification failed:", exc.code)
+        if exc.code == 404:
+            flash("لا يمكن الدخول: يجب أن تكون عضواً في سيرفر Inspect.")
+        else:
+            flash("تعذر التحقق من حساب Discord. حاول مرة أخرى.")
+        return redirect(url_for("login"))
+    except Exception as exc:
+        print("Discord OAuth error:", type(exc).__name__, str(exc)[:180])
+        flash("حدث خطأ أثناء الاتصال بـ Discord.")
+        return redirect(url_for("login"))
+
+    roles = member.get("roles", []) if isinstance(member, dict) else []
+    if DISCORD_ALLOWED_ROLE_ID not in roles:
+        flash("غير مسموح لك بالدخول: لا تملك الرتبة المطلوبة في سيرفر Inspect.")
+        return redirect(url_for("login"))
+
+    discord_id = str(profile.get("id", "")).strip()
+    if not discord_id:
+        abort(400, "Discord account ID was not returned.")
+    avatar_hash = profile.get("avatar")
+    avatar_url = ("https://cdn.discordapp.com/avatars/" + discord_id + "/" + avatar_hash + ".png?size=128") if avatar_hash else ""
+    display_name = (profile.get("global_name") or profile.get("username") or "Discord user").strip()[:80]
+
+    if session.pop("discord_link_existing", False):
+        actor = current_user()
+        if not actor or actor["role"] != "owner":
+            abort(403)
+        with db() as con:
+            con.execute("UPDATE users SET discord_id=?,discord_avatar=? WHERE id=?", (discord_id, avatar_url, actor["id"]))
+            linked = con.execute("SELECT * FROM users WHERE id=?", (actor["id"],)).fetchone()
+        establish_login(linked, "Discord account linked")
+        log_action(display_name, "linked Discord identity to Inspect Manager account")
+        flash("تم ربط حساب Discord بحساب Inspect Manager.")
+        return redirect(url_for("home"))
+
+    with db() as con:
+        user = con.execute("SELECT * FROM users WHERE discord_id=?", (discord_id,)).fetchone()
+        if not user:
+            base_name = "discord_" + discord_id
+            con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,discord_id,discord_avatar,has_password,created_by,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                        (base_name, generate_password_hash(secrets.token_urlsafe(48)), "inspector", 1, 0, discord_id, avatar_url, 0, "Discord OAuth", now()))
+            user = con.execute("SELECT * FROM users WHERE discord_id=?", (discord_id,)).fetchone()
+            log_action(base_name, "created account after Discord guild-role verification")
+        else:
+            con.execute("UPDATE users SET discord_avatar=? WHERE id=?", (avatar_url, user["id"]))
+            user = con.execute("SELECT * FROM users WHERE id=?", (user["id"],)).fetchone()
+
+    session.clear()
+    session["pending_discord_user_id"] = discord_id
+    session["pending_discord_name"] = display_name
+    return redirect(url_for("discord_password"))
+
+@app.route("/auth/discord/password", methods=["GET", "POST"])
+def discord_password():
+    discord_id = session.get("pending_discord_user_id")
+    if not discord_id:
+        return redirect(url_for("login"))
+    with db() as con:
+        user = con.execute("SELECT * FROM users WHERE discord_id=?", (discord_id,)).fetchone()
+    if not user:
+        session.clear()
+        return redirect(url_for("login"))
+    first_setup = int(user["has_password"] or 0) == 0
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if first_setup:
+            confirm = request.form.get("confirm_password", "")
+            if len(password) < 10:
+                flash("كلمة المرور يجب أن تكون 10 خانات على الأقل.")
+            elif password != confirm:
+                flash("كلمتا المرور غير متطابقتين.")
+            else:
+                with db() as con:
+                    con.execute("UPDATE users SET password_hash=?,has_password=1 WHERE id=?",
+                                (generate_password_hash(password), user["id"]))
+                user = current_user_by_id(user["id"])
+                session.pop("pending_discord_user_id", None)
+                session.pop("pending_discord_name", None)
+                establish_login(user, "Discord first password set")
+                log_action(user["username"], "set initial password after Discord role verification")
+                return redirect(url_for("home"))
+        elif check_password_hash(user["password_hash"], password):
+            session.pop("pending_discord_user_id", None)
+            session.pop("pending_discord_name", None)
+            establish_login(user, "Discord OAuth and password verified")
+            return redirect(url_for("home"))
+        else:
+            flash("كلمة المرور غير صحيحة.")
+    heading = "إنشاء كلمة المرور" if first_setup else "تأكيد كلمة المرور"
+    description = "هذه أول مرة تدخل فيها. أنشئ كلمة مرور لحسابك." if first_setup else "تم التحقق من Discord والرتبة. أدخل كلمة مرور حساب Inspect."
+    fields = '<label>كلمة المرور الجديدة</label><input type="password" name="password" minlength="10" autocomplete="new-password" required>'
+    if first_setup:
+        fields += '<label>تأكيد كلمة المرور</label><input type="password" name="confirm_password" minlength="10" autocomplete="new-password" required>'
+    return page('<div class="card" style="max-width:520px;margin:8vh auto"><div class="eyebrow">DISCORD VERIFIED</div><h2>' + heading + '</h2><p class="muted">' + description + '</p><form method="post">' + fields + '<button class="btn" style="width:100%;margin-top:15px">متابعة</button></form></div>')
+
+def current_user_by_id(user_id):
+    with db() as con:
+        return con.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
 
 @app.route("/logout")
 def logout():
@@ -1274,6 +1456,24 @@ def users_page():
                     log_action(actor["username"],"created staff account "+username)
                     flash("Staff account created.")
                 except sqlite3.IntegrityError: flash("That username already exists.")
+        elif action=="reset_password":
+            if actor["role"] != "owner": abort(403)
+            uid=request.form.get("user_id","").strip()
+            new_password=request.form.get("new_password","")
+            if len(new_password) < 10:
+                flash("كلمة المرور الجديدة يجب أن تكون 10 خانات على الأقل.")
+            else:
+                with db() as con:
+                    target=con.execute("SELECT id,username FROM users WHERE id=?",(uid,)).fetchone()
+                    if not target:
+                        flash("الحساب غير موجود.")
+                    elif int(target["id"]) == int(actor["id"]):
+                        flash("لتغيير كلمة مرورك استخدم تسجيل الدخول بحسابك وإعدادات الحساب.")
+                    else:
+                        con.execute("UPDATE users SET password_hash=?,has_password=1,login_token=NULL WHERE id=?",
+                                    (generate_password_hash(new_password),uid))
+                        log_action(actor["username"],"changed password for staff account "+target["username"])
+                        flash("تم تغيير كلمة المرور وإلغاء الجلسات السابقة للحساب.")
         elif action=="permissions":
             if actor["role"] != "owner": abort(403)
             uid=request.form.get("user_id","")
@@ -1380,6 +1580,13 @@ def users_page():
             <div><b style="font-size:16px">{{ u['username'] }}</b><div class="muted" style="margin-top:5px">تم إنشاء الحساب: {{ u['created_at'][:10] }}<br><span class="muted">أنشأه: {{ u['created_by'] or 'النظام' }}</span></div></div>
             <span class="badge">{% if u['role']=='owner' %}Inspect Manager{% elif u['role']=='deputy' %}Assistant Inspect{% elif u['role']=='team' %}Inspect Team{% elif u['role']=='inspector' %}Inspect Team{% elif u['role']=='viewer' %}مشاهدة فقط{% else %}{{ u['role'] }}{% endif %}</span>
           </div>
+          {% if actor_role == 'owner' and u['username'] != actor_username %}
+          <form method="post" style="display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:9px;align-items:end;margin:12px 0;padding:12px;border:1px solid #343746;border-radius:10px;background:#090a10">
+            <input type="hidden" name="action" value="reset_password"><input type="hidden" name="user_id" value="{{ u['id'] }}">
+            <div><label>تغيير كلمة مرور هذا الحساب</label><input type="password" name="new_password" minlength="10" autocomplete="new-password" placeholder="10 خانات أو أكثر" required></div>
+            <button class="btn" type="submit" onclick="return confirm('تأكيد تغيير كلمة المرور لهذا الحساب؟')">تغيير كلمة المرور</button>
+          </form>
+          {% endif %}
           {% if u['role']=='owner' %}
             <p class="muted">صلاحيات المالك محمية ولا يمكن تعديلها من هنا.</p>
             {% if u['username'] != actor_username and (actor_username|lower == 'roith' or (u['created_by'] or '')|lower == actor_username|lower) %}
