@@ -1403,40 +1403,19 @@ def users_page():
         action=request.form.get("action")
         if action=="create":
             username=request.form.get("username","").strip()
-            password=request.form.get("password","")
             role=request.form.get("role","viewer")
             allowed_roles = ("owner", "deputy", "inspector", "viewer") if actor["role"] == "owner" else ("inspector",)
-            if len(username)<3 or len(password)<3 or role not in allowed_roles:
-                flash("اسم المستخدم 3 خانات على الأقل، وكلمة المرور 3 خانات على الأقل، والرتبة حسب صلاحيتك.")
+            if len(username)<3 or role not in allowed_roles:
+                flash("اسم المستخدم 3 خانات على الأقل، والرتبة حسب صلاحيتك.")
             else:
                 try:
+                    # Discord OAuth is the only login method; store an unusable random hash.
                     with db() as con:
-                        con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_by,created_at) VALUES(?,?,?,?,?,?,?)",
-                                    (username,generate_password_hash(password),role,1 if request.form.get("can_view") else 0,1 if request.form.get("can_ingest") and role == "inspector" else 0,actor["username"],now()))
+                        con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_by,created_at,has_password) VALUES(?,?,?,?,?,?,?,0)",
+                                    (username,generate_password_hash(secrets.token_urlsafe(48)),role,1 if request.form.get("can_view") else 0,1 if request.form.get("can_ingest") and role == "inspector" else 0,actor["username"],now()))
                     log_action(actor["username"],"created staff account "+username)
-                    flash("Staff account created.")
-                except sqlite3.IntegrityError: flash("That username already exists.")
-        elif action=="reset_password":
-            if actor["role"] != "owner": abort(403)
-            uid=request.form.get("user_id","").strip()
-            new_password=request.form.get("new_password","")
-            if len(new_password) < 10:
-                flash("كلمة المرور الجديدة يجب أن تكون 10 خانات على الأقل.")
-            else:
-                reset_target_name = None
-                with db() as con:
-                    target=con.execute("SELECT id,username FROM users WHERE id=?",(uid,)).fetchone()
-                    if not target:
-                        flash("الحساب غير موجود.")
-                    elif int(target["id"]) == int(actor["id"]):
-                        flash("لتغيير كلمة مرورك استخدم تسجيل الدخول بحسابك وإعدادات الحساب.")
-                    else:
-                        con.execute("UPDATE users SET password_hash=?,has_password=1,login_token=NULL WHERE id=?",
-                                    (generate_password_hash(new_password),uid))
-                        reset_target_name = target["username"]
-                        flash("تم تغيير كلمة المرور وإلغاء الجلسات السابقة للحساب.")
-                if reset_target_name:
-                    log_action(actor["username"],"changed password for staff account "+reset_target_name)
+                    flash("تم إنشاء الحساب. يسجل الموظف دخوله عبر Discord فقط.")
+                except sqlite3.IntegrityError: flash("اسم المستخدم مستخدم بالفعل.")
         elif action=="permissions":
             if actor["role"] != "owner": abort(403)
             uid=request.form.get("user_id","")
@@ -1503,15 +1482,14 @@ def users_page():
       <div class="eyebrow">TEAM ACCESS / ADMINISTRATION</div>
       <h2 style="font-size:24px;margin:8px 0">إدارة حسابات الموظفين</h2>
       <p class="muted" style="margin:0 0 22px">أنشئ حسابًا جديدًا، حدّد صلاحياته، وراجع أعضاء الفريق من مكان واحد.</p>
-      {% if actor_role == 'owner' %}<a class="btn" href="{{ url_for('discord_link') }}">◉ ربط حساب Inspect Manager بديسكورد</a><p class="muted" style="font-size:11px">اربط حساب المدير مرة واحدة بعد تسجيل الدخول الحالي، وبعدها يقدر يدخل عبر Discord وكلمة مروره.</p>{% endif %}
+      {% if actor_role == 'owner' %}<a class="btn" href="{{ url_for('discord_link') }}">◉ ربط حساب Inspect Manager بديسكورد</a><p class="muted" style="font-size:11px">اربط حساب المدير مرة واحدة، وبعدها يكون الدخول عبر Discord فقط.</p>{% endif %}
       <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:18px">
         <div style="background:#0b0d14;border:1px solid #303443;border-radius:14px;padding:20px">
           <h3 style="margin:0 0 5px">＋ إنشاء حساب جديد</h3>
-          <p class="muted" style="margin:0 0 18px">اسم مستخدم فريد وكلمة مرور لا تقل عن 3 خانات.</p>
+          <p class="muted" style="margin:0 0 18px">أنشئ حساب الموظف وحدد رتبته. تسجيل الدخول يتم عبر Discord فقط.</p>
           <form method="post" style="display:grid;gap:10px">
             <input type="hidden" name="action" value="create">
             <label>اسم المستخدم</label><input name="username" minlength="3" maxlength="64" autocomplete="off" placeholder="مثال: staff_roith" required>
-            <label>كلمة المرور</label><input name="password" type="password" minlength="3" autocomplete="new-password" placeholder="3 خانات أو أكثر" required>
             <label>دور الموظف</label>
             <select name="role">
               {% if actor_role == 'owner' %}<option value="deputy">Assistant Inspect</option>{% endif %}
@@ -1546,13 +1524,6 @@ def users_page():
               <div class="muted" style="margin-top:5px">حساب الدخول: <b>{{ u['username'] }}</b>{% if not u['discord_id'] %}<span style="color:#ffb454"> · غير مربوط بديسكورد</span>{% endif %}<br>تم إنشاء الحساب: {{ u['created_at'][:10] }}<br><span class="muted">أنشأه: {{ u['created_by'] or 'النظام' }}</span></div></div>
             <span class="badge">{% if u['role']=='owner' %}Inspect Manager{% elif u['role']=='deputy' %}Assistant Inspect{% elif u['role']=='team' %}Inspect Team{% elif u['role']=='inspector' %}Inspect Team{% elif u['role']=='viewer' %}مشاهدة فقط{% else %}{{ u['role'] }}{% endif %}</span>
           </div>
-          {% if actor_role == 'owner' and u['username'] != actor_username %}
-          <form method="post" style="display:grid;grid-template-columns:minmax(180px,1fr) auto;gap:9px;align-items:end;margin:12px 0;padding:12px;border:1px solid #343746;border-radius:10px;background:#090a10">
-            <input type="hidden" name="action" value="reset_password"><input type="hidden" name="user_id" value="{{ u['id'] }}">
-            <div><label>تغيير كلمة مرور هذا الحساب</label><input type="password" name="new_password" minlength="10" autocomplete="new-password" placeholder="10 خانات أو أكثر" required></div>
-            <button class="btn" type="submit" onclick="return confirm('تأكيد تغيير كلمة المرور لهذا الحساب؟')">تغيير كلمة المرور</button>
-          </form>
-          {% endif %}
           {% if u['role']=='owner' %}
             <p class="muted">صلاحيات المالك محمية ولا يمكن تعديلها من هنا.</p>
             {% if u['username'] != actor_username and (actor_username|lower == 'roith' or (u['created_by'] or '')|lower == actor_username|lower) %}
