@@ -931,7 +931,7 @@ def public_session_page(code):
     return page("""<section class="card" style="max-width:680px;margin:7vh auto;text-align:center;padding:34px"><div style="font-size:58px;font-weight:900;letter-spacing:5px;color:#ff3656">3EN</div><div class="eyebrow">INSPECT TEAM</div><h2 style="margin-top:28px">برنامج الفحص الخاص بك</h2><p class="muted">الجلسة مخصصة لـ: <b>{{ row['target_label'] or 'عضو السيرفر' }}</b></p><p class="muted">لن يبدأ تنزيل البرنامج إلا عند الضغط على الزر.</p><p id="build-state" class="notice">يتم التحقق من جاهزية البرنامج…</p><a id="download-build" class="btn" style="display:none;font-size:15px;padding:14px 24px" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل البرنامج</a><p class="muted" style="margin-top:22px;font-size:12px">شغّل البرنامج فقط إذا وافقت على الفحص الموضح في شاشة الموافقة داخله.</p></section><script>
 const state=document.getElementById('build-state'), download=document.getElementById('download-build');
 async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{cache:'no-store'});const d=await r.json();state.textContent=d.message||({'ready':'البرنامج جاهز للتحميل.','building':'يتم تجهيز البرنامج…','failed':'تعذر تجهيز البرنامج.','needs_setup':'الخدمة غير مكتملة الإعداد.'}[d.state]||'جارٍ التجهيز…');if(d.state==='ready'){download.style.display='inline-block';state.textContent='اكتمل التجهيز. اضغط تحميل البرنامج.';return;}if(['failed','needs_setup','missing','api_error'].includes(d.state))return;}catch(e){state.textContent='تعذر الاتصال بالخدمة. أعد تحميل الصفحة.';return;}setTimeout(checkBuild,10000)}checkBuild();
-</script>""", code=code)
+</script>""", code=code, row=row)
 
 @app.get("/api/session-build/<code>")
 def session_build_status(code):
