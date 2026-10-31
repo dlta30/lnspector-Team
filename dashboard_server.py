@@ -1219,6 +1219,22 @@ def report_detail(report_id):
     else:
         status_title, status_class = ("✅ ما ظهرت مؤشرات هاك معروفة", "good")
         status_detail = "لم تتطابق العمليات مع قائمة المؤشرات الحالية. النتيجة لا تضمن اكتشاف كل أنواع الهاكات."
+    # Paginate large reports so thousands of collected items do not freeze the browser.
+    page_size = 100
+    try:
+        process_page = max(1, int(request.args.get("process_page", "1")))
+    except (TypeError, ValueError):
+        process_page = 1
+    try:
+        artifact_page = max(1, int(request.args.get("artifact_page", "1")))
+    except (TypeError, ValueError):
+        artifact_page = 1
+    process_pages = max(1, (len(processes) + page_size - 1) // page_size)
+    artifact_pages = max(1, (len(artifacts) + page_size - 1) // page_size)
+    process_page = min(process_page, process_pages)
+    artifact_page = min(artifact_page, artifact_pages)
+    visible_processes = processes[(process_page - 1) * page_size:process_page * page_size]
+    visible_artifacts = artifacts[(artifact_page - 1) * page_size:artifact_page * page_size]
     return page("""
     <style>
 
@@ -1279,8 +1295,9 @@ def report_detail(report_id):
         <h2>الملفات والعمليات</h2>
         <p class="muted">أسماء الملفات ومساراتها وأوقات التشغيل وتواريخ الملفات المتاحة. تاريخ إنشاء الملف لا يثبت وقت تنزيله بدقة.</p>
         <input id="file-search" type="search" placeholder="ابحث باسم ملف أو مسار…" aria-label="بحث في ملفات التقرير">
+        <div class="muted" style="margin:10px 0">عرض {{ visible_processes|length }} من أصل {{ processes|length }} عملية · الصفحة {{ process_page }} من {{ process_pages }}</div>
         <div id="file-list">
-        {% for item in processes %}
+        {% for item in visible_processes %}
           <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}" data-file-search="{{ (item.get('file_name','') ~ ' ' ~ item.get('process_name','') ~ ' ' ~ item.get('executable_path','') ~ ' ' ~ item.get('command_line',''))|e }}">
             <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}📄{% endif %}</span><span class="process-embed-title">{{ item.get('file_name') or item.get('process_name') or 'ملف غير معروف' }}</span><span class="process-embed-meta">PID {{ item.get('pid') or '—' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">مشتبه به — يحتاج مراجعة</span>{% endif %}</div>
             <div class="field"><b>اسم العملية</b><span dir="ltr">{{ item.get('process_name') or 'غير متاح' }}</span></div>
@@ -1294,13 +1311,18 @@ def report_detail(report_id):
           </article>
         {% else %}<div class="empty-state">لا توجد بيانات عمليات في هذا التقرير.</div>{% endfor %}
         </div><div class="reports-empty" id="file-none" style="display:none">ما فيه ملفات تطابق البحث.</div>
+        {% if process_pages > 1 %}<div style="display:flex;gap:10px;align-items:center;justify-content:center;margin-top:14px;flex-wrap:wrap">
+          {% if process_page > 1 %}<a class="btn" href="{{ url_for('report_detail',report_id=r['id'],process_page=process_page-1,artifact_page=artifact_page) }}">← العمليات السابقة</a>{% endif %}
+          {% if process_page < process_pages %}<a class="btn" href="{{ url_for('report_detail',report_id=r['id'],process_page=process_page+1,artifact_page=artifact_page) }}">العمليات التالية →</a>{% endif %}
+        </div>{% endif %}
       </div>
       <div class="card" id="artifact-list">
         <h2>آثار الملفات والألعاب · Recent / Downloads / Temp / Recycle Bin</h2>
         <p class="muted">بيانات وصفية فقط: الاسم والمسار والحجم والتواريخ. لا يمكن ضمان ظهور كل ملف محذوف نهائيًا.</p>
         <div class="muted" style="margin:8px 0">حسب المصدر: {% for source,count in report_data.get('file_artifact_counts_by_source', {}).items() %}<span class="tag">{{ source }}: {{ count }}</span>{% endfor %}</div>
         {% if report_data.get('file_artifacts_truncated') %}<p class="muted">وصل الفحص إلى الحد الأعلى للعناصر؛ قد توجد عناصر إضافية لم تُدرج.</p>{% endif %}
-        {% for item in artifacts %}
+        <div class="muted" style="margin:10px 0">عرض {{ visible_artifacts|length }} من أصل {{ artifacts|length }} عنصر · الصفحة {{ artifact_page }} من {{ artifact_pages }}</div>
+        {% for item in visible_artifacts %}
           <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}" data-file-search="{{ (item.get('name','') ~ ' ' ~ item.get('file_name','') ~ ' ' ~ item.get('path','') ~ ' ' ~ item.get('source','') ~ ' ' ~ item.get('indicator_matches',[])|join(' '))|e }}">
             <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}📁{% endif %}</span><span class="process-embed-title">{{ item.get('name') or item.get('file_name') or (item.get('path','').replace('\\','/').split('/')[-1]) or 'اسم غير متاح' }}</span><span class="process-embed-meta">{{ item.get('source') or 'غير محدد' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">مؤشر يحتاج مراجعة</span>{% endif %}</div>
             <div class="field"><b>المسار</b><span dir="ltr">{{ item.get('path') or 'غير متاح' }}</span></div>
@@ -1309,10 +1331,14 @@ def report_detail(report_id):
             {% if item.get('indicator_matches') %}<div class="field"><b>سبب الاشتباه</b><span>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
           </article>
         {% else %}<div class="empty-state">لم تُجمع عناصر ملفات من المواقع المحددة أو أن النظام ليس Windows.</div>{% endfor %}
+        {% if artifact_pages > 1 %}<div style="display:flex;gap:10px;align-items:center;justify-content:center;margin-top:14px;flex-wrap:wrap">
+          {% if artifact_page > 1 %}<a class="btn" href="{{ url_for('report_detail',report_id=r['id'],process_page=process_page,artifact_page=artifact_page-1) }}#artifact-list">← الملفات السابقة</a>{% endif %}
+          {% if artifact_page < artifact_pages %}<a class="btn" href="{{ url_for('report_detail',report_id=r['id'],process_page=process_page,artifact_page=artifact_page+1) }}#artifact-list">الملفات التالية →</a>{% endif %}
+        </div>{% endif %}
       </div>
       <script>(function(){const input=document.getElementById('file-search'),items=Array.from(document.querySelectorAll('[data-file-search]')),none=document.getElementById('file-none');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase();let n=0;items.forEach(el=>{const ok=el.dataset.fileSearch.toLocaleLowerCase().includes(q);el.style.display=ok?'block':'none';if(ok)n++;});if(none)none.style.display=n?'none':'block';});})();</script>
     </div>
-    """,r=r,report_data=report_data,processes=processes,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"])
+    """,r=r,report_data=report_data,processes=processes,visible_processes=visible_processes,process_page=process_page,process_pages=process_pages,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,visible_artifacts=visible_artifacts,artifact_page=artifact_page,artifact_pages=artifact_pages,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"])
 
 @app.post("/reports/<int:report_id>/send-discord")
 @login_required
