@@ -373,6 +373,18 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
     if len(findings) > 5:
         fields.append({'name': 'بقية العناصر', 'value': str(len(findings) - 5) + ' عناصر إضافية — راجع التقرير الكامل في لوحة التحكم.', 'inline': False})
 
+    mention_ids = []
+    for discord_id in (target_discord_id, str(reviewer_discord_id or '').strip()):
+        if discord_id.isdigit() and 17 <= len(discord_id) <= 20 and discord_id not in mention_ids:
+            mention_ids.append(discord_id)
+    mention_lines = []
+    if target_discord_id in mention_ids:
+        mention_lines.append('**الشخص المفحوص:** <@' + target_discord_id + '>')
+    if str(reviewer_discord_id or '').strip() in mention_ids:
+        mention_lines.append('**المراجع:** <@' + str(reviewer_discord_id).strip() + '>')
+    if mention_lines:
+        fields.insert(0, {'name': '👥 أطراف الفحص', 'value': '\n'.join(mention_lines), 'inline': False})
+
     embed = {
         'title': verdict_title + ' • تقرير الفحص #' + safe(report_id, 50),
         'description': (('اعتمد المراجع تصنيف «كلين». هذا قرار مراجعة يدوي ولا يضمن خلو الجهاز من كل المخاطر.\n\n' if verdict == 'clean' else 'اعتمد المراجع تصنيف «هاك / مشتبه». المؤشرات تحتاج تحققًا يدويًا ولا تُعد وحدها إثباتًا قاطعًا.\n\n' if verdict == 'hack' else 'التقرير بانتظار قرار المراجع.\n\n') + safe(summary or 'تم استلام التقرير وحفظه في لوحة التحكم.', 700)),
@@ -380,14 +392,9 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         'fields': fields[:25],
         'footer': {'text': '3eN INSPECTOR TEAM • مؤشرات الأسماء تحتاج مراجعة يدوية ولا تثبت وحدها وجود هاك.'}
     }
-    mention_ids = []
-    for discord_id in (target_discord_id, str(reviewer_discord_id or '').strip()):
-        if discord_id.isdigit() and 17 <= len(discord_id) <= 20 and discord_id not in mention_ids:
-            mention_ids.append(discord_id)
-    mention_text = ' '.join('<@' + discord_id + '>' for discord_id in mention_ids)
     message = {
         'username': '3eN Inspect Team',
-        'content': mention_text or None,
+        'content': None,
         'embeds': [embed],
         'allowed_mentions': {'parse': [], 'users': mention_ids}
     }
