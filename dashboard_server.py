@@ -1755,13 +1755,24 @@ if not DATABASE_URL and os.environ.get("RENDER") and str(DB_PATH).startswith("/v
         "attach the Render persistent disk and set INSPECTOR_DB=/var/data/inspector_dashboard.sqlite3."
     )
 
-init_db()
-print("Dashboard database:", "PostgreSQL (DATABASE_URL)" if DATABASE_URL else str(DB_PATH))
-print("Persistent disk mounted:", Path("/var/data").is_mount() if os.environ.get("RENDER") else "local development")
+# Initialize storage on the first HTTP request, not while the Worker module is
+# being imported. Cloudflare Workers can restart isolates at any time, and
+# network/database work during module initialization can crash the whole Worker.
+_db_initialized = False
+
+@app.before_request
+def ensure_database_initialized():
+    global _db_initialized
+    if not _db_initialized:
+        init_db()
+        _db_initialized = True
+        print("Dashboard database:", "PostgreSQL (DATABASE_URL)" if DATABASE_URL else str(DB_PATH))
+        print("Persistent disk mounted:", Path("/var/data").is_mount() if os.environ.get("RENDER") else "Cloudflare/local")
 
 if __name__ == "__main__":
     if not OWNER_PASSWORD:
         print("WARNING: INSPECTOR_OWNER_PASSWORD is unset; configure it before first owner login.")
     if not API_KEY:
         print("INFO: report ingestion disabled until INSPECTOR_API_KEY is configured.")
+    init_db()
     app.run(host=os.environ.get("INSPECTOR_HOST","127.0.0.1"),port=int(os.environ.get("PORT","5000")),debug=False)
