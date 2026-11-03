@@ -205,8 +205,9 @@ def init_db():
         CREATE TABLE IF NOT EXISTS inspection_sessions (
           id BIGSERIAL PRIMARY KEY, code_hash TEXT UNIQUE NOT NULL, display_code TEXT NOT NULL,
           target_label TEXT NOT NULL DEFAULT '', target_discord_id TEXT NOT NULL DEFAULT '',
-          target_nickname TEXT NOT NULL DEFAULT '', target_username TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL, 
-          expires_at TEXT NOT NULL, used_at TEXT, downloaded_at TEXT, status TEXT NOT NULL DEFAULT 'open'
+          target_nickname TEXT NOT NULL DEFAULT '', target_username TEXT NOT NULL DEFAULT '', created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT '', expires_at TEXT NOT NULL, used_at TEXT, downloaded_at TEXT,
+          status TEXT NOT NULL DEFAULT 'open'
         );
         CREATE TABLE IF NOT EXISTS reports (
           id BIGSERIAL PRIMARY KEY, session_id TEXT NOT NULL,
@@ -234,6 +235,7 @@ def init_db():
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_discord_id TEXT NOT NULL DEFAULT ''")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_nickname TEXT NOT NULL DEFAULT ''")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_username TEXT NOT NULL DEFAULT ''")
+            con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS created_at TEXT NOT NULL DEFAULT ''")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS downloaded_at TEXT")
             row = con.execute("SELECT id FROM users WHERE role='owner' LIMIT 1").fetchone()
             if not row and OWNER_PASSWORD:
