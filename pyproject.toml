@@ -6,10 +6,10 @@ dependencies = [
     "Flask>=3.0,<4.0",
     "pg8000>=1.31,<2.0",
     "reportlab>=4.0,<5.0",
-    "workers-runtime-sdk>=1.0",
 ]
 
-[project.optional-dependencies]
-tooling = [
+[dependency-groups]
+dev = [
     "workers-py>=1.9,<2.0",
+    "workers-runtime-sdk>=1.0",
 ]
