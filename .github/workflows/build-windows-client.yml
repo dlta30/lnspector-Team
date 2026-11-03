@@ -16,7 +16,6 @@ on:
       - "dashboard_server.py"
       - "inspector_client.py"
       - "inspector_team.py"
-      - "requirements.txt"
       - "make_icon.py"
       - ".github/workflows/build-windows-client.yml"
 
