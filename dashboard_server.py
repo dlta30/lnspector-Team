@@ -19,8 +19,7 @@ import os
 import secrets
 import sqlite3
 import re
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import pg8000
 import urllib.request
 import urllib.error
 import urllib.parse
@@ -122,6 +121,12 @@ class PgCursor:
         self._cursor = cursor
         self.lastrowid = None
 
+    def _as_dict(self, row):
+        if row is None or isinstance(row, dict):
+            return row
+        columns = self._cursor.description or ()
+        return {column[0]: value for column, value in zip(columns, row)}
+
     def execute(self, sql, params=()):
         sql = sql.replace("?", "%s")
         is_report_insert = bool(re.match(r"\s*INSERT\s+INTO\s+reports\b", sql, re.I))
@@ -129,18 +134,19 @@ class PgCursor:
             sql += " RETURNING id"
         self._cursor.execute(sql, params)
         if is_report_insert:
-            row = self._cursor.fetchone()
+            row = self.fetchone()
             self.lastrowid = row["id"] if row else None
         return self
 
     def fetchone(self):
-        return self._cursor.fetchone()
+        return self._as_dict(self._cursor.fetchone())
 
     def fetchall(self):
-        return self._cursor.fetchall()
+        return [self._as_dict(row) for row in self._cursor.fetchall()]
 
     def __iter__(self):
-        return iter(self._cursor)
+        for row in self._cursor:
+            yield self._as_dict(row)
 
 class PgConnection:
     def __init__(self, connection):
@@ -158,7 +164,7 @@ class PgConnection:
         return False
 
     def execute(self, sql, params=()):
-        cursor = self._connection.cursor(cursor_factory=RealDictCursor)
+        cursor = self._connection.cursor()
         return PgCursor(cursor).execute(sql, params)
 
     def executescript(self, script):
@@ -170,7 +176,15 @@ class PgConnection:
 
 def db():
     if DATABASE_URL:
-        return PgConnection(psycopg2.connect(DATABASE_URL, connect_timeout=10, cursor_factory=RealDictCursor))
+        parsed = urllib.parse.urlparse(DATABASE_URL)
+        return PgConnection(pg8000.connect(
+            user=urllib.parse.unquote(parsed.username or ""),
+            password=urllib.parse.unquote(parsed.password or ""),
+            host=parsed.hostname,
+            port=parsed.port or 5432,
+            database=(parsed.path or "/").lstrip("/"),
+            timeout=10,
+        ))
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     return con
