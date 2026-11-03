@@ -1765,6 +1765,11 @@ _db_initialized = False
 @app.before_request
 def ensure_database_initialized():
     global _db_initialized
+    # Keep the lightweight health endpoint independent from database startup.
+    # This lets Cloudflare health checks distinguish Worker/WSGI startup from
+    # Hyperdrive or schema-initialization failures.
+    if request.endpoint == "health":
+        return None
     if not _db_initialized:
         init_db()
         _db_initialized = True
