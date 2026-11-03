@@ -6,6 +6,14 @@ from workers import WorkerEntrypoint, Response, wsgi
 
 class Default(WorkerEntrypoint):
     async def fetch(self, request):
+        # Lightweight platform probe: do not import the full Flask/Pyodide app
+        # or initialize database drivers just to answer health checks.
+        if request.url.split("?", 1)[0].rstrip("/").endswith("/health"):
+            return Response(
+                '{"ok":true,"service":"3EN Inspect Team worker","mode":"edge-probe"}',
+                headers={"content-type": "application/json; charset=utf-8"},
+            )
+
         try:
             hyperdrive = self.env.HYPERDRIVE
         except AttributeError:
