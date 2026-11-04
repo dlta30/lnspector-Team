@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from functools import wraps
 from pathlib import Path
 
-from flask import Flask, abort, flash, redirect, render_template_string, request, session, url_for
+from flask import Flask, abort, flash, g, has_app_context, redirect, render_template_string, request, session, url_for
 from werkzeug.security import check_password_hash, generate_password_hash
 
 APP_DIR = Path(__file__).resolve().parent
@@ -151,8 +151,9 @@ class PgCursor:
             yield self._as_dict(row)
 
 class PgConnection:
-    def __init__(self, connection):
+    def __init__(self, connection, close_on_exit=True):
         self._connection = connection
+        self._close_on_exit = close_on_exit
 
     def __enter__(self):
         return self
@@ -162,7 +163,8 @@ class PgConnection:
             self._connection.rollback()
         else:
             self._connection.commit()
-        self._connection.close()
+        if self._close_on_exit:
+            self._connection.close()
         return False
 
     def execute(self, sql, params=()):
@@ -178,6 +180,25 @@ class PgConnection:
 
 def db():
     if DATABASE_URL:
+        # Reuse one PostgreSQL connection for the lifetime of the current
+        # Flask request. Pages often perform several small queries; opening
+        # a new TCP/TLS connection for every "with db()" added avoidable
+        # network latency to each query.
+        if has_app_context():
+            connection = g.get("_inspect_pg_connection")
+            if connection is None:
+                parsed = urllib.parse.urlparse(DATABASE_URL)
+                connection = pg8000.connect(
+                    user=urllib.parse.unquote(parsed.username or ""),
+                    password=urllib.parse.unquote(parsed.password or ""),
+                    host=parsed.hostname,
+                    port=parsed.port or 5432,
+                    database=(parsed.path or "/").lstrip("/"),
+                    timeout=10,
+                )
+                g._inspect_pg_connection = connection
+            return PgConnection(connection, close_on_exit=False)
+
         parsed = urllib.parse.urlparse(DATABASE_URL)
         return PgConnection(pg8000.connect(
             user=urllib.parse.unquote(parsed.username or ""),
@@ -190,6 +211,15 @@ def db():
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     return con
+
+@app.teardown_appcontext
+def close_request_database_connection(_error=None):
+    connection = g.pop("_inspect_pg_connection", None)
+    if connection is not None:
+        try:
+            connection.close()
+        except Exception:
+            app.logger.exception("Failed to close request PostgreSQL connection")
 
 def init_db():
     if DATABASE_URL:
