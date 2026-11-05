@@ -1128,8 +1128,13 @@ def download_session_build(code):
         with db() as con:
             con.execute("UPDATE inspection_sessions SET downloaded_at=? WHERE display_code=?", (now(), code))
         log_action("session-download", "downloaded single-file inspection EXE for session " + code)
-        return send_file(BytesIO(exe_data), mimetype="application/vnd.microsoft.portable-executable",
-                         as_attachment=True, download_name=expected_exe)
+        # Package exactly one EXE in the user-facing ZIP; no sidecar or extra files.
+        zip_buffer = BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as download_zip:
+            download_zip.writestr(expected_exe, exe_data)
+        zip_buffer.seek(0)
+        return send_file(zip_buffer, mimetype="application/zip",
+                         as_attachment=True, download_name="3eN-Inspect-" + code + ".zip")
     except Exception as exc:
         if getattr(exc, "code", None) in (503, 404):
             raise
