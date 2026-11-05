@@ -1791,8 +1791,9 @@ def users_page():
                         log_action(actor["username"],"changed role for "+target["username"]+" to "+role)
                         flash("Role updated.")
         elif action=="delete":
-            # Only the designated 15j2 account may delete staff, from Inspect Manager downward.
-            if not is_root_admin(actor):
+            # 15j2 may delete every lower rank, including Inspect Managers.
+            # Other Inspect Managers may delete only accounts below their own rank.
+            if not is_root_admin(actor) and actor["role"] != "owner":
                 abort(403)
             uid = request.form.get("user_id", "").strip()
             with db() as con:
@@ -1801,6 +1802,8 @@ def users_page():
                     flash("الحساب غير موجود.")
                 elif int(target["id"]) == int(actor["id"]):
                     flash("لا يمكنك حذف حسابك الحالي.")
+                elif target["role"] == "owner" and not is_root_admin(actor):
+                    abort(403)
                 elif target["role"] == "owner":
                     owner_count = con.execute("SELECT COUNT(*) AS n FROM users WHERE role='owner'").fetchone()["n"]
                     if int(owner_count) <= 1:
@@ -1865,7 +1868,7 @@ def users_page():
           </div>
           {% if u['role']=='owner' %}
             <p class="muted">صلاحيات المالك محمية ولا يمكن تعديلها من هنا.</p>
-            {% if actor_is_root and u['id'] != actor_id %}
+            {% if u['id'] != actor_id and (actor_is_root or (actor_role == 'owner' and u['role'] != 'owner')) %}
             <form method="post" style="margin-top:12px" onsubmit="return confirm('تأكيد حذف حساب Inspect Manager ' + {{ u['username']|tojson }} + ' نهائيًا؟');">
               <input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <button class="btn" style="background:#6d1728;border-color:#b82e49;color:#fff">🗑 حذف الحساب الذي أنشأته</button>
@@ -1884,7 +1887,7 @@ def users_page():
               <button class="btn">حفظ التغييرات</button>
             </form>
             {% endif %}
-            {% if actor_is_root and u['id'] != actor_id %}
+            {% if u['id'] != actor_id and (actor_is_root or (actor_role == 'owner' and u['role'] != 'owner')) %}
             <form method="post" style="margin-top:12px" onsubmit="return confirm('تأكيد حذف حساب ' + {{ u['username']|tojson }} + ' نهائيًا؟');">
               <input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <button class="btn" style="background:#6d1728;border-color:#b82e49;color:#fff">🗑 حذف الحساب</button>
