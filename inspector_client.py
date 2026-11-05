@@ -58,14 +58,14 @@ def collect_files(progress, max_files=50000):
     """Inventory EXE/DLL/ZIP/RAR and suspiciously named folders on C:/D:.
     Collect metadata only; never open archives or execute files.
     """
-    import string
     import time
 
-    allowed_extensions = {".exe", ".dll", ".zip", ".rar"}
+    allowed_extensions = {".exe", ".dll", ".zip", ".rar", ".rpf", ".meta", ".lua", ".cfg", ".pdf"}
+    primary_extensions = {".exe", ".dll", ".zip", ".rar"}
     excluded_dirs = {
         "windows", "$recycle.bin", "system volume information", "perflogs",
         "recovery", "config.msi", "winsxs", "servicing", "softwaredistribution",
-        "node_modules", ".git", "__pycache__", "cache", "caches"
+        "node_modules", ".git", "__pycache__", "cache", "caches", "windowsapps"
     }
     indicators = tuple(dict.fromkeys(SUSPICIOUS_TERMS + (
         "eulen", "menyo", "tiago", "tiago modz", "taigomodz", "falloutmenu",
@@ -87,7 +87,10 @@ def collect_files(progress, max_files=50000):
         "zc-bulletpenetration", "no_recoil", "ladders.meta", "aml.lua",
         "fast_playboi_mods", "pedaccuracy.meta", "weaponcomponents.meta",
         "weaponanimation.meta", "bsk_skills", "quickenter", "ad movement",
-        "filter key", "scod", "ali_unban_method"
+        "filter key", "scod", "ali_unban_method", "0x32", "hazar", "loey",
+        "loader", "menyo", "falloutmenu", "cobramenu", "five sense", "fivesense",
+        "mysterious", "monster menu", "red engine", "resource blocker",
+        "no recoil", "quickenter", "ad movement"
     )))
     roots = [f"{drive}:\\" for drive in ("C", "D") if os.path.isdir(f"{drive}:\\")]
     candidates, seen = [], set()
@@ -119,7 +122,13 @@ def collect_files(progress, max_files=50000):
                             pass
             for name in names:
                 path = os.path.join(current, name)
-                if os.path.splitext(name)[1].casefold() not in allowed_extensions:
+                extension = os.path.splitext(name)[1].casefold()
+                if extension not in allowed_extensions:
+                    continue
+                path_context = (name + " " + current).casefold()
+                preliminary_matches = [term for term in indicators if term in path_context]
+                # Non-primary formats are included only when their names/paths match a known indicator.
+                if extension not in primary_extensions and not preliminary_matches:
                     continue
                 try:
                     if os.path.islink(path) or not os.path.isfile(path):
@@ -150,8 +159,11 @@ def collect_files(progress, max_files=50000):
         try:
             local_modified = datetime.fromtimestamp(st.st_mtime).astimezone()
             display_date = local_modified.strftime("%B %d, %Y %I:%M:%S %p")
+            local_created = datetime.fromtimestamp(st.st_ctime).astimezone()
+            created_display = local_created.strftime("%B %d, %Y %I:%M:%S %p")
         except (ValueError, OSError, OverflowError):
             display_date = modified
+            created_display = created
         digest = sha256_file(path) if kind == "file" and matches and not too_large else None
         rows.append({
             "artifact_type": kind,
@@ -159,6 +171,7 @@ def collect_files(progress, max_files=50000):
             "path": path[:1500],
             "size_bytes": int(st.st_size),
             "created_at": created,
+            "created_display": created_display,
             "modified_at": modified,
             "modified_display": display_date,
             "sha256": digest,
