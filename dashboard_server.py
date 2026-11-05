@@ -572,6 +572,16 @@ def log_action(actor, action):
             actor = server_name + " (@" + identity["discord_username"] + ")"
         con.execute("INSERT INTO audit(actor,action,created_at) VALUES(?,?,?)", (actor, action[:240], now()))
 
+def is_root_admin(user):
+    """Recognize the protected 15j2 administrator by either dashboard or Discord username."""
+    if not user:
+        return False
+    identities = (
+        str(user["username"] or "").strip().lstrip("@").casefold(),
+        str(user["discord_username"] or "").strip().lstrip("@").casefold(),
+    )
+    return "15j2" in identities
+
 def current_user():
     # Cache the authenticated user for this request. Decorators and page()
     # previously repeated the same remote database lookup several times.
@@ -1738,7 +1748,7 @@ def report_pdf(report_id):
 @login_required
 def users_page():
     actor=current_user()
-    if actor["role"] not in ("owner","deputy") and actor["username"].strip().lower() != "15j2": abort(403)
+    if actor["role"] not in ("owner","deputy") and not is_root_admin(actor): abort(403)
     if request.method=="POST":
         action=request.form.get("action")
         if action=="create":
@@ -1790,7 +1800,7 @@ def users_page():
                     flash("لا يمكنك حذف حسابك الحالي.")
                 elif target["role"] == "owner":
                     is_creator = (target["created_by"] or "").strip().lower() == actor["username"].strip().lower()
-                    is_root_manager = actor["username"].strip().lower() == "15j2"
+                    is_root_manager = is_root_admin(actor)
                     if not (is_creator or is_root_manager):
                         abort(403)
                     owner_count = con.execute("SELECT COUNT(*) AS n FROM users WHERE role='owner'").fetchone()["n"]
@@ -1875,7 +1885,7 @@ def users_page():
           </div>
           {% if u['role']=='owner' %}
             <p class="muted">صلاحيات المالك محمية ولا يمكن تعديلها من هنا.</p>
-            {% if u['username'] != actor_username and (actor_username|lower == '15j2' or (u['created_by'] or '')|lower == actor_username|lower) %}
+            {% if u['id'] != actor_id and (actor_is_root or (u['created_by'] or '')|lower == actor_username|lower) %}
             <form method="post" style="margin-top:12px" onsubmit="return confirm('تأكيد حذف حساب Inspect Manager ' + {{ u['username']|tojson }} + ' نهائيًا؟');">
               <input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <button class="btn" style="background:#6d1728;border-color:#b82e49;color:#fff">🗑 حذف الحساب الذي أنشأته</button>
@@ -1894,7 +1904,7 @@ def users_page():
               <button class="btn">حفظ التغييرات</button>
             </form>
             {% endif %}
-            {% if actor_username|lower == '15j2' and u['username']|lower != '15j2' or actor_role == 'owner' and u['username'] != actor_username or actor_role == 'deputy' and u['username'] != actor_username and u['role'] in ('inspector','viewer') %}
+            {% if actor_is_root and u['id'] != actor_id or actor_role == 'owner' and u['id'] != actor_id or actor_role == 'deputy' and u['id'] != actor_id and u['role'] in ('inspector','viewer') %}
             <form method="post" style="margin-top:12px" onsubmit="return confirm('تأكيد حذف حساب ' + {{ u['username']|tojson }} + ' نهائيًا؟');">
               <input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <button class="btn" style="background:#6d1728;border-color:#b82e49;color:#fff">🗑 حذف الحساب</button>
@@ -1907,7 +1917,7 @@ def users_page():
       <p id="staff-none" class="muted" style="display:none;text-align:center;padding:20px">ما فيه حسابات تطابق البحث.</p>
       <script>(function(){const input=document.getElementById('staff-search'),items=Array.from(document.querySelectorAll('.staff-item')),none=document.getElementById('staff-none');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase();let n=0;items.forEach(el=>{const ok=el.dataset.staffSearch.toLocaleLowerCase().includes(q);el.style.display=ok?'block':'none';if(ok)n++;});if(none)none.style.display=n?'none':'block';});})();</script>
     </section>
-    """,users=users,actor_role=actor["role"],actor_username=actor["username"])
+    """,users=users,actor_role=actor["role"],actor_username=actor["username"],actor_id=actor["id"],actor_is_root=is_root_admin(actor))
 
 @app.route("/events")
 @login_required
