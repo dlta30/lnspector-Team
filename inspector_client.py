@@ -233,6 +233,7 @@ def collect_recent_apps(processes, progress):
             "evidence_source": "عملية تعمل حاليًا — وقت بدء العملية",
             "time_accuracy": "exact_process_start",
             "indicator_matches": proc.get("indicator_matches", []),
+            "indicator_category": proc.get("indicator_category", "لا توجد مطابقة اسمية"),
             "signature_status": proc.get("signature_status", "not_checked"),
             "signature_label": proc.get("signature_label", "لم يتم التحقق")
         })
@@ -263,6 +264,7 @@ def collect_recent_apps(processes, progress):
                             "evidence_source": "Windows Prefetch (.pf) — قرينة تشغيل تقريبية",
                             "time_accuracy": "approximate_prefetch_timestamp",
                             "indicator_matches": find_indicator_matches(app_name, entry.name),
+                            "indicator_category": "مؤشرات هاك/غش" if find_indicator_matches(app_name, entry.name) else "لا توجد مطابقة اسمية",
                             "signature_status": "not_checked",
                             "signature_label": "بيانات سجل تشغيل، لا ينطبق عليها توقيع ملف التطبيق"
                         })
