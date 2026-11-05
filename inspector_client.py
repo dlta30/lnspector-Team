@@ -112,7 +112,7 @@ def collect_files(progress, max_files=15000, max_scan_seconds=75):
     """Bounded metadata inventory for C:/D:. Never execute or open files/archives."""
     import time
 
-    allowed_extensions = {".exe", ".dll", ".zip", ".rar", ".rpf", ".meta", ".lua", ".cfg", ".pdf"}
+    allowed_extensions = {".exe", ".dll", ".zip", ".rar"}
     excluded_dirs = {
         "windows", "$recycle.bin", "system volume information", "perflogs",
         "recovery", "config.msi", "winsxs", "servicing", "softwaredistribution",
@@ -234,10 +234,10 @@ def collect_recent_apps(processes, progress):
     for proc in processes:
         try:
             started = datetime.fromisoformat(str(proc.get("process_started_at") or "").replace("Z", "+00:00"))
-            if started.timestamp() < cutoff:
-                continue
+            started_recently = started.timestamp() >= cutoff
         except (ValueError, TypeError, OSError):
-            continue
+            started_recently = False
+        # Include every process still running now; mark whether it started in the last 24 hours.
         key = (proc.get("pid"), proc.get("executable_path"))
         if key in seen:
             continue
@@ -250,6 +250,8 @@ def collect_recent_apps(processes, progress):
             "last_seen_display": proc.get("process_started_at"),
             "evidence_source": "عملية تعمل حاليًا — وقت بدء العملية",
             "time_accuracy": "exact_process_start",
+            "started_within_24h": started_recently,
+            "activity_window": "آخر 24 ساعة" if started_recently else "تعمل الآن — بدأت قبل آخر 24 ساعة",
             "indicator_matches": proc.get("indicator_matches", []),
             "indicator_category": proc.get("indicator_category", "لا توجد مطابقة اسمية"),
             "signature_status": proc.get("signature_status", "not_checked"),
@@ -293,7 +295,7 @@ def collect_recent_apps(processes, progress):
         except OSError:
             pass
     recent.sort(key=lambda row: row.get("last_seen_at") or "", reverse=True)
-    progress(90, f"اكتمل تجميع التطبيقات خلال آخر 24 ساعة: {len(recent)}")
+    progress(90, f"اكتمل تجميع التطبيقات الحالية وسجل آخر 24 ساعة: {len(recent)}")
     return recent
 
 
@@ -630,7 +632,7 @@ class InspectorApp(tk.Tk):
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "Bounded metadata inventory of C: and D: (up to 15,000 items or 75 seconds), excluding Windows/system folders; EXE/DLL/ZIP/RAR and matching RPF/META/LUA/CFG/PDF; recent app evidence from running processes and Windows Prefetch metadata within 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
+                "scan_scope": "Bounded metadata inventory of C: and D: (up to 15,000 items or 75 seconds), excluding Windows/system folders; EXE/DLL/ZIP/RAR only; all currently running processes plus Windows Prefetch evidence from the last 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
                 "file_count": len(files),
@@ -642,7 +644,7 @@ class InspectorApp(tk.Tk):
                 "signature_verified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "verified"),
                 "signature_unverified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "unverified"),
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Configured names are indicators for manual review, not proof of cheating. Recent apps include processes started within the last 24 hours and Windows Prefetch file timestamps, which are approximate evidence and may be unavailable if Prefetch is disabled. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless or cheat-free. Unsigned, invalid, unsupported, or unchecked files are labeled separately. File scan covers C: and D: excluding Windows/system folders; archives are not opened and file contents are never uploaded. Dates are retained in UTC and local display format. No screenshots are captured. No files are modified and no processes are terminated.",
+                "note": "Configured names are indicators for manual review, not proof of cheating. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File inventory is limited to EXE/DLL/ZIP/RAR in C: and D:, excluding Windows/system folders. File timestamps show last modification, not last execution; archives are not opened and file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Dates are retained in UTC and local display format. No screenshots are captured. No files are modified and no processes are terminated.",
                 "processes": processes,
             }
             self.update_progress(100, "اكتمل الفحص وتجهيز التقرير.")
