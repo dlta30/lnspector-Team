@@ -521,10 +521,16 @@ class InspectorApp(tk.Tk):
         consent_box.pack(fill="x", pady=(0, 12))
         tk.Label(consent_box, text="01  /  الموافقة والصلاحية", bg=PANEL, fg="#ff8ca0",
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
-        self.consent = tk.BooleanVar(value=False)
+        self.consent_processes = tk.BooleanVar(value=False)
+        self.consent_files = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على جميع خطوات الفحص: مراجعة بيانات العمليات والتطبيقات خلال آخر 24 ساعة، وفحص بيانات الملفات في C: وD:، والتحقق من التوقيعات الرقمية، ثم إرسال التقرير (الأسماء والمسارات والأحجام والتواريخ والبصمات وحالة التوثيق) إلى لوحة التحكم. لا تُرسل محتويات الملفات ولا تُلتقط صور للشاشة.",
-            variable=self.consent, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
+            text="أوافق على الخيار الأول: مراجعة بيانات العمليات والتطبيقات التي استُخدمت خلال آخر 24 ساعة، مثل الاسم والمسار ووقت التشغيل ومؤشرات المطابقة.",
+            variable=self.consent_processes, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
+            activebackground=PANEL, activeforeground=WHITE, wraplength=900,
+            font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
+        tk.Checkbutton(consent_box,
+            text="أوافق على الخيار الثاني: فحص بيانات الملفات في C: وD: والتحقق من التوقيعات الرقمية، وإرسال تقرير البيانات الوصفية (الأسماء والمسارات والأحجام والتواريخ والبصمات وحالة التوثيق) إلى لوحة التحكم. لا تُرسل محتويات الملفات ولا تُلتقط صور للشاشة.",
+            variable=self.consent_files, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
 
@@ -582,8 +588,8 @@ class InspectorApp(tk.Tk):
             messagebox.showinfo(APP, "تم الانتهاء من فحصك مسبقًا. لن تتم إعادة الفحص لهذه الجلسة.")
             self.destroy()
             return
-        if not self.consent.get():
-            messagebox.showwarning(APP, "Please confirm consent before starting.")
+        if not (self.consent_processes.get() and self.consent_files.get()):
+            messagebox.showwarning(APP, "يجب الموافقة على الخيارين قبل بدء الفحص.")
             return
 
         # Session-specific builds contain the session code and dashboard URL.
