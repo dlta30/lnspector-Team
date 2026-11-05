@@ -740,3 +740,29 @@ class InspectorApp(tk.Tk):
         except Exception as exc:
             messagebox.showerror(APP, "PDF export failed: " + str(exc))
 
+
+
+if __name__ == "__main__":
+    # PyInstaller --windowed builds need an explicit GUI entry point.
+    try:
+        app = InspectorApp()
+        app.mainloop()
+    except Exception as exc:
+        import traceback
+        error_text = traceback.format_exc()
+        try:
+            log_root = os.environ.get("APPDATA") or os.path.expanduser("~")
+            log_dir = os.path.join(log_root, "3eN Inspect Team")
+            os.makedirs(log_dir, exist_ok=True)
+            log_path = os.path.join(log_dir, "launch-error.log")
+            with open(log_path, "w", encoding="utf-8") as log_file:
+                log_file.write(error_text)
+        except OSError:
+            log_path = "تعذر حفظ سجل الخطأ"
+        try:
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror(APP, f"تعذر تشغيل البرنامج:\n{type(exc).__name__}: {exc}\n\nسجل التفاصيل: {log_path}")
+            root.destroy()
+        except Exception:
+            pass
