@@ -1481,7 +1481,7 @@ def report_detail(report_id):
         <p class="muted">يعرض العمليات التي بدأ تشغيلها خلال آخر 24 ساعة، وسجلات Prefetch في Windows كقرينة تقريبية لآخر تشغيل. قد لا تظهر التطبيقات إذا كان سجل Prefetch معطلاً أو محذوفًا.</p>
         {% for item in visible_recent_apps %}
           <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}">
-            <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}🕒{% endif %}</span><span class="process-embed-title">{{ item.get('app_name') or item.get('file_name') or 'تطبيق غير معروف' }}</span><span class="process-embed-meta">{{ item.get('evidence_source') or 'مصدر غير محدد' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">اسم يطابق مؤشرًا</span>{% endif %}</div>
+            <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}🕒{% endif %}</span><span class="process-embed-title">{{ item.get('app_name') or item.get('file_name') or 'تطبيق غير معروف' }}</span><span class="process-embed-meta">{{ item.get('evidence_source') or 'مصدر غير محدد' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">{{ item.get('indicator_category') or 'مؤشرات هاك/غش' }} — يحتاج مراجعة</span>{% endif %}</div>
             <div class="field"><b>المسار / سجل التشغيل</b><span dir="ltr">{{ item.get('path') or 'غير متاح' }}</span></div>
             <div class="field"><b>آخر وقت ظاهر</b><span dir="ltr">{{ item.get('last_seen_display') or item.get('last_seen_at') or 'غير متاح' }}</span></div>
             <div class="field"><b>حالة التوثيق</b><span>{{ item.get('signature_label') or 'لم يتم التحقق' }}</span></div>
@@ -1498,7 +1498,7 @@ def report_detail(report_id):
         <div id="file-list">
         {% for item in visible_processes %}
           <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}" data-file-search="{{ (item.get('file_name','') ~ ' ' ~ item.get('process_name','') ~ ' ' ~ item.get('executable_path','') ~ ' ' ~ item.get('command_line',''))|e }}">
-            <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}📄{% endif %}</span><span class="process-embed-title">{{ item.get('file_name') or item.get('process_name') or 'ملف غير معروف' }}</span><span class="process-embed-meta">PID {{ item.get('pid') or '—' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">مشتبه به — يحتاج مراجعة</span>{% endif %}</div>
+            <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}📄{% endif %}</span><span class="process-embed-title">{{ item.get('file_name') or item.get('process_name') or 'ملف غير معروف' }}</span><span class="process-embed-meta">PID {{ item.get('pid') or '—' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">{{ item.get('indicator_category') or 'مؤشرات هاك/غش' }} — يحتاج مراجعة</span>{% endif %}</div>
             <div class="field"><b>اسم العملية</b><span dir="ltr">{{ item.get('process_name') or 'غير متاح' }}</span></div>
             <div class="field"><b>اسم الملف</b><span dir="ltr">{{ item.get('file_name') or 'غير متاح' }}</span></div>
             <div class="field"><b>المسار الكامل</b><span dir="ltr">{{ item.get('executable_path') or 'غير متاح' }}</span></div>
@@ -1524,7 +1524,7 @@ def report_detail(report_id):
         <div class="muted" style="margin:10px 0">عرض {{ visible_artifacts|length }} من أصل {{ artifacts|length }} عنصر · الصفحة {{ artifact_page }} من {{ artifact_pages }}</div>
         {% for item in visible_artifacts %}
           <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}" data-file-search="{{ (item.get('name','') ~ ' ' ~ item.get('file_name','') ~ ' ' ~ item.get('path','') ~ ' ' ~ item.get('source','') ~ ' ' ~ item.get('indicator_matches',[])|join(' '))|e }}">
-            <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}📁{% endif %}</span><span class="process-embed-title">{{ item.get('name') or item.get('file_name') or item.get('path') or 'اسم غير متاح' }}</span><span class="process-embed-meta">{{ item.get('source') or 'غير محدد' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">مؤشر يحتاج مراجعة</span>{% endif %}</div>
+            <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}📁{% endif %}</span><span class="process-embed-title">{{ item.get('name') or item.get('file_name') or item.get('path') or 'اسم غير متاح' }}</span><span class="process-embed-meta">{{ item.get('source') or 'غير محدد' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">{{ item.get('indicator_category') or 'مؤشرات هاك/غش' }} — يحتاج مراجعة</span>{% endif %}</div>
             <div class="field"><b>المسار</b><span dir="ltr">{{ item.get('path') or 'غير متاح' }}</span></div>
             <div class="field"><b>الحجم</b><span dir="ltr">{{ item.get('size_bytes', 'غير متاح') }} bytes</span></div>
             <div class="field"><b>تاريخ الإنشاء</b><span dir="ltr">{{ item.get('created_display') or 'غير متاح' }}</span></div>
