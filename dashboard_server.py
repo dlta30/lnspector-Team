@@ -1695,17 +1695,27 @@ def report_pdf(report_id):
             ])
         story.append(make_table(rows, [34*mm, 61*mm, 43*mm, 36*mm]))
 
-    if file_findings:
-        story.append(Paragraph("File indicators — manual review", styles["SectionTitle"]))
-        rows = [[cell("File"), cell("Path"), cell("Indicators"), cell("Trust status")]]
-        for item in file_findings[:150]:
+    if artifacts:
+        story.append(Paragraph("Files and folders inventory — indicators first, newest next", styles["SectionTitle"]))
+        sorted_artifacts = sorted(
+            [x for x in artifacts if isinstance(x, dict)],
+            key=lambda x: (bool(x.get("indicator_matches")), str(x.get("modified_at") or "")),
+            reverse=True
+        )
+        rows = [[cell("Type"), cell("File / folder"), cell("Path"), cell("Modified"), cell("Indicators / status")]]
+        for item in sorted_artifacts[:180]:
+            indicators = ", ".join(str(v) for v in item.get("indicator_matches", [])[:5]) or "No name match"
+            trust = str(item.get("signature_label") or "Not checked")
             rows.append([
-                cell(item.get("file_name") or item.get("name"), 100),
-                cell(item.get("path"), 220),
-                cell(", ".join(str(v) for v in item.get("indicator_matches", [])[:8]), 140),
-                cell(item.get("signature_label"), 100)
+                cell(item.get("artifact_type") or "file", 30),
+                cell(item.get("file_name") or item.get("name"), 90),
+                cell(item.get("path"), 180),
+                cell(item.get("modified_display") or item.get("modified_at"), 70),
+                cell(indicators + " · " + trust, 140)
             ])
-        story.append(make_table(rows, [34*mm, 61*mm, 43*mm, 36*mm]))
+        story.append(make_table(rows, [17*mm, 30*mm, 51*mm, 31*mm, 53*mm]))
+        if len(sorted_artifacts) > 180:
+            story.append(Paragraph("PDF inventory shows the first 180 entries; the full report JSON appendix and dashboard retain the remaining collected entries.", styles["SmallMeta"]))
 
     story.extend([
         Spacer(1, 5*mm),
