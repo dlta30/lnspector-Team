@@ -1473,6 +1473,8 @@ def report_detail(report_id):
         <div class="report-metric">مؤشرات المطابقة<strong>{{ match_count }}</strong></div>
         <div class="report-metric">عناصر الملفات المفحوصة<strong>{{ file_artifact_count }}</strong></div>
         <div class="report-metric">تطبيقات آخر 24 ساعة<strong>{{ recent_apps|length }}</strong></div>
+        <div class="report-metric">برامج موثقة رقمياً<strong>{{ report_data.get('signature_verified_count', 0) }}</strong></div>
+        <div class="report-metric">برامج غير موثقة<strong>{{ report_data.get('signature_unverified_count', 0) }}</strong></div>
       </div>
       <div class="card" id="recent-apps">
         <h2>التطبيقات المستخدمة خلال آخر 24 ساعة</h2>
