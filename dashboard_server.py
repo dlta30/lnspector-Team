@@ -1590,36 +1590,131 @@ def report_pdf(report_id):
     source_label = report_source_label(r["submitted_by"])
     target_label = inspection_target_label(r["session_id"])
     try:
-        payload = json.dumps(json.loads(r["payload"]), indent=2, ensure_ascii=False)
+        envelope = json.loads(r["payload"])
+        payload = json.dumps(envelope, indent=2, ensure_ascii=False)
+        report_data = envelope.get("report") if isinstance(envelope, dict) and isinstance(envelope.get("report"), dict) else envelope
+        if not isinstance(report_data, dict):
+            report_data = {}
     except Exception:
         payload = str(r["payload"])
-    # Generate a PDF in memory; never write report contents to a public file path.
+        report_data = {}
+
+    processes = report_data.get("processes", []) if isinstance(report_data.get("processes", []), list) else []
+    artifacts = report_data.get("file_artifacts", []) if isinstance(report_data.get("file_artifacts", []), list) else []
+    recent_apps = report_data.get("recent_apps_24h", []) if isinstance(report_data.get("recent_apps_24h", []), list) else []
+    process_findings = [x for x in processes if isinstance(x, dict) and x.get("indicator_matches")]
+    file_findings = [x for x in artifacts if isinstance(x, dict) and x.get("indicator_matches")]
+
     from io import BytesIO
     from xml.sax.saxutils import escape
     from reportlab.lib import colors
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import mm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Preformatted
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Preformatted, Table, TableStyle, PageBreak
+
     output = BytesIO()
-    doc = SimpleDocTemplate(output, pagesize=A4, rightMargin=18*mm, leftMargin=18*mm, topMargin=18*mm, bottomMargin=18*mm, title="3eN Inspect التقرير رقم" + str(report_id), author="3eN Inspect Team")
+    doc = SimpleDocTemplate(
+        output, pagesize=A4, rightMargin=14*mm, leftMargin=14*mm,
+        topMargin=15*mm, bottomMargin=15*mm,
+        title="3EN Inspect report #" + str(report_id), author="3EN Inspect Team"
+    )
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="SmallMeta", parent=styles["BodyText"], fontSize=9, leading=13, textColor=colors.HexColor("#444444"), spaceAfter=5))
-    styles.add(ParagraphStyle(name="Payload", parent=styles["BodyText"], fontName="Courier", fontSize=7, leading=9, wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="SmallMeta", parent=styles["BodyText"], fontSize=8, leading=11, textColor=colors.HexColor("#454b59"), spaceAfter=4))
+    styles.add(ParagraphStyle(name="SectionTitle", parent=styles["Heading2"], textColor=colors.HexColor("#b51f42"), spaceBefore=10, spaceAfter=6))
+    styles.add(ParagraphStyle(name="TinyCell", parent=styles["BodyText"], fontSize=6.5, leading=8, wordWrap="CJK"))
+    styles.add(ParagraphStyle(name="Payload", parent=styles["BodyText"], fontName="Courier", fontSize=6, leading=7, wordWrap="CJK"))
+    red = colors.HexColor("#a91e3d")
+    pale = colors.HexColor("#f8e9ed")
+    grid = colors.HexColor("#d8dbe2")
+
+    def cell(value, limit=500):
+        return Paragraph(escape(str(value or "—")[:limit]), styles["TinyCell"])
+
+    def make_table(data, widths):
+        table = Table(data, colWidths=widths, repeatRows=1, hAlign="LEFT")
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#191d28")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("GRID", (0, 0), (-1, -1), 0.35, grid),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7f7f9")]),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        return table
+
+    verified_count = sum(1 for x in list(processes) + list(artifacts) if isinstance(x, dict) and x.get("signature_status") == "verified")
+    unverified_count = sum(1 for x in list(processes) + list(artifacts) if isinstance(x, dict) and x.get("signature_status") == "unverified")
     story = [
-        Paragraph("3eN INSPECTOR TEAM", styles["Title"]),
-        Paragraph("Inspection التقرير رقم" + str(report_id), styles["Heading1"]),
-        Spacer(1, 6*mm),
-        Paragraph("<b>الشخص المفتَّش:</b> " + escape(str(target_label or "اسم الشخص غير مسجل")), styles["SmallMeta"]),
-        Paragraph("<b>الجلسة:</b> " + escape(str(r["session_id"])), styles["SmallMeta"]),
-        Paragraph("<b>الجهاز:</b> " + escape(str(r["computer_label"])), styles["SmallMeta"]),
+        Paragraph("3EN INSPECT TEAM", styles["Title"]),
+        Paragraph("Inspection report #" + str(report_id), styles["Heading1"]),
+        Paragraph("by:ROITH", styles["SmallMeta"]),
+        Spacer(1, 3*mm),
+        Paragraph("<b>Person:</b> " + escape(str(target_label or "Not specified")), styles["SmallMeta"]),
+        Paragraph("<b>Device:</b> " + escape(str(r["computer_label"])), styles["SmallMeta"]),
+        Paragraph("<b>Session:</b> " + escape(str(r["session_id"])), styles["SmallMeta"]),
         Paragraph("<b>Received (UTC):</b> " + escape(str(r["created_at"])), styles["SmallMeta"]),
-        Paragraph("<b>أُرسل بواسطة:</b> " + escape(str(source_label)), styles["SmallMeta"]),
-        Paragraph("<b>الملخص:</b> " + escape(str(r["summary"] or "No summary provided")), styles["SmallMeta"]),
-        Spacer(1, 4*mm),
-        Paragraph("Inspection data", styles["Heading2"]),
-        Preformatted(payload[:100000], styles["Payload"], maxLineLength=100),
+        Paragraph("<b>Submitted by:</b> " + escape(str(source_label)), styles["SmallMeta"]),
+        Paragraph("<b>Summary:</b> " + escape(str(r["summary"] or "No summary")), styles["SmallMeta"]),
+        Paragraph("Overview", styles["SectionTitle"]),
+        make_table([
+            [cell("Processes"), cell("Name indicators"), cell("Files/folders"), cell("Apps in last 24h")],
+            [cell(report_data.get("process_count", len(processes))), cell(len(process_findings) + len(file_findings)), cell(report_data.get("file_artifact_count", len(artifacts))), cell(len(recent_apps))]
+        ], [43.5*mm, 43.5*mm, 43.5*mm, 43.5*mm]),
+        Paragraph("Digital signature summary", styles["SectionTitle"]),
+        Paragraph("Verified signatures: " + str(verified_count) + " · Unverified EXE/DLL: " + str(unverified_count) + ". A valid signature identifies a publisher and file integrity at signing time; it does not prove the program is safe or cheat-free. Unsupported file types are not treated as unsigned EXE/DLL files.", styles["SmallMeta"]),
     ]
+
+    if recent_apps:
+        story.append(Paragraph("Applications seen in the last 24 hours", styles["SectionTitle"]))
+        rows = [[cell("Application"), cell("Last seen"), cell("Evidence source"), cell("Signature")]]
+        for item in recent_apps[:80]:
+            if not isinstance(item, dict):
+                continue
+            rows.append([
+                cell(item.get("app_name") or item.get("file_name"), 100),
+                cell(item.get("last_seen_display") or item.get("last_seen_at"), 80),
+                cell(item.get("evidence_source"), 120),
+                cell(item.get("signature_label"), 120)
+            ])
+        if len(rows) > 1:
+            story.append(make_table(rows, [37*mm, 35*mm, 53*mm, 49*mm]))
+
+    if process_findings:
+        story.append(Paragraph("Process name indicators — manual review", styles["SectionTitle"]))
+        rows = [[cell("Process"), cell("Path"), cell("Indicators"), cell("Signature")]]
+        for item in process_findings[:100]:
+            rows.append([
+                cell(item.get("process_name") or item.get("file_name"), 100),
+                cell(item.get("executable_path"), 220),
+                cell(", ".join(str(v) for v in item.get("indicator_matches", [])[:8]), 140),
+                cell(item.get("signature_label"), 100)
+            ])
+        story.append(make_table(rows, [34*mm, 61*mm, 43*mm, 36*mm]))
+
+    if file_findings:
+        story.append(Paragraph("File indicators — manual review", styles["SectionTitle"]))
+        rows = [[cell("File"), cell("Path"), cell("Indicators"), cell("Trust status")]]
+        for item in file_findings[:150]:
+            rows.append([
+                cell(item.get("file_name") or item.get("name"), 100),
+                cell(item.get("path"), 220),
+                cell(", ".join(str(v) for v in item.get("indicator_matches", [])[:8]), 140),
+                cell(item.get("signature_label"), 100)
+            ])
+        story.append(make_table(rows, [34*mm, 61*mm, 43*mm, 36*mm]))
+
+    story.extend([
+        Spacer(1, 5*mm),
+        Paragraph("Method and limitations", styles["SectionTitle"]),
+        Paragraph("Name/path matches are indicators, not proof of cheating. Recent app history uses process start times and Windows Prefetch timestamps; Prefetch time is approximate and may be unavailable. Authenticode is checked for EXE/DLL files only. ZIP/RAR archives are not opened, files are not executed, and file contents are not uploaded. The scan may be limited by permissions, disabled Windows history, or the configured performance cap.", styles["SmallMeta"]),
+        PageBreak(),
+        Paragraph("Raw report data (JSON appendix)", styles["SectionTitle"]),
+        Preformatted(payload[:100000], styles["Payload"], maxLineLength=100),
+    ])
     doc.build(story)
     output.seek(0)
     from flask import send_file
