@@ -1228,7 +1228,7 @@ def reports():
         abort(403)
     with db() as con:
         if actor["role"] == "inspector":
-            rows=con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,r.submitted_by,s.target_label,r.payload FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id WHERE r.submitted_by=? ORDER BY r.id DESC", ("session:" + actor["username"],)).fetchall()
+            rows=con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,r.submitted_by,s.target_label,r.payload,r.review_verdict,r.review_reason FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id WHERE r.submitted_by=? ORDER BY r.id DESC", ("session:" + actor["username"],)).fetchall()
         else:
             rows=con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,r.submitted_by,s.target_label,r.payload FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id ORDER BY r.id DESC").fetchall()
     report_rows = []
@@ -1335,6 +1335,7 @@ def reports():
       {% for r in report_rows %}
         <article class="report-item" data-search="{{ r['search_text']|e }}" data-status="{{ r['status_class'] }}">
           <div class="report-item-top"><span class="report-id">تقرير #{{ r['id'] }}</span><span class="report-chip {{ r['status_class'] }}">{{ r['status_label'] }}</span></div>
+          <div class="muted" style="margin:-5px 0 12px">تصنيف المراجع: {% if r['review_verdict']=='clean' %}<b style="color:#70dfb2">Clean</b>{% elif r['review_verdict']=='hack' %}<b style="color:#ff8296">Hack</b>{% else %}<b style="color:#ffc078">بانتظار المراجعة</b>{% endif %}{% if r['review_reason'] %} · {{ r['review_reason'] }}{% endif %}</div>
           <div class="report-person">{{ r['target_label'] or 'اسم الشخص غير مسجل' }}</div>
           <div class="report-device">DEVICE · {{ r['computer_label'] or 'غير معروف' }}</div>
           <div class="report-meta">
