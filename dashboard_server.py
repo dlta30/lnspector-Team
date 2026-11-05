@@ -155,24 +155,32 @@ class PgConnection:
     def __init__(self, connection, close_on_exit=True):
         self._connection = connection
         self._close_on_exit = close_on_exit
+        self._dirty = False
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc, tb):
-        if exc_type:
-            self._connection.rollback()
-        else:
-            self._connection.commit()
-        if self._close_on_exit:
-            self._connection.close()
+        try:
+            if exc_type:
+                self._connection.rollback()
+            elif self._dirty:
+                # Read-only pages should not pay for an unnecessary COMMIT
+                # round-trip to a remote PostgreSQL server.
+                self._connection.commit()
+        finally:
+            if self._close_on_exit:
+                self._connection.close()
         return False
 
     def execute(self, sql, params=()):
+        if not re.match(r"\\s*(SELECT|SHOW|VALUES|EXPLAIN)\\b", sql, re.I):
+            self._dirty = True
         cursor = self._connection.cursor()
         return PgCursor(cursor).execute(sql, params)
 
     def executescript(self, script):
+        self._dirty = True
         cursor = self._connection.cursor()
         for statement in script.split(";"):
             if statement.strip():
@@ -565,15 +573,23 @@ def log_action(actor, action):
         con.execute("INSERT INTO audit(actor,action,created_at) VALUES(?,?,?)", (actor, action[:240], now()))
 
 def current_user():
+    # Cache the authenticated user for this request. Decorators and page()
+    # previously repeated the same remote database lookup several times.
+    if has_app_context() and "_inspect_current_user" in g:
+        return g._inspect_current_user
     name = session.get("username")
     if not name:
+        if has_app_context():
+            g._inspect_current_user = None
         return None
     with db() as con:
         user = con.execute("SELECT * FROM users WHERE username=?", (name,)).fetchone()
         if not user or not session.get("login_token") or not hmac.compare_digest(str(user["login_token"] or ""), str(session.get("login_token") or "")):
             session.clear()
-            return None
-        return user
+            user = None
+    if has_app_context():
+        g._inspect_current_user = user
+    return user
 
 def login_required(fn):
     @wraps(fn)
