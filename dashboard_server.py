@@ -1777,15 +1777,25 @@ def users_page():
                     log_action(actor["username"],"updated permissions for "+target["username"])
                     flash("Permissions updated.")
         elif action=="role":
-            if actor["role"] != "owner": abort(403)
+            # 15j2 can change ranks for all other accounts, including Inspect Managers.
+            # Other Inspect Managers can change only accounts below their rank.
+            if not is_root_admin(actor) and actor["role"] != "owner": abort(403)
             uid=request.form.get("user_id","")
             role=request.form.get("role","viewer")
             if role not in ("owner","deputy","inspector","viewer"):
                 flash("Invalid role.")
+            elif role == "owner" and not is_root_admin(actor):
+                abort(403)
             else:
                 with db() as con:
                     target=con.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
-                    if target and target["role"]!="owner":
+                    if not target:
+                        flash("الحساب غير موجود.")
+                    elif int(target["id"]) == int(actor["id"]):
+                        flash("لا يمكنك تغيير رتبة حسابك الحالي.")
+                    elif target["role"] == "owner" and not is_root_admin(actor):
+                        abort(403)
+                    else:
                         con.execute("UPDATE users SET role=?,can_view=?,can_ingest=? WHERE id=?",
                                     (role, 1 if request.form.get("can_view") else 0, 1 if request.form.get("can_ingest") and role == "inspector" else 0, uid))
                         log_action(actor["username"],"changed role for "+target["username"]+" to "+role)
@@ -1867,8 +1877,16 @@ def users_page():
             <span class="badge">{% if u['role']=='owner' %}Inspect Manager{% elif u['role']=='deputy' %}Assistant Inspect{% elif u['role']=='team' %}Inspect Team{% elif u['role']=='inspector' %}Inspect Team{% elif u['role']=='viewer' %}مشاهدة فقط{% else %}{{ u['role'] }}{% endif %}</span>
           </div>
           {% if u['role']=='owner' %}
-            <p class="muted">صلاحيات المالك محمية ولا يمكن تعديلها من هنا.</p>
-            {% if u['id'] != actor_id and (actor_is_root or (actor_role == 'owner' and u['role'] != 'owner')) %}
+            <p class="muted">صلاحيات Inspect Manager.</p>
+            {% if actor_is_root and u['id'] != actor_id %}
+            <form method="post" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end">
+              <input type="hidden" name="action" value="role"><input type="hidden" name="user_id" value="{{ u['id'] }}">
+              <div><label>تغيير الرتبة</label><select name="role"><option value="owner" selected>Inspect Manager</option><option value="deputy">Assistant Inspect</option><option value="inspector">Inspect Team</option><option value="viewer">مشاهدة فقط</option></select></div>
+              <div style="display:flex;flex-direction:column;gap:10px"><label style="display:flex;gap:8px;align-items:center"><input style="width:auto;margin:0" type="checkbox" name="can_view" {% if u['can_view'] %}checked{% endif %}> مشاهدة التقارير</label><label style="display:flex;gap:8px;align-items:center"><input style="width:auto;margin:0" type="checkbox" name="can_ingest" {% if u['can_ingest'] %}checked{% endif %}> استقبال التقارير</label></div>
+              <button class="btn">حفظ التغييرات</button>
+            </form>
+            {% endif %}
+            {% if actor_is_root and u['id'] != actor_id %}
             <form method="post" style="margin-top:12px" onsubmit="return confirm('تأكيد حذف حساب Inspect Manager ' + {{ u['username']|tojson }} + ' نهائيًا؟');">
               <input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <button class="btn" style="background:#6d1728;border-color:#b82e49;color:#fff">🗑 حذف الحساب الذي أنشأته</button>
