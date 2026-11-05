@@ -4,9 +4,7 @@ Collects process metadata, 24-hour app activity, file metadata, and Windows Auth
 No screenshots are captured.
 Run: python inspector_client.py
 """
-import base64
 import hashlib
-import io
 import json
 import os
 import platform
@@ -14,7 +12,7 @@ import re
 import sys
 import threading
 import tkinter as tk
-from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinter import filedialog, messagebox, ttk
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -593,21 +591,12 @@ class InspectorApp(tk.Tk):
             self.status.set(text)
         self.after(0, paint)
 
-    def _completion_marker_path(self):
-        # Per-user, per-session marker. The user can remove it to reset the session.
-        root = os.environ.get("APPDATA") or os.path.expanduser("~")
-        code_hash = hashlib.sha256(str(SESSION_CODE).encode("utf-8")).hexdigest()[:20]
-        return os.path.join(root, "3eN Inspect Team", "completed-" + code_hash + ".json")
-
     def _close_then_offer_folder(self):
         # Close the UI without launching a second process or changing user files.
         self.destroy()
     def start(self):
-        marker = self._completion_marker_path()
-        if os.path.isfile(marker):
-            messagebox.showinfo(APP, "تم الانتهاء من فحصك مسبقًا. لن تتم إعادة الفحص لهذه الجلسة.")
-            self.destroy()
-            return
+        # The dashboard enforces one-time session use; the client does not
+        # create local completion files or persist session state on the device.
         if not (self.consent_processes.get() and self.consent_files.get()):
             messagebox.showwarning(APP, "يجب الموافقة على الخيارين قبل بدء الفحص.")
             return
@@ -706,16 +695,6 @@ class InspectorApp(tk.Tk):
             self.metric_state.set("SENT")
             self.session_badge.configure(text="●  تم الإرسال", bg="#142b28", fg="#62e0b0")
             self.status.set("تم إرسال التقرير تلقائيًا إلى لوحة التحكم.")
-            marker = self._completion_marker_path()
-            try:
-                os.makedirs(os.path.dirname(marker), exist_ok=True)
-                with open(marker, "w", encoding="utf-8") as marker_file:
-                    json.dump({
-                        "completed_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                        "session_code_hash": hashlib.sha256(str(SESSION_CODE).encode("utf-8")).hexdigest()
-                    }, marker_file)
-            except OSError:
-                self.status.set("تم إرسال التقرير، لكن تعذر حفظ منع إعادة الفحص على هذا الجهاز.")
             self.start_button.configure(state="disabled")
             self.after(1200, self._close_then_offer_folder)
         except urllib.error.HTTPError as exc:
