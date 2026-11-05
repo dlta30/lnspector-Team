@@ -1146,7 +1146,7 @@ def ingest_session_report():
     if not request.is_json:
         abort(415)
     # The optional desktop screenshot is base64-encoded inside this JSON request.
-    if len(request.get_data()) > 8_000_000:
+    if len(request.get_data()) > 32 * 1024 * 1024:
         abort(413)
     data = request.get_json(silent=True)
     if not isinstance(data, dict):
