@@ -257,14 +257,16 @@ def collect_recent_apps(processes, progress):
                             continue
                         seen.add(key)
                         local = datetime.fromtimestamp(st.st_mtime).astimezone()
+                        prefetch_matches = find_indicator_matches(app_name, entry.name)
+                        prefetch_category = "مؤشرات حركة" if any(term in prefetch_matches for term in ("ad movement", "filter key", "scod", "cr-fastrun")) else ("مؤشرات هاك/غش" if prefetch_matches else "لا توجد مطابقة اسمية")
                         recent.append({
                             "app_name": app_name, "file_name": entry.name,
                             "path": entry.path, "last_seen_at": utc_timestamp(st.st_mtime),
                             "last_seen_display": local.strftime("%B %d, %Y %I:%M:%S %p"),
                             "evidence_source": "Windows Prefetch (.pf) — قرينة تشغيل تقريبية",
                             "time_accuracy": "approximate_prefetch_timestamp",
-                            "indicator_matches": find_indicator_matches(app_name, entry.name),
-                            "indicator_category": "مؤشرات هاك/غش" if find_indicator_matches(app_name, entry.name) else "لا توجد مطابقة اسمية",
+                            "indicator_matches": prefetch_matches,
+                            "indicator_category": prefetch_category,
                             "signature_status": "not_checked",
                             "signature_label": "بيانات سجل تشغيل، لا ينطبق عليها توقيع ملف التطبيق"
                         })
