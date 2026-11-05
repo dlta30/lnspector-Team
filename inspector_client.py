@@ -214,6 +214,111 @@ def collect_files(progress, max_files=15000, max_scan_seconds=75):
         progress(65, f"اكتمل الجزء المحدد زمنيًا: {len(rows):,} عنصر (حد الفحص {max_scan_seconds} ثانية)")
     return rows
 
+
+def collect_fivem_artifacts(progress, max_files=8000, max_scan_seconds=35):
+    """Collect metadata from common FiveM/GTA V locations; never execute or read file contents."""
+    import time
+
+    home = Path.home()
+    local = Path(os.environ.get("LOCALAPPDATA", str(home / "AppData" / "Local")))
+    roaming = Path(os.environ.get("APPDATA", str(home / "AppData" / "Roaming")))
+    program_files = Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+    program_files_x86 = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
+    roots = [
+        local / "FiveM" / "FiveM.app",
+        roaming / "CitizenFX",
+        home / "Documents" / "Rockstar Games" / "GTA V",
+        program_files / "Rockstar Games" / "Grand Theft Auto V",
+        program_files_x86 / "Rockstar Games" / "Grand Theft Auto V",
+        program_files / "Steam" / "steamapps" / "common" / "Grand Theft Auto V",
+        program_files_x86 / "Steam" / "steamapps" / "common" / "Grand Theft Auto V",
+        program_files / "Epic Games" / "GTAV",
+        program_files_x86 / "Epic Games" / "GTAV",
+    ]
+    allowed_extensions = {
+        ".exe", ".dll", ".asi", ".lua", ".luac", ".json", ".cfg", ".ini",
+        ".log", ".dat", ".bin", ".zip", ".rar", ".7z", ".rpf", ".meta", ".xml"
+    }
+    excluded_dirs = {
+        "$recycle.bin", "system volume information", "windows", "winsxs",
+        "node_modules", ".git", "__pycache__"
+    }
+    started = time.monotonic()
+    candidates, seen = [], set()
+    stopped_early = False
+    existing_roots = [root for root in roots if root.is_dir()]
+
+    for root in existing_roots:
+        for current, dirs, names in os.walk(str(root), topdown=True, followlinks=False):
+            if len(candidates) >= max_files or time.monotonic() - started >= max_scan_seconds:
+                stopped_early = True
+                break
+            dirs[:] = [
+                d for d in dirs
+                if d.casefold() not in excluded_dirs
+                and not os.path.islink(os.path.join(current, d))
+            ]
+            for name in names:
+                ext = Path(name).suffix.casefold()
+                if ext not in allowed_extensions:
+                    continue
+                path = os.path.join(current, name)
+                try:
+                    if os.path.islink(path) or not os.path.isfile(path):
+                        continue
+                    key = os.path.normcase(os.path.abspath(path))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    candidates.append((path, os.stat(path)))
+                except OSError:
+                    continue
+                if len(candidates) >= max_files or time.monotonic() - started >= max_scan_seconds:
+                    stopped_early = True
+                    break
+            if stopped_early:
+                break
+        if stopped_early:
+            break
+
+    rows = []
+    total = max(len(candidates), 1)
+    for index, (path, st) in enumerate(candidates, 1):
+        name = os.path.basename(path)
+        matches = find_indicator_matches(name, path)
+        too_large = st.st_size > 250 * 1024 * 1024
+        created = utc_timestamp(st.st_ctime)
+        modified = utc_timestamp(st.st_mtime)
+        try:
+            modified_display = datetime.fromtimestamp(st.st_mtime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
+            created_display = datetime.fromtimestamp(st.st_ctime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
+        except (ValueError, OSError, OverflowError):
+            modified_display, created_display = modified, created
+        ext = Path(name).suffix.casefold()
+        digest = sha256_file(path) if matches and not too_large else None
+        rows.append({
+            "artifact_type": "FiveM/GTA V file",
+            "source": "FiveM/GTA V targeted locations",
+            "file_name": name[:260], "path": path[:1500],
+            "size_bytes": int(st.st_size), "created_at": created,
+            "created_display": created_display, "modified_at": modified,
+            "modified_display": modified_display, "sha256": digest,
+            "hash_skipped_large_file": too_large,
+            "indicator_matches": matches,
+            "context_flags": ["FiveM/GTA V location"],
+            "indicator_category": "مؤشرات هاك/غش" if matches else "لا توجد مطابقة اسمية",
+            "assessment": "review" if matches else "metadata_only",
+            "signature_status": "pending" if ext in {".exe", ".dll"} else "not_checked",
+            "signature_label": "جارٍ التحقق" if ext in {".exe", ".dll"} else "لا ينطبق أو لم يتم التحقق"
+        })
+        if index % 100 == 0 or index == total:
+            progress(45 + int(index * 20 / total), f"فحص مواقع FiveM وGTA V... {index:,}/{total:,}")
+
+    if stopped_early:
+        progress(65, f"انتهى الجزء المحدد زمنيًا من فحص FiveM: {len(rows):,} ملف")
+    return rows
+
+
 def collect_recent_apps(processes, progress):
     """Show apps started in the last 24h plus recent Windows Prefetch metadata."""
     import time
@@ -612,29 +717,37 @@ class InspectorApp(tk.Tk):
         try:
             processes = collect_processes(self.update_progress)
             files = collect_files(self.update_progress)
+            fivem_files = collect_fivem_artifacts(self.update_progress)
+            # Keep a unified evidence inventory for the existing dashboard and PDF workflow.
+            for item in fivem_files:
+                item.setdefault("source", "FiveM/GTA V targeted locations")
+            files.extend(fivem_files)
             verify_authenticode_signatures(processes, files, self.update_progress)
             recent_apps = collect_recent_apps(processes, self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
             file_matches = [item for item in files if item["indicator_matches"]]
+            fivem_matches = [item for item in fivem_files if item["indicator_matches"]]
             self.report = {
                 "product": APP,
                 "signature": "3eN INSPECT TEAM",
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "Bounded metadata inventory of C: and D: (up to 15,000 items or 75 seconds), excluding Windows/system folders; EXE/DLL/ZIP/RAR only; all currently running processes plus Windows Prefetch evidence from the last 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
+                "scan_scope": "Bounded metadata inventory of C: and D: (up to 15,000 items or 75 seconds), excluding Windows/system folders; plus targeted FiveM/GTA V install, CitizenFX, and user Documents locations (up to 8,000 items or 35 seconds; EXE/DLL/ASI/LUA/LUAC/JSON/CFG/INI/LOG/DAT/BIN/ZIP/RAR/7Z/RPF/META/XML); all currently running processes plus Windows Prefetch evidence from the last 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
                 "file_count": len(files),
                 "file_artifact_count": len(files),
                 "file_indicator_match_count": len(file_matches),
+                "fivem_artifact_count": len(fivem_files),
+                "fivem_indicator_match_count": len(fivem_matches),
                 "file_artifacts": files,
                 "recent_apps_24h": recent_apps,
                 "recent_apps_24h_count": len(recent_apps),
                 "signature_verified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "verified"),
                 "signature_unverified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "unverified"),
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Configured names are indicators for manual review, not proof of cheating. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File inventory is limited to EXE/DLL/ZIP/RAR in C: and D:, excluding Windows/system folders. File timestamps show last modification, not last execution; archives are not opened and file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Dates are retained in UTC and local display format. No screenshots are captured. No files are modified and no processes are terminated.",
+                "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded general inventory plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened and file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. No screenshots are captured automatically. No files are modified and no processes are terminated.",
                 "processes": processes,
             }
             self.update_progress(100, "اكتمل الفحص وتجهيز التقرير.")
