@@ -1,7 +1,7 @@
 """
 3eN Inspect Team — transparent local inspection client.
 Collects process metadata, 24-hour app activity, file metadata, and Windows Authenticode status.
-No screenshots are captured.
+A full-desktop screenshot is captured only after separate explicit user consent.
 Run: python inspector_client.py
 """
 import hashlib
