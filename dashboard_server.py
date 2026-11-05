@@ -1387,8 +1387,9 @@ def report_detail(report_id):
     recent_apps.sort(key=lambda item: str(item.get("last_seen_at") or "") if isinstance(item, dict) else "", reverse=True)
     visible_recent_apps = recent_apps[:100]
     try:
-        match_count = max(int(report_data.get("indicator_match_count", len(findings)) or 0),
-                          int(report_data.get("file_indicator_match_count", len(artifact_findings)) or 0))
+        process_match_count = int(report_data.get("indicator_match_count", len(findings)) or 0)
+        file_match_count = int(report_data.get("file_indicator_match_count", len(artifact_findings)) or 0)
+        match_count = process_match_count + file_match_count
     except (ValueError, TypeError):
         match_count = len(findings) + len(artifact_findings)
     process_count = int(report_data.get("process_count", len(processes)) or 0)
@@ -1504,7 +1505,7 @@ def report_detail(report_id):
             <div class="field"><b>تاريخ تعديل الملف (UTC)</b><span dir="ltr">{{ item.get('file_modified_at') }}</span></div>
             <div class="field"><b>حالة التوثيق</b><span>{{ item.get('signature_label') or 'لم يتم التحقق' }}</span></div>
             {% if item.get('download_mark') %}<div class="field"><b>علامة تنزيل من الإنترنت</b><span>موجودة — لا تحدد وقت التنزيل بدقة</span></div>{% endif %}
-            {% if item.get('indicator_matches') %}<div class="field"><b>سبب الاشتباه</b><span>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
+            {% if item.get('indicator_matches') %}<div class="field"><b>سبب الاشتباه · {{ item.get('indicator_category') or 'مؤشر' }}</b><span>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
           </article>
         {% else %}<div class="empty-state">لا توجد بيانات عمليات في هذا التقرير.</div>{% endfor %}
         </div><div class="reports-empty" id="file-none" style="display:none">ما فيه ملفات تطابق البحث.</div>
