@@ -699,7 +699,7 @@ class InspectorApp(tk.Tk):
                        "report": self.report}
             req = urllib.request.Request(endpoint, data=json.dumps(payload).encode("utf-8"),
                 headers={"Content-Type": "application/json"}, method="POST")
-            with urllib.request.urlopen(req, timeout=25) as response:
+            with urllib.request.urlopen(req, timeout=90) as response:
                 result = json.loads(response.read().decode("utf-8"))
             self.report["dashboard_report_id"] = result.get("report_id")
             self.delivery_status = "sent"
@@ -718,10 +718,18 @@ class InspectorApp(tk.Tk):
                 self.status.set("تم إرسال التقرير، لكن تعذر حفظ منع إعادة الفحص على هذا الجهاز.")
             self.start_button.configure(state="disabled")
             self.after(1200, self._close_then_offer_folder)
+        except urllib.error.HTTPError as exc:
+            try:
+                detail = exc.read(1200).decode("utf-8", errors="replace").strip()
+            except Exception:
+                detail = ""
+            self.delivery_status = "failed: HTTP " + str(exc.code)
+            self.session_badge.configure(text="●  تعذر الإرسال", bg="#351521", fg="#ff8093")
+            self.status.set("رفض الخادم التقرير (HTTP " + str(exc.code) + "). " + (detail[:180] if detail else "تحقق من صلاحية الجلسة وحجم التقرير."))
         except Exception as exc:
             self.delivery_status = "failed: " + type(exc).__name__
             self.session_badge.configure(text="●  تعذر الإرسال", bg="#351521", fg="#ff8093")
-            self.status.set("تعذر الإرسال. تحقق من الاتصال والجلسة.")
+            self.status.set("تعذر الإرسال: " + type(exc).__name__ + ". تحقق من الاتصال ثم أعد المحاولة.")
 
     def export_pdf(self):
         if not self.report:
