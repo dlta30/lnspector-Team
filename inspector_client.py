@@ -496,7 +496,7 @@ def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=1
                     version, original_size, deleted_filetime = struct.unpack_from("<QQQ", raw, 0)
                     if version == 1:
                         path_offset = 24
-                        original_path = raw[path_offset:].decode("utf-16le", errors="ignore").split("\\x00", 1)[0]
+                        original_path = raw[path_offset:].decode("utf-16le", errors="ignore").split("\x00", 1)[0]
                     elif version == 2 and len(raw) >= 28:
                         char_count = struct.unpack_from("<I", raw, 24)[0]
                         if char_count < 1 or char_count > 32760:
@@ -507,7 +507,7 @@ def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=1
                         continue
                     if not original_path:
                         continue
-                    original_name = Path(original_path.replace("\\\\", "/")).name[:180]
+                    original_name = Path(original_path).name[:180]
                     extension = Path(original_name).suffix.casefold()
                     if extension not in interesting_extensions:
                         continue
@@ -526,8 +526,8 @@ def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=1
                         deleted_at_iso = None
                     # Keep only security-relevant metadata; do not report the original full path.
                     folder_hint = "FiveM/GTA V" if game_context else (
-                        "Downloads" if "\\\\downloads\\\\" in lower_path else
-                        "Desktop" if "\\\\desktop\\\\" in lower_path else "Other"
+                        "Downloads" if "\\downloads\\" in lower_path else
+                        "Desktop" if "\\desktop\\" in lower_path else "Other"
                     )
                     findings.append({
                         "file_name": original_name,
