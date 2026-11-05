@@ -380,6 +380,11 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
     if not isinstance(processes, list):
         processes = []
     findings = [p for p in processes if isinstance(p, dict) and p.get('indicator_matches')]
+    artifacts = report.get('file_artifacts', [])
+    if not isinstance(artifacts, list):
+        artifacts = []
+    file_findings = [item for item in artifacts if isinstance(item, dict) and item.get('indicator_matches')]
+    all_findings = findings + file_findings
 
     def safe(value, limit=900):
         return str(value or 'غير متاح').replace('\x00', '')[:limit]
@@ -409,26 +414,28 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         {'name': '🎫 الجلسة', 'value': safe(session_code, 100), 'inline': True},
         {'name': '💻 الجهاز', 'value': safe(computer, 100), 'inline': True},
         {'name': '📦 العمليات المفحوصة', 'value': safe(report.get('process_count', len(processes)), 80), 'inline': True},
-        {'name': '🔎 مؤشرات تحتاج مراجعة', 'value': safe(len(findings), 80), 'inline': True},
+        {'name': '🔎 مؤشرات العمليات والملفات', 'value': safe(len(all_findings), 80), 'inline': True},
+        {'name': '🎮 ملفات FiveM/GTA V', 'value': safe(report.get('fivem_artifact_count', 0), 80), 'inline': True},
+        {'name': '🚩 مؤشرات FiveM', 'value': safe(report.get('fivem_indicator_match_count', 0), 80), 'inline': True},
     ]
 
     # Include a few matched items directly in the Discord embed. A name match is
     # only a review lead, never a definitive malware/cheat verdict.
-    for index, item in enumerate(findings[:5], 1):
+    for index, item in enumerate(all_findings[:5], 1):
         matches = item.get('indicator_matches', [])
         if not isinstance(matches, list):
             matches = [matches]
         value = (
-            '**اسم العملية:** ' + safe(item.get('process_name') or item.get('name'), 180) + '\n'
-            + '**اسم الملف:** ' + safe(item.get('file_name'), 180) + '\n'
+            '**نوع الدليل:** ' + safe(item.get('artifact_type') or 'عملية', 80) + '\n'
+            + '**اسم العملية/الملف:** ' + safe(item.get('process_name') or item.get('file_name') or item.get('name'), 180) + '\n'
             + '**PID:** ' + safe(item.get('pid'), 30) + '\n'
-            + '**المسار:** `' + safe(item.get('executable_path'), 300) + '`\n'
+            + '**المسار:** `' + safe(item.get('executable_path') or item.get('path'), 300) + '`\n'
             + '**المؤشرات:** ' + safe(', '.join(str(x) for x in matches[:4]), 250)
         )
         fields.append({'name': '⚠️ عنصر مشتبه للمراجعة ' + str(index), 'value': value[:1024], 'inline': False})
 
-    if len(findings) > 5:
-        fields.append({'name': 'بقية العناصر', 'value': str(len(findings) - 5) + ' عناصر إضافية — راجع التقرير الكامل في لوحة التحكم.', 'inline': False})
+    if len(all_findings) > 5:
+        fields.append({'name': 'بقية العناصر', 'value': str(len(all_findings) - 5) + ' عناصر إضافية — راجع التقرير الكامل في لوحة التحكم.', 'inline': False})
 
     mention_ids = []
     for discord_id in (target_discord_id, str(reviewer_discord_id or '').strip()):
@@ -1539,7 +1546,7 @@ def report_detail(report_id):
       </div>
       <div class="card" id="artifact-list">
         <h2>ملفات البرامج والألعاب · C: و D:</h2>
-        <p class="muted">يعرض EXE و DLL و ZIP و RAR وملفات المؤشرات داخل Mods وAI، مع استبعاد مجلدات Windows والنظام. تظهر الملفات المطابقة أولًا ثم الأحدث. يتم التحقق من توقيع EXE وDLL؛ الملفات غير الموقعة أو ذات التوقيع غير الصالح تظهر «غير موثق». الملفات المضغوطة لا تُفتح ولا تُنفّذ.</p>
+        <p class="muted">يعرض ملفات EXE وDLL وZIP وRAR من الفحص العام، إضافة إلى ملفات FiveM/GTA V من المواقع الشائعة مثل FiveM.app وCitizenFX ومجلد اللعبة والمستندات، بما فيها ASI وLUA وCFG وLOG وRPF وغيرها. الفحص محدود بالوقت وعدد العناصر؛ لا يضمن كشف كل الهاكات. تظهر المطابقات كقرائن للمراجعة وليست إثباتًا. يتم التحقق من توقيع EXE وDLL؛ الملفات المضغوطة لا تُفتح ولا تُنفّذ.</p>
         <div class="muted" style="margin:8px 0">حسب المصدر: {% for source,count in report_data.get('file_artifact_counts_by_source', {}).items() %}<span class="tag">{{ source }}: {{ count }}</span>{% endfor %}</div>
         {% if report_data.get('file_artifacts_truncated') %}<p class="muted">وصل الفحص إلى الحد الأعلى للعناصر؛ قد توجد عناصر إضافية لم تُدرج.</p>{% endif %}
         <div class="muted" style="margin:10px 0">عرض {{ visible_artifacts|length }} من أصل {{ artifacts|length }} عنصر · الصفحة {{ artifact_page }} من {{ artifact_pages }}</div>
