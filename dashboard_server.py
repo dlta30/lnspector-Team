@@ -1376,6 +1376,12 @@ def report_detail(report_id):
         item["download_mark"] = bool(item.get("download_mark"))
     startup = []
     artifacts = report_data.get("file_artifacts", []) if isinstance(report_data.get("file_artifacts", []), list) else []
+    # Display newest modified artifacts first, with a readable local date when supplied by the client.
+    artifacts.sort(key=lambda item: str(item.get("modified_at") or "") if isinstance(item, dict) else "", reverse=True)
+    for item in artifacts:
+        if isinstance(item, dict):
+            item["modified_display"] = str(item.get("modified_display") or item.get("modified_at") or "غير متاح")
+            item["created_display"] = str(item.get("created_at") or "غير متاح")
     artifact_findings = [item for item in artifacts if isinstance(item, dict) and item.get("indicator_matches")]
     try:
         match_count = max(int(report_data.get("indicator_match_count", len(findings)) or 0),
@@ -1490,8 +1496,8 @@ def report_detail(report_id):
         </div>{% endif %}
       </div>
       <div class="card" id="artifact-list">
-        <h2>آثار الملفات والألعاب · Recent / Downloads / Temp / Recycle Bin</h2>
-        <p class="muted">بيانات وصفية فقط: الاسم والمسار والحجم والتواريخ. لا يمكن ضمان ظهور كل ملف محذوف نهائيًا.</p>
+        <h2>ملفات البرامج والألعاب · C: و D:</h2>
+        <p class="muted">يعرض EXE و DLL و ZIP و RAR والمجلدات التي تطابق مؤشرات محددة، مع استبعاد مجلدات Windows والنظام. الملفات المضغوطة لا تُفتح ولا تُنفّذ.</p>
         <div class="muted" style="margin:8px 0">حسب المصدر: {% for source,count in report_data.get('file_artifact_counts_by_source', {}).items() %}<span class="tag">{{ source }}: {{ count }}</span>{% endfor %}</div>
         {% if report_data.get('file_artifacts_truncated') %}<p class="muted">وصل الفحص إلى الحد الأعلى للعناصر؛ قد توجد عناصر إضافية لم تُدرج.</p>{% endif %}
         <div class="muted" style="margin:10px 0">عرض {{ visible_artifacts|length }} من أصل {{ artifacts|length }} عنصر · الصفحة {{ artifact_page }} من {{ artifact_pages }}</div>
@@ -1500,7 +1506,8 @@ def report_detail(report_id):
             <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}📁{% endif %}</span><span class="process-embed-title">{{ item.get('name') or item.get('file_name') or item.get('path') or 'اسم غير متاح' }}</span><span class="process-embed-meta">{{ item.get('source') or 'غير محدد' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">مؤشر يحتاج مراجعة</span>{% endif %}</div>
             <div class="field"><b>المسار</b><span dir="ltr">{{ item.get('path') or 'غير متاح' }}</span></div>
             <div class="field"><b>الحجم</b><span dir="ltr">{{ item.get('size_bytes', 'غير متاح') }} bytes</span></div>
-            <div class="field"><b>آخر تعديل (UTC)</b><span dir="ltr">{{ item.get('modified_at') or 'غير متاح' }}</span></div>
+            <div class="field"><b>تاريخ الإنشاء</b><span dir="ltr">{{ item.get('created_display') or 'غير متاح' }}</span></div>
+            <div class="field"><b>آخر تعديل</b><span dir="ltr">{{ item.get('modified_display') or 'غير متاح' }}</span></div>
             {% if item.get('indicator_matches') %}<div class="field"><b>سبب الاشتباه</b><span>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
           </article>
         {% else %}<div class="empty-state">لم تُجمع عناصر ملفات من المواقع المحددة أو أن النظام ليس Windows.</div>{% endfor %}
