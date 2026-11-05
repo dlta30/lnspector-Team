@@ -106,7 +106,12 @@ CREATE TABLE IF NOT EXISTS reports (
  created_at TEXT NOT NULL,
  summary TEXT NOT NULL DEFAULT '',
  payload TEXT NOT NULL,
- submitted_by TEXT NOT NULL DEFAULT 'desktop-client'
+ submitted_by TEXT NOT NULL DEFAULT 'desktop-client',
+ review_verdict TEXT NOT NULL DEFAULT 'pending',
+ review_reason TEXT NOT NULL DEFAULT '',
+ reviewed_by TEXT NOT NULL DEFAULT '',
+ reviewed_at TEXT,
+ discord_sent_at TEXT
 );
 CREATE TABLE IF NOT EXISTS audit (
  id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -252,7 +257,9 @@ def init_db():
           id BIGSERIAL PRIMARY KEY, session_id TEXT NOT NULL,
           computer_label TEXT NOT NULL DEFAULT 'Unspecified', created_at TEXT NOT NULL,
           summary TEXT NOT NULL DEFAULT '', payload TEXT NOT NULL,
-          submitted_by TEXT NOT NULL DEFAULT 'desktop-client'
+          submitted_by TEXT NOT NULL DEFAULT 'desktop-client',
+          review_verdict TEXT NOT NULL DEFAULT 'pending', review_reason TEXT NOT NULL DEFAULT '',
+          reviewed_by TEXT NOT NULL DEFAULT '', reviewed_at TEXT, discord_sent_at TEXT
         );
         CREATE TABLE IF NOT EXISTS audit (
           id BIGSERIAL PRIMARY KEY, actor TEXT NOT NULL, action TEXT NOT NULL, created_at TEXT NOT NULL
@@ -276,6 +283,11 @@ def init_db():
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_username TEXT NOT NULL DEFAULT ''")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS created_at TEXT NOT NULL DEFAULT ''")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS downloaded_at TEXT")
+            con.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS review_verdict TEXT NOT NULL DEFAULT 'pending'")
+            con.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS review_reason TEXT NOT NULL DEFAULT ''")
+            con.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS reviewed_by TEXT NOT NULL DEFAULT ''")
+            con.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS reviewed_at TEXT")
+            con.execute("ALTER TABLE reports ADD COLUMN IF NOT EXISTS discord_sent_at TEXT")
             row = con.execute("SELECT id FROM users WHERE role='owner' LIMIT 1").fetchone()
             if not row and OWNER_PASSWORD:
                 con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
@@ -329,6 +341,10 @@ def init_db():
             else:
                 con.execute("INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
                             (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()))
+        report_columns = {row["name"] for row in con.execute("PRAGMA table_info(reports)").fetchall()}
+        for column, definition in (("review_verdict", "TEXT NOT NULL DEFAULT 'pending'"), ("review_reason", "TEXT NOT NULL DEFAULT ''"), ("reviewed_by", "TEXT NOT NULL DEFAULT ''"), ("reviewed_at", "TEXT"), ("discord_sent_at", "TEXT")):
+            if column not in report_columns:
+                con.execute(f"ALTER TABLE reports ADD COLUMN {column} {definition}")
         con.executescript("""
         DROP TRIGGER IF EXISTS prevent_report_delete;
         DROP TRIGGER IF EXISTS prevent_user_delete;
