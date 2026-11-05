@@ -150,11 +150,11 @@ def collect_files(progress, max_files=50000):
             for name in names:
                 path = os.path.join(current, name)
                 extension = os.path.splitext(name)[1].casefold()
-                if extension not in allowed_extensions:
-                    continue
                 matches = find_indicator_matches(name, current)
                 in_mods_ai = any(part.casefold() in {"mods", "ai"} for part in Path(current).parts)
-                if extension not in primary_extensions and not matches and not in_mods_ai:
+                # Include any filename matching a supplied indicator, regardless of extension.
+                # Inventory all file types inside Mods/AI folders as requested; metadata only.
+                if extension not in allowed_extensions and not matches and not in_mods_ai:
                     continue
                 try:
                     if os.path.islink(path) or not os.path.isfile(path):
