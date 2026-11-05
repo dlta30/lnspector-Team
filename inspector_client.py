@@ -47,6 +47,34 @@ def sha256_file(path):
     except (OSError, PermissionError):
         return None
 
+def capture_desktop_screenshot_base64(max_bytes=7_200_000):
+    """Capture every connected desktop display only after the user explicitly opts in."""
+    from io import BytesIO
+    import base64
+    from PIL import ImageGrab
+
+    image = ImageGrab.grab(all_screens=True)
+    image = image.convert("RGB")
+    buffer = BytesIO()
+    quality = 82
+    while True:
+        buffer.seek(0)
+        buffer.truncate(0)
+        image.save(buffer, format="JPEG", quality=quality, optimize=True, progressive=True)
+        data = buffer.getvalue()
+        if len(data) <= max_bytes:
+            return base64.b64encode(data).decode("ascii")
+        if quality > 48:
+            quality -= 8
+            continue
+        width, height = image.size
+        if max(width, height) <= 1600:
+            raise RuntimeError("تعذر ضغط لقطة الشاشة إلى الحجم الآمن المسموح.")
+        scale = 0.8
+        image = image.resize((max(1, int(width * scale)), max(1, int(height * scale))))
+        quality = 72
+
+
 def utc_timestamp(value):
     try:
         return datetime.fromtimestamp(float(value), timezone.utc).isoformat(timespec="seconds")
@@ -638,14 +666,20 @@ class InspectorApp(tk.Tk):
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent_processes = tk.BooleanVar(value=False)
         self.consent_files = tk.BooleanVar(value=False)
+        self.consent_screenshot = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
             text="أوافق على الخيار الأول: مراجعة بيانات العمليات والتطبيقات التي استُخدمت خلال آخر 24 ساعة، مثل الاسم والمسار ووقت التشغيل ومؤشرات المطابقة.",
             variable=self.consent_processes, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
         tk.Checkbutton(consent_box,
-            text="أوافق على الخيار الثاني: فحص بيانات الملفات في C: وD: والتحقق من التوقيعات الرقمية، وإرسال تقرير البيانات الوصفية (الأسماء والمسارات والأحجام والتواريخ والبصمات وحالة التوثيق) إلى لوحة التحكم. لا تُرسل محتويات الملفات ولا تُلتقط صور للشاشة.",
+            text="أوافق على الخيار الثاني: فحص بيانات الملفات في C: وD: والتحقق من التوقيعات الرقمية، وإرسال تقرير البيانات الوصفية (الأسماء والمسارات والأحجام والتواريخ والبصمات وحالة التوثيق) إلى لوحة التحكم. لا تُرسل محتويات الملفات.",
             variable=self.consent_files, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
+            activebackground=PANEL, activeforeground=WHITE, wraplength=900,
+            font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
+        tk.Checkbutton(consent_box,
+            text="اختياري — أوافق صراحةً على التقاط صورة كاملة لكل شاشات سطح المكتب عند إرسال التقرير، وإرفاقها بلوحة التحكم ثم برسالة الديسكورد مع التقرير. لن تظهر معاينة، وستُحفظ الصورة ضمن التقرير حتى يرسلها المراجع. قد تتضمن الصورة نوافذ أو رسائل أو معلومات ظاهرة على الشاشة.",
+            variable=self.consent_screenshot, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
 
@@ -747,7 +781,7 @@ class InspectorApp(tk.Tk):
                 "signature_verified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "verified"),
                 "signature_unverified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "unverified"),
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded general inventory plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened and file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. No screenshots are captured automatically. No files are modified and no processes are terminated.",
+                "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded general inventory plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened and file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. A full-desktop screenshot is captured and retained with the report only when the separate screenshot-consent option is selected; otherwise no screenshot is taken. No files are modified and no processes are terminated.",
                 "processes": processes,
             }
             self.update_progress(100, "اكتمل الفحص وتجهيز التقرير.")
@@ -787,6 +821,13 @@ class InspectorApp(tk.Tk):
         try:
             import urllib.request
             endpoint = self.active_dashboard_url.rstrip("/") + "/api/v1/session-report"
+            if self.consent_screenshot.get():
+                self.status.set("جارٍ التقاط سطح المكتب بالكامل بعد موافقتك…")
+                self.report["desktop_screenshot_base64"] = capture_desktop_screenshot_base64()
+                self.report["desktop_screenshot_captured_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            else:
+                self.report.pop("desktop_screenshot_base64", None)
+                self.report.pop("desktop_screenshot_captured_at", None)
             payload = {"session_code": self.active_session_code,
                        "computer_label": self.report["device_label"],
                        "summary": f"{self.report['review_label_ar']} — {self.report['indicator_match_count']} مؤشرات عمليات و{self.report.get('file_indicator_match_count', 0)} مؤشرات ملفات للمراجعة",
