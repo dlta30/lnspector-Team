@@ -149,7 +149,7 @@ def collect_files(progress, max_files=50000):
                     continue
                 matches = find_indicator_matches(name, current)
                 in_mods_ai = any(part.casefold() in {"mods", "ai"} for part in Path(current).parts)
-                if extension not in primary_extensions and not matches:
+                if extension not in primary_extensions and not matches and not in_mods_ai:
                     continue
                 try:
                     if os.path.islink(path) or not os.path.isfile(path):
@@ -417,6 +417,7 @@ def collect_processes(progress):
                 "started_within_24h": started_recently,
                 "file_created_at": file_created, "file_modified_at": file_modified,
                 "sha256": digest, "indicator_matches": matches,
+                "indicator_category": "مؤشرات حركة" if any(term in matches for term in ("ad movement", "filter key", "scod", "cr-fastrun")) else ("مؤشرات هاك/غش" if matches else "لا توجد مطابقة اسمية"),
                 "game_context": classify_game_context(name, exe),
                 "signature_status": "pending" if exists and os.path.splitext(exe)[1].casefold() in {".exe", ".dll"} else "not_checked",
                 "signature_label": "جارٍ التحقق" if exists and os.path.splitext(exe)[1].casefold() in {".exe", ".dll"} else "غير قابل للتحقق",
