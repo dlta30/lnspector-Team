@@ -10,6 +10,7 @@ import io
 import json
 import os
 import platform
+import re
 import sys
 import threading
 import tkinter as tk
@@ -92,12 +93,16 @@ def find_indicator_matches(name, path, indicators=None):
     path_text = str(path or "").casefold()
     combined = name_text + " " + path_text
     matches = []
-    path_parts = {part.casefold() for part in Path(str(path or "")).parts}
     basename = os.path.basename(str(path or name or "")).casefold()
     stem = os.path.splitext(basename)[0]
+    exact_token_terms = {"lux", "hack", "ai", "loader", "launcher", "injector", "cff", "scod", "hazar", "loey"}
     for term in indicators:
-        if term == "ai":
-            if "ai" in path_parts or stem == "ai":
+        if term in exact_token_terms:
+            if term == "ai":
+                matched = stem == "ai" or str(name or "").strip().casefold() == "ai"
+            else:
+                matched = bool(re.search(r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])", combined))
+            if matched:
                 matches.append(term)
         elif term in combined:
             matches.append(term)
@@ -192,7 +197,7 @@ def collect_files(progress, max_files=50000):
             "indicator_category": "مؤشرات حركة" if any(term in matches for term in ("ad movement", "filter key", "scod", "cr-fastrun")) else ("مؤشرات هاك/غش" if matches else "لا توجد مطابقة اسمية"),
             "assessment": "review" if matches else "metadata_only",
             "signature_status": "pending" if kind == "file" and os.path.splitext(name)[1].casefold() in {".exe", ".dll"} else "not_checked",
-            "signature_label": "جارٍ التحقق" if kind == "file" and os.path.splitext(name)[1].casefold() in {".exe", ".dll"} else "غير قابل للتحقق بهذا النوع"
+            "signature_label": "جارٍ التحقق" if kind == "file" and os.path.splitext(name)[1].casefold() in {".exe", ".dll"} else "غير موثق — لا يوجد توقيع رقمي قابل للتحقق لهذا النوع"
         })
         if i % 100 == 0 or i == total:
             progress(50 + int(i * 20 / total), f"فحص الملفات والمجلدات... {i}/{total}")
