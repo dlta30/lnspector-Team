@@ -1377,12 +1377,15 @@ def report_detail(report_id):
     startup = []
     artifacts = report_data.get("file_artifacts", []) if isinstance(report_data.get("file_artifacts", []), list) else []
     # Display newest modified artifacts first, with a readable local date when supplied by the client.
-    artifacts.sort(key=lambda item: str(item.get("modified_at") or "") if isinstance(item, dict) else "", reverse=True)
+    artifacts.sort(key=lambda item: (bool(item.get("indicator_matches")), str(item.get("modified_at") or "")) if isinstance(item, dict) else (False, ""), reverse=True)
     for item in artifacts:
         if isinstance(item, dict):
             item["modified_display"] = str(item.get("modified_display") or item.get("modified_at") or "غير متاح")
             item["created_display"] = str(item.get("created_display") or item.get("created_at") or "غير متاح")
     artifact_findings = [item for item in artifacts if isinstance(item, dict) and item.get("indicator_matches")]
+    recent_apps = report_data.get("recent_apps_24h", []) if isinstance(report_data.get("recent_apps_24h", []), list) else []
+    recent_apps.sort(key=lambda item: str(item.get("last_seen_at") or "") if isinstance(item, dict) else "", reverse=True)
+    visible_recent_apps = recent_apps[:100]
     try:
         match_count = max(int(report_data.get("indicator_match_count", len(findings)) or 0),
                           int(report_data.get("file_indicator_match_count", len(artifact_findings)) or 0))
@@ -1468,6 +1471,20 @@ def report_detail(report_id):
         <div class="report-metric">العمليات المفحوصة<strong>{{ process_count }}</strong></div>
         <div class="report-metric">مؤشرات المطابقة<strong>{{ match_count }}</strong></div>
         <div class="report-metric">عناصر الملفات المفحوصة<strong>{{ file_artifact_count }}</strong></div>
+        <div class="report-metric">تطبيقات آخر 24 ساعة<strong>{{ recent_apps|length }}</strong></div>
+      </div>
+      <div class="card" id="recent-apps">
+        <h2>التطبيقات المستخدمة خلال آخر 24 ساعة</h2>
+        <p class="muted">يعرض العمليات التي بدأ تشغيلها خلال آخر 24 ساعة، وسجلات Prefetch في Windows كقرينة تقريبية لآخر تشغيل. قد لا تظهر التطبيقات إذا كان سجل Prefetch معطلاً أو محذوفًا.</p>
+        {% for item in visible_recent_apps %}
+          <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}">
+            <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}🕒{% endif %}</span><span class="process-embed-title">{{ item.get('app_name') or item.get('file_name') or 'تطبيق غير معروف' }}</span><span class="process-embed-meta">{{ item.get('evidence_source') or 'مصدر غير محدد' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">اسم يطابق مؤشرًا</span>{% endif %}</div>
+            <div class="field"><b>المسار / سجل التشغيل</b><span dir="ltr">{{ item.get('path') or 'غير متاح' }}</span></div>
+            <div class="field"><b>آخر وقت ظاهر</b><span dir="ltr">{{ item.get('last_seen_display') or item.get('last_seen_at') or 'غير متاح' }}</span></div>
+            <div class="field"><b>حالة التوثيق</b><span>{{ item.get('signature_label') or 'لم يتم التحقق' }}</span></div>
+            {% if item.get('indicator_matches') %}<div class="field"><b>المؤشرات</b><span>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
+          </article>
+        {% else %}<div class="empty-state">لا توجد أدلة متاحة على تشغيل تطبيقات خلال آخر 24 ساعة.</div>{% endfor %}
       </div>
       <div class="card"><h2>النتيجة والتوصية</h2><p>{{ status_detail }}</p><p class="muted">{{ report_data.get('note', 'النتائج الآلية مؤشرات أولية وتحتاج إلى مراجعة بشرية.') }}</p></div>
       <div class="card" id="process-list">
@@ -1485,6 +1502,7 @@ def report_detail(report_id):
             <div class="field"><b>وقت بدء التشغيل (UTC)</b><span dir="ltr">{{ item.get('process_started_at') }}</span></div>
             <div class="field"><b>تاريخ إنشاء الملف (UTC)</b><span dir="ltr">{{ item.get('file_created_at') }}</span></div>
             <div class="field"><b>تاريخ تعديل الملف (UTC)</b><span dir="ltr">{{ item.get('file_modified_at') }}</span></div>
+            <div class="field"><b>حالة التوثيق</b><span>{{ item.get('signature_label') or 'لم يتم التحقق' }}</span></div>
             {% if item.get('download_mark') %}<div class="field"><b>علامة تنزيل من الإنترنت</b><span>موجودة — لا تحدد وقت التنزيل بدقة</span></div>{% endif %}
             {% if item.get('indicator_matches') %}<div class="field"><b>سبب الاشتباه</b><span>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
           </article>
@@ -1497,7 +1515,7 @@ def report_detail(report_id):
       </div>
       <div class="card" id="artifact-list">
         <h2>ملفات البرامج والألعاب · C: و D:</h2>
-        <p class="muted">يعرض EXE و DLL و ZIP و RAR والمجلدات التي تطابق مؤشرات محددة، مع استبعاد مجلدات Windows والنظام. الملفات المضغوطة لا تُفتح ولا تُنفّذ.</p>
+        <p class="muted">يعرض EXE و DLL و ZIP و RAR وملفات المؤشرات داخل Mods وAI، مع استبعاد مجلدات Windows والنظام. تظهر الملفات المطابقة أولًا ثم الأحدث. يتم التحقق من توقيع EXE وDLL؛ الملفات غير الموقعة أو ذات التوقيع غير الصالح تظهر «غير موثق». الملفات المضغوطة لا تُفتح ولا تُنفّذ.</p>
         <div class="muted" style="margin:8px 0">حسب المصدر: {% for source,count in report_data.get('file_artifact_counts_by_source', {}).items() %}<span class="tag">{{ source }}: {{ count }}</span>{% endfor %}</div>
         {% if report_data.get('file_artifacts_truncated') %}<p class="muted">وصل الفحص إلى الحد الأعلى للعناصر؛ قد توجد عناصر إضافية لم تُدرج.</p>{% endif %}
         <div class="muted" style="margin:10px 0">عرض {{ visible_artifacts|length }} من أصل {{ artifacts|length }} عنصر · الصفحة {{ artifact_page }} من {{ artifact_pages }}</div>
@@ -1508,7 +1526,11 @@ def report_detail(report_id):
             <div class="field"><b>الحجم</b><span dir="ltr">{{ item.get('size_bytes', 'غير متاح') }} bytes</span></div>
             <div class="field"><b>تاريخ الإنشاء</b><span dir="ltr">{{ item.get('created_display') or 'غير متاح' }}</span></div>
             <div class="field"><b>آخر تعديل</b><span dir="ltr">{{ item.get('modified_display') or 'غير متاح' }}</span></div>
-            {% if item.get('indicator_matches') %}<div class="field"><b>سبب الاشتباه</b><span>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
+            <div class="field"><b>حالة التوثيق</b><span>{{ item.get('signature_label') or 'غير موثق — لم يتم التحقق' }}</span></div>
+            {% if item.get('signature_publisher') %}<div class="field"><b>الناشر</b><span>{{ item.get('signature_publisher') }}</span></div>{% endif %}
+            {% if item.get('context_flags') %}<div class="field"><b>سياق المجلد</b><span>{% for flag in item.get('context_flags', []) %}<span class="tag">{{ flag }}</span>{% endfor %}</span></div>{% endif %}
+            {% if item.get('sha256') %}<div class="field"><b>SHA-256</b><span dir="ltr">{{ item.get('sha256') }}</span></div>{% endif %}
+            {% if item.get('indicator_matches') %}<div class="field"><b>سبب الاشتباه · {{ item.get('indicator_category') or 'مؤشر' }}</b><span>{% for indicator in item.get('indicator_matches', []) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
           </article>
         {% else %}<div class="empty-state">لم تُجمع عناصر ملفات من المواقع المحددة أو أن النظام ليس Windows.</div>{% endfor %}
         {% if artifact_pages > 1 %}<div style="display:flex;gap:10px;align-items:center;justify-content:center;margin-top:14px;flex-wrap:wrap">
@@ -1518,7 +1540,7 @@ def report_detail(report_id):
       </div>
       <script>(function(){const input=document.getElementById('file-search'),items=Array.from(document.querySelectorAll('[data-file-search]')),none=document.getElementById('file-none');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase();let n=0;items.forEach(el=>{const ok=el.dataset.fileSearch.toLocaleLowerCase().includes(q);el.style.display=ok?'block':'none';if(ok)n++;});if(none)none.style.display=n?'none':'block';});})();</script>
     </div>
-    """,r=r,report_data=report_data,processes=processes,visible_processes=visible_processes,process_page=process_page,process_pages=process_pages,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,visible_artifacts=visible_artifacts,artifact_page=artifact_page,artifact_pages=artifact_pages,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"],source_label=source_label,target_label=target_label)
+    """,r=r,report_data=report_data,processes=processes,visible_processes=visible_processes,process_page=process_page,process_pages=process_pages,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,visible_artifacts=visible_artifacts,artifact_page=artifact_page,artifact_pages=artifact_pages,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"],source_label=source_label,target_label=target_label,recent_apps=recent_apps,visible_recent_apps=visible_recent_apps)
 
 @app.post("/reports/<int:report_id>/send-discord")
 @login_required
