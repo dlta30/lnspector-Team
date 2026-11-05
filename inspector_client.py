@@ -133,9 +133,8 @@ def collect_files(progress, max_files=50000):
             for dirname in dirs:
                 folder = os.path.join(current, dirname)
                 matches = find_indicator_matches(dirname, folder)
-                if dirname.casefold() in {"mods", "ai"}:
-                    matches.append("Mods/AI folder context")
-                if matches:
+                context_flags = ["Mods/AI folder context"] if dirname.casefold() in {"mods", "ai"} else []
+                if matches or context_flags:
                     key = os.path.normcase(os.path.abspath(folder))
                     if key not in seen:
                         seen.add(key)
@@ -150,8 +149,6 @@ def collect_files(progress, max_files=50000):
                     continue
                 matches = find_indicator_matches(name, current)
                 in_mods_ai = any(part.casefold() in {"mods", "ai"} for part in Path(current).parts)
-                if in_mods_ai:
-                    matches.append("Mods/AI folder context")
                 if extension not in primary_extensions and not matches:
                     continue
                 try:
@@ -176,10 +173,7 @@ def collect_files(progress, max_files=50000):
     for i, (kind, path, st) in enumerate(candidates, 1):
         name = os.path.basename(path)
         matches = find_indicator_matches(name, path)
-        if kind == "folder" and name.casefold() in {"mods", "ai"}:
-            matches.append("Mods/AI folder context")
-        elif kind == "file" and any(part.casefold() in {"mods", "ai"} for part in Path(path).parts):
-            matches.append("Mods/AI folder context")
+        context_flags = ["Mods/AI folder context"] if any(part.casefold() in {"mods", "ai"} for part in Path(path).parts) else []
         too_large = st.st_size > 250 * 1024 * 1024
         created = utc_timestamp(st.st_ctime)
         modified = utc_timestamp(st.st_mtime)
@@ -194,6 +188,8 @@ def collect_files(progress, max_files=50000):
             "size_bytes": int(st.st_size), "created_at": created, "created_display": created_display,
             "modified_at": modified, "modified_display": display_date, "sha256": digest,
             "hash_skipped_large_file": too_large, "indicator_matches": list(dict.fromkeys(matches)),
+            "context_flags": context_flags,
+            "indicator_category": "مؤشرات حركة" if any(term in matches for term in ("ad movement", "filter key", "scod", "cr-fastrun")) else ("مؤشرات هاك/غش" if matches else "لا توجد مطابقة اسمية"),
             "assessment": "review" if matches else "metadata_only",
             "signature_status": "pending" if kind == "file" and os.path.splitext(name)[1].casefold() in {".exe", ".dll"} else "not_checked",
             "signature_label": "جارٍ التحقق" if kind == "file" and os.path.splitext(name)[1].casefold() in {".exe", ".dll"} else "غير قابل للتحقق بهذا النوع"
