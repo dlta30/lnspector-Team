@@ -99,7 +99,8 @@ def find_indicator_matches(name, path, indicators=None):
     for term in indicators:
         if term in exact_token_terms:
             if term == "ai":
-                matched = stem == "ai" or str(name or "").strip().casefold() == "ai"
+                supplied_name = str(name or "").strip().casefold()
+                matched = stem == "ai" or os.path.splitext(supplied_name)[0] == "ai"
             else:
                 matched = bool(re.search(r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])", combined))
             if matched:
