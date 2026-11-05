@@ -110,6 +110,8 @@ def collect_files(progress, max_files=50000):
             # Report only folders whose names themselves match a configured indicator.
             for dirname in dirs:
                 matches = [term for term in indicators if term in dirname.casefold()]
+                if dirname.casefold() in {"mods", "ai"}:
+                    matches.append("Mods/AI folder context")
                 if matches:
                     folder = os.path.join(current, dirname)
                     key = os.path.normcase(os.path.abspath(folder))
@@ -127,6 +129,8 @@ def collect_files(progress, max_files=50000):
                     continue
                 path_context = (name + " " + current).casefold()
                 preliminary_matches = [term for term in indicators if term in path_context]
+                if any(part.casefold() in {"mods", "ai"} for part in Path(current).parts):
+                    preliminary_matches.append("Mods/AI folder context")
                 # Non-primary formats are included only when their names/paths match a known indicator.
                 if extension not in primary_extensions and not preliminary_matches:
                     continue
@@ -153,6 +157,10 @@ def collect_files(progress, max_files=50000):
     for i, (kind, path, st) in enumerate(candidates, 1):
         name = os.path.basename(path)
         matches = [term for term in indicators if term in (name + " " + path).casefold()]
+        if kind == "folder" and os.path.basename(path).casefold() in {"mods", "ai"}:
+            matches.append("Mods/AI folder context")
+        elif kind == "file" and any(part.casefold() in {"mods", "ai"} for part in Path(path).parts):
+            matches.append("Mods/AI folder context")
         too_large = st.st_size > 250 * 1024 * 1024
         created = utc_timestamp(st.st_ctime)
         modified = utc_timestamp(st.st_mtime)
