@@ -1046,15 +1046,34 @@ def session_build_status(code):
     try:
         runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?event=workflow_dispatch&per_page=20") or {}
         created = datetime.fromisoformat(row["created_at"].replace("Z","+00:00"))
+        matching_runs = []
+        expected = "3eN-Inspect-" + code.upper()
         for run in runs.get("workflow_runs",[]):
-            if not run.get("created_at") or datetime.fromisoformat(run["created_at"].replace("Z","+00:00")) < created: continue
+            run_created = run.get("created_at")
+            if not run_created:
+                continue
+            run_time = datetime.fromisoformat(run_created.replace("Z","+00:00"))
+            if run_time < created:
+                continue
+            matching_runs.append(run)
+            # Never treat an unrelated active run as this session's build.
             arts = github_api_json("/actions/runs/" + str(run["id"]) + "/artifacts") or {}
-            expected = "3eN-Inspect-" + code.upper()
             artifact = next((a for a in arts.get("artifacts",[]) if a.get("name")==expected and not a.get("expired")),None)
-            if artifact: return {"state":"ready","download_url":url_for("download_session_build",code=code.upper())}
-            if run.get("status") != "completed": return {"state":"building","message":"يتم تجهيز الملف…"}
-            if run.get("conclusion") != "success": return {"state":"failed","message":"فشل البناء؛ راجع إعدادات GitHub Actions."}
-        return {"state":"building","message":"بانتظار بدء البناء…"}
+            if artifact:
+                return {"state":"ready","download_url":url_for("download_session_build",code=code.upper())}
+        # Only report "building" when there is a recent workflow_dispatch run
+        # after this session was created. Old generic/push builds are ignored.
+        if matching_runs:
+            latest = matching_runs[0]
+            if latest.get("status") != "completed":
+                return {"state":"building","message":"يتم تجهيز ملف هذه الجلسة…"}
+            if latest.get("conclusion") != "success":
+                return {"state":"failed","message":"فشل بناء ملف هذه الجلسة؛ راجع سجل GitHub Actions."}
+            return {"state":"failed","message":"اكتمل البناء لكن لم يظهر ملف الجلسة المتوقع. أعد إنشاء الجلسة بعد إصلاح إعدادات البناء."}
+        age_seconds = (datetime.now(timezone.utc) - created).total_seconds()
+        if age_seconds < 180:
+            return {"state":"building","message":"تم إنشاء الجلسة؛ ننتظر ظهور مهمة البناء الخاصة بها…"}
+        return {"state":"dispatch_failed","message":"لم تصل مهمة بناء هذه الجلسة إلى GitHub. تحقق من GITHUB_ACTIONS_TOKEN في Render (صلاحية Actions: Read and write)، ثم أعد إنشاء الجلسة."}
     except urllib.error.HTTPError as exc:
         print("Build status lookup failed: GitHub HTTP", exc.code)
         if exc.code in (401, 403):
