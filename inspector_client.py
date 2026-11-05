@@ -15,6 +15,7 @@ import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from datetime import datetime, timezone
+from pathlib import Path
 
 APP = "3eN Inspect Team"
 try:
@@ -54,10 +55,57 @@ def utc_timestamp(value):
         return None
 
 
+def build_indicator_terms():
+    return tuple(dict.fromkeys(SUSPICIOUS_TERMS + (
+        "eulen", "menyo", "tiago", "tiago modz", "taigomodz", "falloutmenu",
+        "cobramenu", "lux", "lux menu", "dopamine menu", "lua menu", "phantom",
+        "monstermenu", "chiken's menu", "mysterious", "zentrix", "lambda", "lamda",
+        "vmenu", "fivesense_v2", "swoopiexyz fivem", "swoopiexyz", "kekhack",
+        "nitwit", "rely", "nove store", "redengine", "red engine", "mod menu.rar",
+        "hack_fivem", "fivem mod menu", "mod gta", "modz gta", "fivem esp",
+        "fivem wallhack", "fivem cheat no ban", "hack", "ai", "0x32",
+        "sleezy spoofer", "aura spoofer", "escape service hack", "hazar",
+        "fivemock", "loey", "duk_3", "ad movement", "filter key", "scod",
+        "cr-fastrun", "loader.cfg", "loader", "loader.prod", "loader.global",
+        "launcher", "injector", "lua injector", "lua executor", "gh injector",
+        "gh enjector", "extreme injector", "winject", "asi plugin bypass",
+        "cheat engine", "cheatengine", "cheat .rar", "ali_unban_method.pdf",
+        "unknowncheats", "dumper", "decrypter", "bypass", "resource blocker",
+        "memeproj.global", "loading.global", "rxexv3", "cff", "hjaldrgo",
+        "ice breaker", "popstar", "lovex", "zc-firerate", "zc-firerate (alt version)",
+        "zc-mp_f_freemode", "zc-explosiveammo", "zc-pedlight", "zc-electricammo",
+        "zc-pedabilities", "zc-pedabilities v3", "zc-increasedrange",
+        "zc-weaponmodifier", "zc-infiniteammo", "zc-damageboost",
+        "zc-bulletpenetration", "no_recoil.rpf", "no_recoil", "ladders.meta",
+        "remove_roll.rpf", "aml.lua", "fast_playboi_mods", "pedaccuracy.meta",
+        "weaponcomponents.meta", "weaponanimation.meta", "bsk_skills",
+        "bsk_skills.rpf", "quickenter", "quickenter.rpf"
+    )))
+
+
+INDICATOR_TERMS = build_indicator_terms()
+
+
+def find_indicator_matches(name, path, indicators=None):
+    indicators = indicators or INDICATOR_TERMS
+    name_text = str(name or "").casefold()
+    path_text = str(path or "").casefold()
+    combined = name_text + " " + path_text
+    matches = []
+    path_parts = {part.casefold() for part in Path(str(path or "")).parts}
+    basename = os.path.basename(str(path or name or "")).casefold()
+    stem = os.path.splitext(basename)[0]
+    for term in indicators:
+        if term == "ai":
+            if "ai" in path_parts or stem == "ai":
+                matches.append(term)
+        elif term in combined:
+            matches.append(term)
+    return list(dict.fromkeys(matches))
+
+
 def collect_files(progress, max_files=50000):
-    """Inventory EXE/DLL/ZIP/RAR and suspiciously named folders on C:/D:.
-    Collect metadata only; never open archives or execute files.
-    """
+    """Collect file/folder metadata from C:/D:. Never execute or open files/archives."""
     import time
 
     allowed_extensions = {".exe", ".dll", ".zip", ".rar", ".rpf", ".meta", ".lua", ".cfg", ".pdf"}
@@ -67,32 +115,7 @@ def collect_files(progress, max_files=50000):
         "recovery", "config.msi", "winsxs", "servicing", "softwaredistribution",
         "node_modules", ".git", "__pycache__", "cache", "caches", "windowsapps"
     }
-    indicators = tuple(dict.fromkeys(SUSPICIOUS_TERMS + (
-        "eulen", "menyo", "tiago", "tiago modz", "taigomodz", "falloutmenu",
-        "cobramenu", "lux menu", "dopamine menu", "lua menu", "phantom",
-        "monstermenu", "chiken's menu", "mysterious", "zentrix", "lambda",
-        "lamda", "vmenu", "fivesense_v2", "swoopiexyz", "kekhack", "nitwit",
-        "rely", "nove store", "redengine", "red engine", "hack_fivem",
-        "fivem mod menu", "mod gta", "modz gta", "fivem esp", "fivem wallhack",
-        "fivem cheat no ban", "sleezy spoofer", "aura spoofer",
-        "escape service hack", "fivemock", "duk_3", "loader.cfg", "loader.prod",
-        "loader.global", "launcher", "lua injector", "lua executor",
-        "gh injector", "extreme injector", "winject", "asi plugin bypass",
-        "cheat engine", "cheatengine", "unknowncheats", "dumper", "decrypter",
-        "bypass", "resource blocker", "memeproj.global", "loading.global",
-        "rxexv3", "hjaldrgo", "ice breaker", "popstar", "lovex",
-        "zc-firerate", "zc-mp_f_freemode", "zc-explosiveammo", "zc-pedlight",
-        "zc-electricammo", "zc-pedabilities", "zc-increasedrange",
-        "zc-weaponmodifier", "cr-fastrun", "zc-infiniteammo", "zc-damageboost",
-        "zc-bulletpenetration", "no_recoil", "ladders.meta", "aml.lua",
-        "fast_playboi_mods", "pedaccuracy.meta", "weaponcomponents.meta",
-        "weaponanimation.meta", "bsk_skills", "quickenter", "ad movement",
-        "filter key", "scod", "ali_unban_method", "0x32", "hazar", "loey",
-        "loader", "menyo", "falloutmenu", "cobramenu", "five sense", "fivesense",
-        "mysterious", "monster menu", "red engine", "resource blocker",
-        "no recoil", "quickenter", "ad movement"
-    )))
-    roots = [f"{drive}:\\" for drive in ("C", "D") if os.path.isdir(f"{drive}:\\")]
+    roots = [f"{drive}:\\\\" for drive in ("C", "D") if os.path.isdir(f"{drive}:\\\\")]
     candidates, seen = [], set()
     started = time.monotonic()
     for root in roots:
@@ -107,19 +130,17 @@ def collect_files(progress, max_files=50000):
                 and not os.path.islink(os.path.join(current, d))
                 and not d.casefold().startswith(("windows.", "$"))
             ]
-            # Report only folders whose names themselves match a configured indicator.
             for dirname in dirs:
-                matches = [term for term in indicators if term in dirname.casefold()]
+                folder = os.path.join(current, dirname)
+                matches = find_indicator_matches(dirname, folder)
                 if dirname.casefold() in {"mods", "ai"}:
                     matches.append("Mods/AI folder context")
                 if matches:
-                    folder = os.path.join(current, dirname)
                     key = os.path.normcase(os.path.abspath(folder))
                     if key not in seen:
                         seen.add(key)
                         try:
-                            st = os.stat(folder)
-                            candidates.append(("folder", folder, st))
+                            candidates.append(("folder", folder, os.stat(folder)))
                         except OSError:
                             pass
             for name in names:
@@ -127,12 +148,11 @@ def collect_files(progress, max_files=50000):
                 extension = os.path.splitext(name)[1].casefold()
                 if extension not in allowed_extensions:
                     continue
-                path_context = (name + " " + current).casefold()
-                preliminary_matches = [term for term in indicators if term in path_context]
-                if any(part.casefold() in {"mods", "ai"} for part in Path(current).parts):
-                    preliminary_matches.append("Mods/AI folder context")
-                # Non-primary formats are included only when their names/paths match a known indicator.
-                if extension not in primary_extensions and not preliminary_matches:
+                matches = find_indicator_matches(name, current)
+                in_mods_ai = any(part.casefold() in {"mods", "ai"} for part in Path(current).parts)
+                if in_mods_ai:
+                    matches.append("Mods/AI folder context")
+                if extension not in primary_extensions and not matches:
                     continue
                 try:
                     if os.path.islink(path) or not os.path.isfile(path):
@@ -141,8 +161,7 @@ def collect_files(progress, max_files=50000):
                     if key in seen:
                         continue
                     seen.add(key)
-                    st = os.stat(path)
-                    candidates.append(("file", path, st))
+                    candidates.append(("file", path, os.stat(path)))
                 except OSError:
                     continue
                 if len(candidates) >= max_files or time.monotonic() - started > 300:
@@ -156,8 +175,8 @@ def collect_files(progress, max_files=50000):
     total = max(len(candidates), 1)
     for i, (kind, path, st) in enumerate(candidates, 1):
         name = os.path.basename(path)
-        matches = [term for term in indicators if term in (name + " " + path).casefold()]
-        if kind == "folder" and os.path.basename(path).casefold() in {"mods", "ai"}:
+        matches = find_indicator_matches(name, path)
+        if kind == "folder" and name.casefold() in {"mods", "ai"}:
             matches.append("Mods/AI folder context")
         elif kind == "file" and any(part.casefold() in {"mods", "ai"} for part in Path(path).parts):
             matches.append("Mods/AI folder context")
@@ -165,32 +184,189 @@ def collect_files(progress, max_files=50000):
         created = utc_timestamp(st.st_ctime)
         modified = utc_timestamp(st.st_mtime)
         try:
-            local_modified = datetime.fromtimestamp(st.st_mtime).astimezone()
-            display_date = local_modified.strftime("%B %d, %Y %I:%M:%S %p")
-            local_created = datetime.fromtimestamp(st.st_ctime).astimezone()
-            created_display = local_created.strftime("%B %d, %Y %I:%M:%S %p")
+            display_date = datetime.fromtimestamp(st.st_mtime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
+            created_display = datetime.fromtimestamp(st.st_ctime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
         except (ValueError, OSError, OverflowError):
-            display_date = modified
-            created_display = created
+            display_date, created_display = modified, created
         digest = sha256_file(path) if kind == "file" and matches and not too_large else None
         rows.append({
-            "artifact_type": kind,
-            "file_name": name[:260],
-            "path": path[:1500],
-            "size_bytes": int(st.st_size),
-            "created_at": created,
-            "created_display": created_display,
-            "modified_at": modified,
-            "modified_display": display_date,
-            "sha256": digest,
-            "hash_skipped_large_file": too_large,
-            "indicator_matches": matches,
+            "artifact_type": kind, "file_name": name[:260], "path": path[:1500],
+            "size_bytes": int(st.st_size), "created_at": created, "created_display": created_display,
+            "modified_at": modified, "modified_display": display_date, "sha256": digest,
+            "hash_skipped_large_file": too_large, "indicator_matches": list(dict.fromkeys(matches)),
             "assessment": "review" if matches else "metadata_only",
+            "signature_status": "pending" if kind == "file" and os.path.splitext(name)[1].casefold() in {".exe", ".dll"} else "not_checked",
+            "signature_label": "جارٍ التحقق" if kind == "file" and os.path.splitext(name)[1].casefold() in {".exe", ".dll"} else "غير قابل للتحقق بهذا النوع"
         })
         if i % 100 == 0 or i == total:
-            progress(50 + int(i * 25 / total), f"فحص ملفات C وD... {i}/{total}")
+            progress(50 + int(i * 20 / total), f"فحص الملفات والمجلدات... {i}/{total}")
     rows.sort(key=lambda row: row.get("modified_at") or "", reverse=True)
     return rows
+
+
+def collect_recent_apps(processes, progress):
+    """Show apps started in the last 24h plus recent Windows Prefetch metadata."""
+    import time
+
+    cutoff = time.time() - 24 * 60 * 60
+    recent = []
+    seen = set()
+    for proc in processes:
+        try:
+            started = datetime.fromisoformat(str(proc.get("process_started_at") or "").replace("Z", "+00:00"))
+            if started.timestamp() < cutoff:
+                continue
+        except (ValueError, TypeError, OSError):
+            continue
+        key = (proc.get("pid"), proc.get("executable_path"))
+        if key in seen:
+            continue
+        seen.add(key)
+        recent.append({
+            "app_name": proc.get("process_name") or proc.get("file_name") or "Unknown",
+            "file_name": proc.get("file_name") or "Unknown",
+            "path": proc.get("executable_path") or "غير متاح",
+            "last_seen_at": proc.get("process_started_at"),
+            "last_seen_display": proc.get("process_started_at"),
+            "evidence_source": "عملية تعمل حاليًا — وقت بدء العملية",
+            "time_accuracy": "exact_process_start",
+            "indicator_matches": proc.get("indicator_matches", []),
+            "signature_status": proc.get("signature_status", "not_checked"),
+            "signature_label": proc.get("signature_label", "لم يتم التحقق")
+        })
+
+    prefetch_roots = [r"C:\Windows\Prefetch"]
+    for root in prefetch_roots:
+        if not os.path.isdir(root):
+            continue
+        try:
+            with os.scandir(root) as entries:
+                for entry in entries:
+                    if not entry.is_file(follow_symlinks=False) or not entry.name.casefold().endswith(".pf"):
+                        continue
+                    try:
+                        st = entry.stat(follow_symlinks=False)
+                        if st.st_mtime < cutoff:
+                            continue
+                        app_name = entry.name.split("-", 1)[0].removesuffix(".pf")
+                        key = ("prefetch", entry.name.casefold())
+                        if key in seen:
+                            continue
+                        seen.add(key)
+                        local = datetime.fromtimestamp(st.st_mtime).astimezone()
+                        recent.append({
+                            "app_name": app_name, "file_name": entry.name,
+                            "path": entry.path, "last_seen_at": utc_timestamp(st.st_mtime),
+                            "last_seen_display": local.strftime("%B %d, %Y %I:%M:%S %p"),
+                            "evidence_source": "Windows Prefetch (.pf) — قرينة تشغيل تقريبية",
+                            "time_accuracy": "approximate_prefetch_timestamp",
+                            "indicator_matches": find_indicator_matches(app_name, entry.name),
+                            "signature_status": "not_checked",
+                            "signature_label": "بيانات سجل تشغيل، لا ينطبق عليها توقيع ملف التطبيق"
+                        })
+                    except OSError:
+                        continue
+        except OSError:
+            pass
+    recent.sort(key=lambda row: row.get("last_seen_at") or "", reverse=True)
+    progress(75, f"اكتمل تجميع التطبيقات خلال آخر 24 ساعة: {len(recent)}")
+    return recent
+
+
+def verify_authenticode_signatures(processes, artifacts, progress, max_checks=2000):
+    """Verify Windows Authenticode signatures in batches; unsigned/invalid files are unverified."""
+    if platform.system().lower() != "windows":
+        for row in list(processes) + list(artifacts):
+            if row.get("signature_status") == "pending":
+                row["signature_status"] = "not_checked"
+                row["signature_label"] = "لم يتم التحقق — يلزم Windows"
+        return
+
+    path_rows = {}
+    for row in list(processes) + list(artifacts):
+        path = row.get("executable_path") or row.get("path")
+        if not path or not os.path.isfile(path):
+            continue
+        if os.path.splitext(path)[1].casefold() not in {".exe", ".dll"}:
+            continue
+        if row.get("signature_status") == "pending" or "executable_path" in row:
+            path_rows.setdefault(os.path.normcase(os.path.abspath(path)), []).append(row)
+
+    paths = list(path_rows.keys())
+    check_paths = paths[:max_checks]
+    for path in paths[max_checks:]:
+        for row in path_rows[path]:
+            row["signature_status"] = "not_checked"
+            row["signature_label"] = "لم يتم التحقق — تجاوز حد الأداء"
+
+    if not check_paths:
+        return
+
+    import subprocess
+    script = r"""
+$ErrorActionPreference = 'Continue'
+$raw = [Console]::In.ReadToEnd()
+$paths = @($raw | ConvertFrom-Json)
+$results = @()
+foreach ($p in $paths) {
+  try {
+    $sig = Get-AuthenticodeSignature -LiteralPath ([string]$p)
+    $publisher = ''
+    $thumb = ''
+    if ($sig.SignerCertificate) {
+      $publisher = [string]$sig.SignerCertificate.GetNameInfo([System.Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+      $thumb = [string]$sig.SignerCertificate.Thumbprint
+    }
+    $results += [pscustomobject]@{ path=[string]$p; status=[string]$sig.Status; publisher=$publisher; thumbprint=$thumb }
+  } catch {
+    $results += [pscustomobject]@{ path=[string]$p; status='Error'; publisher=''; thumbprint='' }
+  }
+}
+ConvertTo-Json -InputObject @($results) -Compress -Depth 4
+"""
+    executable = "powershell.exe"
+    checked = 0
+    for offset in range(0, len(check_paths), 200):
+        batch = check_paths[offset:offset + 200]
+        try:
+            result = subprocess.run(
+                [executable, "-NoProfile", "-NonInteractive", "-Command", script],
+                input=json.dumps(batch), capture_output=True, text=True, timeout=55,
+                encoding="utf-8", errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            )
+            if result.returncode != 0 or not result.stdout.strip():
+                raise RuntimeError("PowerShell signature verification returned no result")
+            parsed = json.loads(result.stdout.strip())
+            if isinstance(parsed, dict):
+                parsed = [parsed]
+            by_path = {os.path.normcase(os.path.abspath(item.get("path", ""))): item for item in parsed if isinstance(item, dict)}
+            for path in batch:
+                item = by_path.get(path)
+                rows_for_path = path_rows.get(path, [])
+                if item and str(item.get("status", "")).casefold() == "valid":
+                    label = "موثق — " + (str(item.get("publisher") or "ناشر معتمد من Windows")[:160])
+                    status = "verified"
+                else:
+                    label = "غير موثق — توقيع مفقود أو غير صالح"
+                    status = "unverified"
+                for row in rows_for_path:
+                    row["signature_status"] = status
+                    row["signature_label"] = label
+                    row["signature_publisher"] = str(item.get("publisher") or "")[:160] if item else ""
+                    row["signature_thumbprint"] = str(item.get("thumbprint") or "")[:80] if item else ""
+            checked += len(batch)
+            progress(75 + int(checked * 10 / max(len(check_paths), 1)), f"التحقق من مصدر البرامج... {checked}/{len(check_paths)}")
+        except Exception:
+            for path in batch:
+                for row in path_rows.get(path, []):
+                    row["signature_status"] = "not_checked"
+                    row["signature_label"] = "تعذر التحقق من التوقيع"
+    # Non-PE files and folders cannot be validated with Authenticode.
+    for row in artifacts:
+        if row.get("signature_status") == "pending":
+            row["signature_status"] = "not_applicable"
+            row["signature_label"] = "غير موثق — لا يوجد توقيع Authenticode لهذا النوع"
+
 
 def capture_desktop_screenshot():
     """Capture a resized JPEG only after separate user consent."""
@@ -216,14 +392,15 @@ def collect_processes(progress):
     rows = []
     processes = list(psutil.process_iter(["pid", "name", "exe", "create_time"]))
     total = max(len(processes), 1)
+    cutoff = datetime.now(timezone.utc).timestamp() - 24 * 60 * 60
     for i, proc in enumerate(processes, 1):
         try:
             info = proc.info
             name = str(info.get("name") or "Unknown")[:180]
             exe = str(info.get("exe") or "")[:1000]
-            matches = [term for term in SUSPICIOUS_TERMS if term in (name + " " + exe).lower()]
+            matches = find_indicator_matches(name, exe)
             exists = bool(exe and os.path.isfile(exe))
-            digest = sha256_file(exe) if exists else None
+            digest = sha256_file(exe) if exists and matches else None
             file_created = file_modified = None
             if exists:
                 try:
@@ -232,22 +409,26 @@ def collect_processes(progress):
                     file_modified = utc_timestamp(stat.st_mtime)
                 except OSError:
                     pass
+            started_at = utc_timestamp(info.get("create_time"))
+            try:
+                started_recently = bool(info.get("create_time") and float(info["create_time"]) >= cutoff)
+            except (TypeError, ValueError):
+                started_recently = False
             rows.append({
-                "pid": info.get("pid"),
-                "process_name": name,
+                "pid": info.get("pid"), "process_name": name,
                 "file_name": os.path.basename(exe) if exe else name,
-                "executable_path": exe or None,
-                "process_started_at": utc_timestamp(info.get("create_time")),
-                "file_created_at": file_created,
-                "file_modified_at": file_modified,
-                "sha256": digest,
-                "indicator_matches": matches,
+                "executable_path": exe or None, "process_started_at": started_at,
+                "started_within_24h": started_recently,
+                "file_created_at": file_created, "file_modified_at": file_modified,
+                "sha256": digest, "indicator_matches": matches,
                 "game_context": classify_game_context(name, exe),
+                "signature_status": "pending" if exists and os.path.splitext(exe)[1].casefold() in {".exe", ".dll"} else "not_checked",
+                "signature_label": "جارٍ التحقق" if exists and os.path.splitext(exe)[1].casefold() in {".exe", ".dll"} else "غير قابل للتحقق",
                 "assessment": "review" if matches else "no_name_match",
             })
         except (psutil.Error, OSError):
             continue
-        progress(int(i * 100 / total), f"Checking process metadata {i}/{total}")
+        progress(int(i * 100 / total), f"جمع بيانات العمليات {i}/{total}")
     return rows
 
 
@@ -349,7 +530,7 @@ class InspectorApp(tk.Tk):
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على فحص بيانات العمليات وبيانات وبصمات الملفات داخل Downloads وRecent باستثناء ملفات TXT، وإرسال أسماء الملفات ومساراتها وأحجامها وتواريخها وبصماتها إلى لوحة التحكم. لا تُرسل محتويات الملفات.",
+            text="أوافق على فحص بيانات العمليات والتطبيقات المستخدمة خلال آخر 24 ساعة وبيانات الملفات في C: وD:، والتحقق من التوقيع الرقمي للبرامج، وإرسال الأسماء والمسارات والأحجام والتواريخ والبصمات وحالة التوثيق إلى لوحة التحكم. لا تُرسل محتويات الملفات.",
             variable=self.consent, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
@@ -418,7 +599,7 @@ class InspectorApp(tk.Tk):
             messagebox.showwarning(APP, "Please confirm consent before starting.")
             return
         screenshot_notice = "\\nستُلتقط صورة لسطح المكتب وتُرسل مع التقرير." if self.screenshot_consent.get() else "\\nلن تُلتقط أي صورة."
-        if not messagebox.askyesno(APP, "سيتم فحص بيانات العمليات والملفات داخل Downloads وRecent باستثناء ملفات TXT. ستُرسل أسماء الملفات ومساراتها وأحجامها وتواريخها وبصماتها، دون إرسال محتويات الملفات." + screenshot_notice + "\\nلن تُعدّل الملفات أو تُنهى العمليات. هل توافق على المتابعة؟"):
+        if not messagebox.askyesno(APP, "سيتم فحص العمليات والتطبيقات المستخدمة خلال آخر 24 ساعة، وملفات C: وD:، والتحقق من التوقيعات الرقمية للبرامج. ستُرسل الأسماء والمسارات والأحجام والتواريخ والبصمات وحالة التوثيق فقط، دون إرسال محتويات الملفات." + screenshot_notice + "\\nلن تُعدّل الملفات أو تُنهى العمليات. هل توافق على المتابعة؟"):
             return
         # Session-specific builds contain the session code and dashboard URL.
         # Never prompt the scanned person to enter either value.
@@ -440,6 +621,8 @@ class InspectorApp(tk.Tk):
         try:
             processes = collect_processes(self.update_progress)
             files = collect_files(self.update_progress)
+            verify_authenticode_signatures(processes, files, self.update_progress)
+            recent_apps = collect_recent_apps(processes, self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
             file_matches = [item for item in files if item["indicator_matches"]]
             desktop_screenshot = capture_desktop_screenshot() if self.include_desktop_screenshot else None
@@ -449,16 +632,20 @@ class InspectorApp(tk.Tk):
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "C: and D: drives, excluding Windows/system folders; EXE, DLL, ZIP, RAR and indicator-matching folder names; metadata and selected SHA-256 only; archives are not opened and file contents are never uploaded",
+                "scan_scope": "C: and D: drives excluding Windows/system folders; EXE/DLL/ZIP/RAR and matching RPF/META/LUA/CFG/PDF; recent app evidence from running processes and Windows Prefetch metadata within 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
                 "file_count": len(files),
                 "file_artifact_count": len(files),
                 "file_indicator_match_count": len(file_matches),
                 "file_artifacts": files,
+                "recent_apps_24h": recent_apps,
+                "recent_apps_24h_count": len(recent_apps),
+                "signature_verified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "verified"),
+                "signature_unverified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "unverified"),
                 "desktop_screenshot_base64": desktop_screenshot,
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Name/path indicators are leads for manual review, not proof of cheating. File scan covers C: and D: while excluding Windows/system folders. It inventories EXE, DLL, ZIP, RAR and matching folder names; archives are not opened and file contents are never uploaded. Dates are retained in UTC and local display format. Desktop screenshot is included only after separate opt-in. No files are modified and no processes are terminated. Manual review is required.",
+                "note": "Configured names are indicators for manual review, not proof of cheating. Recent apps include processes started within the last 24 hours and Windows Prefetch file timestamps, which are approximate evidence and may be unavailable if Prefetch is disabled. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless or cheat-free. Unsigned, invalid, unsupported, or unchecked files are labeled separately. File scan covers C: and D: excluding Windows/system folders; archives are not opened and file contents are never uploaded. Dates are retained in UTC and local display format. Desktop screenshot is included only after separate opt-in. No files are modified and no processes are terminated.",
                 "processes": processes,
             }
             self.delivery_status = "pending"
