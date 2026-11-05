@@ -119,10 +119,9 @@ def collect_files(progress, max_files=15000, max_scan_seconds=75):
         "windows", "$recycle.bin", "system volume information", "perflogs",
         "recovery", "config.msi", "winsxs", "servicing", "softwaredistribution",
         "node_modules", ".git", "__pycache__", "cache", "caches", "windowsapps",
-        "programdata\\microsoft\\windows defender", "package cache", "installer",
-        "appdata\\local\\temp"
+        "windows defender", "package cache", "installer", "temp"
     }
-    roots = [f"{drive}:\\\\" for drive in ("C", "D") if os.path.isdir(f"{drive}:\\\\")]
+    roots = [f"{drive}:\\" for drive in ("C", "D") if os.path.isdir(f"{drive}:\\")]
     candidates, seen = [], set()
     started = time.monotonic()
     last_progress = started
