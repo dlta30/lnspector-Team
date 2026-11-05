@@ -1,6 +1,6 @@
 """
 3eN Inspect Team — transparent local inspection client.
-Scans process metadata and Downloads/Recent file metadata and hashes, excluding .txt files.
+Collects process metadata, 24-hour app activity, file metadata, and Windows Authenticode status.
 An optional desktop screenshot is captured only after separate user consent.
 Run: python inspector_client.py
 """
@@ -115,7 +115,7 @@ def collect_files(progress, max_files=50000):
         "recovery", "config.msi", "winsxs", "servicing", "softwaredistribution",
         "node_modules", ".git", "__pycache__", "cache", "caches", "windowsapps"
     }
-    roots = [f"{drive}:\\\\" for drive in ("C", "D") if os.path.isdir(f"{drive}:\\\\")]
+    roots = [f"{drive}:\\" for drive in ("C", "D") if os.path.isdir(f"{drive}:\\")]
     candidates, seen = [], set()
     started = time.monotonic()
     for root in roots:
@@ -301,6 +301,9 @@ def verify_authenticode_signatures(processes, artifacts, progress, max_checks=20
     import subprocess
     script = r"""
 $ErrorActionPreference = 'Continue'
+$utf8 = New-Object System.Text.UTF8Encoding
+[Console]::InputEncoding = $utf8
+[Console]::OutputEncoding = $utf8
 $raw = [Console]::In.ReadToEnd()
 $paths = @($raw | ConvertFrom-Json)
 $results = @()
