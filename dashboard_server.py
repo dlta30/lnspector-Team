@@ -1791,48 +1791,28 @@ def users_page():
                         log_action(actor["username"],"changed role for "+target["username"]+" to "+role)
                         flash("Role updated.")
         elif action=="delete":
+            # Only the designated 15j2 account may delete staff, from Inspect Manager downward.
+            if not is_root_admin(actor):
+                abort(403)
             uid = request.form.get("user_id", "").strip()
             with db() as con:
-                target = con.execute("SELECT id,username,role,created_by FROM users WHERE id=?", (uid,)).fetchone()
+                target = con.execute("SELECT id,username,role FROM users WHERE id=?", (uid,)).fetchone()
                 if not target:
                     flash("الحساب غير موجود.")
                 elif int(target["id"]) == int(actor["id"]):
                     flash("لا يمكنك حذف حسابك الحالي.")
                 elif target["role"] == "owner":
-                    is_creator = (target["created_by"] or "").strip().lower() == actor["username"].strip().lower()
-                    is_root_manager = is_root_admin(actor)
-                    if not (is_creator or is_root_manager):
-                        abort(403)
                     owner_count = con.execute("SELECT COUNT(*) AS n FROM users WHERE role='owner'").fetchone()["n"]
                     if int(owner_count) <= 1:
                         flash("لا يمكن حذف آخر حساب Inspect Manager.")
                     else:
                         con.execute("DELETE FROM users WHERE id=?", (uid,))
-                        log_action(actor["username"], "deleted created owner account " + target["username"])
-                        flash("تم حذف حساب المالك الذي أنشأته.")
-                elif actor["role"] == "owner":
-                    # Inspect Manager can delete every account below their rank,
-                    # including accounts linked/created through Discord OAuth.
-                    # Other Inspect Managers are protected from peer deletion.
-                    if target["role"] == "owner":
-                        abort(403)
-                    con.execute("DELETE FROM users WHERE id=?", (uid,))
-                    log_action(actor["username"], "deleted subordinate staff account " + target["username"])
-                    flash("تم حذف حساب الموظف نهائيًا.")
-                elif actor["username"].strip().lower() == "15j2":
-                    con.execute("DELETE FROM users WHERE id=?", (uid,))
-                    log_action(actor["username"], "deleted staff account " + target["username"])
-                    flash("تم حذف الحساب نهائيًا.")
-                elif actor["role"] == "deputy":
-                    if target["role"] not in ("inspector", "viewer"):
-                        abort(403)
-                    if (target["created_by"] or "").strip().lower() != actor["username"].strip().lower():
-                        abort(403)
-                    con.execute("DELETE FROM users WHERE id=?", (uid,))
-                    log_action(actor["username"], "deleted staff account " + target["username"])
-                    flash("تم حذف الحساب نهائيًا.")
+                        log_action(actor["username"], "deleted Inspect Manager account " + target["username"])
+                        flash("تم حذف حساب Inspect Manager نهائيًا.")
                 else:
-                    abort(403)
+                    con.execute("DELETE FROM users WHERE id=?", (uid,))
+                    log_action(actor["username"], "deleted staff account " + target["username"])
+                    flash("تم حذف الحساب نهائيًا.")
 
         return redirect(url_for("users_page"))
     with db() as con: users=con.execute("SELECT * FROM users ORDER BY role,username").fetchall()
@@ -1885,7 +1865,7 @@ def users_page():
           </div>
           {% if u['role']=='owner' %}
             <p class="muted">صلاحيات المالك محمية ولا يمكن تعديلها من هنا.</p>
-            {% if u['id'] != actor_id and (actor_is_root or (u['created_by'] or '')|lower == actor_username|lower) %}
+            {% if actor_is_root and u['id'] != actor_id %}
             <form method="post" style="margin-top:12px" onsubmit="return confirm('تأكيد حذف حساب Inspect Manager ' + {{ u['username']|tojson }} + ' نهائيًا؟');">
               <input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <button class="btn" style="background:#6d1728;border-color:#b82e49;color:#fff">🗑 حذف الحساب الذي أنشأته</button>
@@ -1904,7 +1884,7 @@ def users_page():
               <button class="btn">حفظ التغييرات</button>
             </form>
             {% endif %}
-            {% if actor_is_root and u['id'] != actor_id or actor_role == 'owner' and u['id'] != actor_id or actor_role == 'deputy' and u['id'] != actor_id and u['role'] in ('inspector','viewer') %}
+            {% if actor_is_root and u['id'] != actor_id %}
             <form method="post" style="margin-top:12px" onsubmit="return confirm('تأكيد حذف حساب ' + {{ u['username']|tojson }} + ' نهائيًا؟');">
               <input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <button class="btn" style="background:#6d1728;border-color:#b82e49;color:#fff">🗑 حذف الحساب</button>
