@@ -18,6 +18,7 @@ import json
 import os
 import secrets
 import sqlite3
+import threading
 import re
 import pg8000
 import urllib.request
@@ -970,8 +971,23 @@ def sessions_page():
             con.execute("INSERT INTO inspection_sessions(code_hash,display_code,target_label,target_discord_id,target_nickname,target_username,created_by,created_at,expires_at,status) VALUES(?,?,?,?,?,?,?,?,?,?)",
                         (code_hash, code, target_label, target_discord_id, target_nickname, target_username, user["username"], now(), expires_at, "open"))
         log_action(user["username"], "created inspection session for " + target_label)
-        build_started, build_message = trigger_session_build(code)
-        log_action(user["username"], "requested session-specific client build for " + code)
+        # Start the external GitHub Actions dispatch in the background so the
+        # session page is returned immediately instead of waiting up to 12 seconds.
+        def _dispatch_session_build(session_code=code, actor=user["username"]):
+            started, message = trigger_session_build(session_code)
+            try:
+                log_action(actor, "requested session-specific client build for " + session_code + (": " + message if message else ""))
+            except Exception:
+                app.logger.exception("Could not record background session build request")
+            if not started:
+                app.logger.warning("Session build dispatch did not start for %s: %s", session_code, message)
+
+        threading.Thread(
+            target=_dispatch_session_build,
+            name="inspect-build-" + code,
+            daemon=True,
+        ).start()
+        build_started, build_message = True, "بدأ تجهيز البرنامج في الخلفية."
         share_url = url_for("public_session_page", code=code, _external=True)
         return page("""<div class="card"><div class="eyebrow">3EN INSPECT · SESSION CREATED</div><h2>تم إنشاء الجلسة</h2><p><b>الشخص:</b> {{ target_label }}</p><p><b>أنشأ الجلسة:</b> {{ creator_name }}{% if creator_username %}<br><small class="muted">@{{ creator_username }}</small>{% endif %}</p><p>رابط صفحة الجلسة</p><div class="notice" dir="ltr" style="text-align:left;overflow-wrap:anywhere"><a href="{{ share_url }}">{{ share_url }}</a></div><button class="btn" type="button" onclick="navigator.clipboard.writeText('{{ share_url }}')">نسخ رابط الجلسة</button><p class="muted">أرسل الرابط للشخص. سيفتح صفحة 3EN أولاً، والتنزيل يبدأ فقط عند ضغط زر التحميل داخلها.</p><p id="build-state">{{ build_message }}</p><a class="btn" href="{{ url_for('sessions_page') }}">العودة إلى الجلسات</a></div><script>
 const state=document.getElementById('build-state');
