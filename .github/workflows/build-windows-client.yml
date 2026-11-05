@@ -63,32 +63,28 @@ jobs:
           if ($env:SESSION_CODE) { $name = "$name-$($env:SESSION_CODE.ToUpper())" }
           # A standard application directory; no self-extracting one-file bundle, packer, or obfuscation is used.
           if (Test-Path "session_config.py") {
-            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --hidden-import session_config inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --hidden-import session_config inspector_client.py
           } else {
             python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --icon 3en.ico --add-data "3en.ico;." inspector_client.py
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $exe = Get-ChildItem "dist" -Filter "$name.exe" -File -Recurse | Select-Object -First 1
           if (-not $exe) { throw "EXE was not created for: $name" }
-      - name: Package complete application folder
+      - name: Verify and hash single EXE
         shell: pwsh
         run: |
-          $appDir = Get-ChildItem "dist" -Directory | Select-Object -First 1
-          if (-not $appDir) { throw "PyInstaller application folder was not created." }
-          $exe = Get-ChildItem $appDir.FullName -Filter "*.exe" -File | Select-Object -First 1
-          if (-not $exe) { throw "EXE was not found inside the application folder." }
-          $zipPath = Join-Path "dist" "$($appDir.Name).zip"
-          # Keep the application inside one clearly named folder so users can remove it in one action.
-          Compress-Archive -Path $appDir.FullName -DestinationPath $zipPath -CompressionLevel Optimal -Force
-          $zipHash = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLower()
-          "$zipHash  $([IO.Path]::GetFileName($zipPath))" | Set-Content -Encoding ascii "$zipPath.sha256"
-          Write-Host "Package SHA-256: $zipHash"
-      - name: Upload complete application ZIP
+          $exe = Get-ChildItem "dist" -Filter "*.exe" -File | Select-Object -First 1
+          if (-not $exe) { throw "Single-file EXE was not created." }
+          if ($exe.Length -lt 1000000) { throw "EXE is unexpectedly small; refusing to publish." }
+          $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
+          "$hash  $($exe.Name)" | Set-Content -Encoding ascii "$($exe.FullName).sha256"
+          Write-Host "Single EXE SHA-256: $hash"
+      - name: Upload single EXE
         uses: actions/upload-artifact@v4
         with:
           name: 3eN-Inspect-${{ inputs.session_code || 'Generic' }}
           path: |
-            dist/*.zip
-            dist/*.zip.sha256
+            dist/*.exe
+            dist/*.exe.sha256
           if-no-files-found: error
           retention-days: 14
