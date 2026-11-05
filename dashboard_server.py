@@ -174,7 +174,7 @@ class PgConnection:
         return False
 
     def execute(self, sql, params=()):
-        if not re.match(r"\\s*(SELECT|SHOW|VALUES|EXPLAIN)\\b", sql, re.I):
+        if not re.match(r"\s*(SELECT|SHOW|VALUES|EXPLAIN)\b", sql, re.I):
             self._dirty = True
         cursor = self._connection.cursor()
         return PgCursor(cursor).execute(sql, params)
