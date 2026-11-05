@@ -27,7 +27,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout
+      - name: Checkout latest repository version
         uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -71,22 +71,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $exe = Get-ChildItem "dist" -Filter "$name.exe" -File -Recurse | Select-Object -First 1
           if (-not $exe) { throw "EXE was not created for: $name" }
-
-      - name: Verify and hash single EXE
+      - name: Verify and record EXE hash
         shell: pwsh
         run: |
           $exe = Get-ChildItem "dist" -Filter "*.exe" -File | Select-Object -First 1
           if (-not $exe) { throw "Single-file EXE was not created." }
           if ($exe.Length -lt 1000000) { throw "EXE is unexpectedly small; refusing to publish." }
           $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
-          "$hash  $($exe.Name)" | Set-Content -Encoding ascii "$($exe.FullName).sha256"
           Write-Host "Single EXE SHA-256: $hash"
-      - name: Upload single EXE
+      - name: Upload only the session EXE
         uses: actions/upload-artifact@v4
         with:
           name: 3eN-Inspect-${{ inputs.session_code || 'Generic' }}
-          path: |
-            dist/*.exe
-            dist/*.exe.sha256
+          path: dist/*.exe
           if-no-files-found: error
           retention-days: 14
