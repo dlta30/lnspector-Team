@@ -145,23 +145,13 @@ def collect_files(progress, max_files=15000, max_scan_seconds=75):
             ]
             in_mods_ai = any(part.casefold() in {"mods", "ai"} for part in Path(current).parts)
 
-            for dirname in dirs:
-                folder = os.path.join(current, dirname)
-                matches = find_indicator_matches(dirname, folder)
-                if matches or dirname.casefold() in {"mods", "ai"}:
-                    key = os.path.normcase(os.path.abspath(folder))
-                    if key not in seen:
-                        seen.add(key)
-                        try:
-                            candidates.append(("folder", folder, os.stat(folder)))
-                        except OSError:
-                            pass
-
             for name in names:
                 path = os.path.join(current, name)
                 extension = os.path.splitext(name)[1].casefold()
                 matches = find_indicator_matches(name, current)
-                if extension not in allowed_extensions and not matches and not in_mods_ai:
+                # Keep the inventory strictly limited to the four declared file types.
+                # Indicator-name matches and Mods/AI folder context must never expand the scope.
+                if extension not in allowed_extensions:
                     continue
                 try:
                     if os.path.islink(path) or not os.path.isfile(path):
