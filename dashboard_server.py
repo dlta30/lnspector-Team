@@ -1679,7 +1679,7 @@ def users_page():
                     con.execute("DELETE FROM users WHERE id=?", (uid,))
                     log_action(actor["username"], "deleted subordinate staff account " + target["username"])
                     flash("تم حذف حساب الموظف نهائيًا.")
-                elif actor["username"].strip().lower() == "roith":
+                elif actor["username"].strip().lower() == "15j2":
                     con.execute("DELETE FROM users WHERE id=?", (uid,))
                     log_action(actor["username"], "deleted staff account " + target["username"])
                     flash("تم حذف الحساب نهائيًا.")
@@ -1764,7 +1764,7 @@ def users_page():
               <button class="btn">حفظ التغييرات</button>
             </form>
             {% endif %}
-            {% if actor_username|lower == 'roith' and u['username']|lower != '15j2' or actor_role == 'owner' and u['username'] != actor_username or actor_role == 'deputy' and u['username'] != actor_username and u['role'] in ('inspector','viewer') %}
+            {% if actor_username|lower == '15j2' and u['username']|lower != '15j2' or actor_role == 'owner' and u['username'] != actor_username or actor_role == 'deputy' and u['username'] != actor_username and u['role'] in ('inspector','viewer') %}
             <form method="post" style="margin-top:12px" onsubmit="return confirm('تأكيد حذف حساب ' + {{ u['username']|tojson }} + ' نهائيًا؟');">
               <input type="hidden" name="action" value="delete"><input type="hidden" name="user_id" value="{{ u['id'] }}">
               <button class="btn" style="background:#6d1728;border-color:#b82e49;color:#fff">🗑 حذف الحساب</button>
