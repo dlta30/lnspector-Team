@@ -1,7 +1,7 @@
 """
 3eN Inspect Team — transparent local inspection client.
 Collects process metadata, 24-hour app activity, file metadata, and Windows Authenticode status.
-An optional desktop screenshot is captured only after separate user consent.
+No screenshots are captured.
 Run: python inspector_client.py
 """
 import base64
@@ -297,7 +297,6 @@ def verify_authenticode_signatures(processes, artifacts, progress, max_checks=20
             continue
         if row.get("signature_status") == "pending" or "executable_path" in row:
             path_rows.setdefault(os.path.normcase(os.path.abspath(path)), []).append(row)
-
     paths = list(path_rows.keys())
     check_paths = paths[:max_checks]
     for path in paths[max_checks:]:
@@ -375,22 +374,6 @@ ConvertTo-Json -InputObject @($results) -Compress -Depth 4
         if row.get("signature_status") == "pending":
             row["signature_status"] = "not_applicable"
             row["signature_label"] = "غير موثق — لا يوجد توقيع Authenticode لهذا النوع"
-
-
-def capture_desktop_screenshot():
-    """Capture a resized JPEG only after separate user consent."""
-    try:
-        from PIL import ImageGrab
-        image = ImageGrab.grab(all_screens=True)
-        image.thumbnail((1600, 900))
-        output = io.BytesIO()
-        image.convert("RGB").save(output, format="JPEG", quality=55, optimize=True)
-        data = output.getvalue()
-        if len(data) > 5500000:
-            raise RuntimeError("Screenshot is too large to upload.")
-        return base64.b64encode(data).decode("ascii")
-    except Exception as exc:
-        raise RuntimeError("تعذر التقاط صورة سطح المكتب: " + type(exc).__name__) from exc
 
 
 def collect_processes(progress):
@@ -540,16 +523,11 @@ class InspectorApp(tk.Tk):
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على فحص بيانات العمليات والتطبيقات المستخدمة خلال آخر 24 ساعة وبيانات الملفات في C: وD:، والتحقق من التوقيع الرقمي للبرامج، وإرسال الأسماء والمسارات والأحجام والتواريخ والبصمات وحالة التوثيق إلى لوحة التحكم. لا تُرسل محتويات الملفات.",
+            text="أوافق على جميع خطوات الفحص: مراجعة بيانات العمليات والتطبيقات خلال آخر 24 ساعة، وفحص بيانات الملفات في C: وD:، والتحقق من التوقيعات الرقمية، ثم إرسال التقرير (الأسماء والمسارات والأحجام والتواريخ والبصمات وحالة التوثيق) إلى لوحة التحكم. لا تُرسل محتويات الملفات ولا تُلتقط صور للشاشة.",
             variable=self.consent, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
-        self.screenshot_consent = tk.BooleanVar(value=False)
-        tk.Checkbutton(consent_box,
-            text="أوافق بشكل منفصل على التقاط صورة كاملة لسطح المكتب وإرفاقها بالتقرير المرسل إلى لوحة التحكم. قد تظهر بالصورة نوافذ أو معلومات شخصية.",
-            variable=self.screenshot_consent, bg=PANEL, fg=AMBER, selectcolor=PANEL_ALT,
-            activebackground=PANEL, activeforeground=WHITE, wraplength=900,
-            font=("Segoe UI", 10, "bold"), relief="flat", padx=0).pack(anchor="w", pady=(9, 0))
+
 
 
         # Progress and controls
@@ -598,7 +576,6 @@ class InspectorApp(tk.Tk):
     def _close_then_offer_folder(self):
         # Close the UI without launching a second process or changing user files.
         self.destroy()
-
     def start(self):
         marker = self._completion_marker_path()
         if os.path.isfile(marker):
@@ -608,14 +585,11 @@ class InspectorApp(tk.Tk):
         if not self.consent.get():
             messagebox.showwarning(APP, "Please confirm consent before starting.")
             return
-        screenshot_notice = "\\nستُلتقط صورة لسطح المكتب وتُرسل مع التقرير." if self.screenshot_consent.get() else "\\nلن تُلتقط أي صورة."
-        if not messagebox.askyesno(APP, "سيتم فحص العمليات والتطبيقات المستخدمة خلال آخر 24 ساعة، وملفات C: وD:، والتحقق من التوقيعات الرقمية للبرامج. ستُرسل الأسماء والمسارات والأحجام والتواريخ والبصمات وحالة التوثيق فقط، دون إرسال محتويات الملفات." + screenshot_notice + "\\nلن تُعدّل الملفات أو تُنهى العمليات. هل توافق على المتابعة؟"):
-            return
+
         # Session-specific builds contain the session code and dashboard URL.
         # Never prompt the scanned person to enter either value.
         self.active_session_code = str(SESSION_CODE or "").strip().upper()
         self.active_dashboard_url = str(DASHBOARD_URL or "").strip().rstrip("/")
-        self.include_desktop_screenshot = bool(self.screenshot_consent.get())
         if not self.active_session_code or not self.active_dashboard_url.startswith("https://"):
             messagebox.showerror(APP, "هذا الملف غير مرتبط بجلسة فحص. اطلب من المسؤول إنشاء جلسة وتنزيل ملفها المخصص.")
             return
@@ -635,7 +609,6 @@ class InspectorApp(tk.Tk):
             recent_apps = collect_recent_apps(processes, self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
             file_matches = [item for item in files if item["indicator_matches"]]
-            desktop_screenshot = capture_desktop_screenshot() if self.include_desktop_screenshot else None
             self.report = {
                 "product": APP,
                 "signature": "3eN INSPECT TEAM",
@@ -653,9 +626,8 @@ class InspectorApp(tk.Tk):
                 "recent_apps_24h_count": len(recent_apps),
                 "signature_verified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "verified"),
                 "signature_unverified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "unverified"),
-                "desktop_screenshot_base64": desktop_screenshot,
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Configured names are indicators for manual review, not proof of cheating. Recent apps include processes started within the last 24 hours and Windows Prefetch file timestamps, which are approximate evidence and may be unavailable if Prefetch is disabled. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless or cheat-free. Unsigned, invalid, unsupported, or unchecked files are labeled separately. File scan covers C: and D: excluding Windows/system folders; archives are not opened and file contents are never uploaded. Dates are retained in UTC and local display format. Desktop screenshot is included only after separate opt-in. No files are modified and no processes are terminated.",
+                "note": "Configured names are indicators for manual review, not proof of cheating. Recent apps include processes started within the last 24 hours and Windows Prefetch file timestamps, which are approximate evidence and may be unavailable if Prefetch is disabled. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless or cheat-free. Unsigned, invalid, unsupported, or unchecked files are labeled separately. File scan covers C: and D: excluding Windows/system folders; archives are not opened and file contents are never uploaded. Dates are retained in UTC and local display format. No screenshots are captured. No files are modified and no processes are terminated.",
                 "processes": processes,
             }
             self.delivery_status = "pending"
@@ -762,6 +734,3 @@ class InspectorApp(tk.Tk):
         except Exception as exc:
             messagebox.showerror(APP, "PDF export failed: " + str(exc))
 
-
-if __name__ == "__main__":
-    InspectorApp().mainloop()
