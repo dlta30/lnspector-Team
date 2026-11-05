@@ -347,6 +347,110 @@ def collect_fivem_artifacts(progress, max_files=8000, max_scan_seconds=35):
     return rows
 
 
+
+def collect_fivem_log_evidence(progress, max_files=250, max_file_bytes=2_000_000,
+                               max_total_bytes=40_000_000, max_scan_seconds=25):
+    """Inspect only selected FiveM/CitizenFX text logs; upload indicators and line numbers, never log text."""
+    import time
+
+    local = Path(os.environ.get("LOCALAPPDATA", str(Path.home() / "AppData" / "Local")))
+    roaming = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming")))
+    roots = [
+        local / "FiveM" / "FiveM.app" / "logs",
+        local / "FiveM" / "FiveM.app" / "crashes",
+        roaming / "CitizenFX",
+    ]
+    # Product-specific markers only. Generic words such as "hack", "menu", or
+    # "injector" alone are intentionally excluded to reduce false positives.
+    markers = (
+        "eulen", "redengine", "red engine", "lynx", "lambda", "menyo",
+        "tiago modz", "taigomodz", "swoopiexyz", "xenos", "extreme injector",
+        "phantom menu", "lua executor", "lua injector", "cheat engine",
+        "silent aim", "wallhack", "aimbot", "fivem esp", "falloutmenu",
+        "cobramenu", "dopamine menu", "monstermenu", "fivesense_v2",
+    )
+    started = time.monotonic()
+    candidates, seen = [], set()
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for current, dirs, names in os.walk(str(root), topdown=True, followlinks=False):
+            if time.monotonic() - started >= max_scan_seconds or len(candidates) >= max_files:
+                break
+            dirs[:] = [d for d in dirs if d.casefold() not in {
+                "cache", "server-cache", "server-cache-priv", "crashes", "screenshots"
+            } and not os.path.islink(os.path.join(current, d))]
+            for name in names:
+                if Path(name).suffix.casefold() not in {".log", ".txt"}:
+                    continue
+                path = os.path.join(current, name)
+                try:
+                    if os.path.islink(path) or not os.path.isfile(path):
+                        continue
+                    st = os.stat(path)
+                    if st.st_size <= 0 or st.st_size > max_file_bytes:
+                        continue
+                    key = os.path.normcase(os.path.abspath(path))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    candidates.append((path, st))
+                except OSError:
+                    continue
+        if time.monotonic() - started >= max_scan_seconds or len(candidates) >= max_files:
+            break
+
+    findings = []
+    bytes_read = 0
+    for index, (path, st) in enumerate(candidates, 1):
+        if time.monotonic() - started >= max_scan_seconds or bytes_read >= max_total_bytes:
+            break
+        remaining = max_total_bytes - bytes_read
+        read_limit = min(max_file_bytes, remaining)
+        try:
+            with open(path, "rb") as stream:
+                raw = stream.read(read_limit + 1)
+            if len(raw) > read_limit:
+                raw = raw[:read_limit]
+            bytes_read += len(raw)
+            text = raw.decode("utf-8", errors="replace")
+            matched_lines = {}
+            for line_number, line in enumerate(text.splitlines(), 1):
+                lowered = line.casefold()
+                for marker_text in markers:
+                    if marker_text in lowered:
+                        matched_lines.setdefault(marker_text, []).append(line_number)
+            if matched_lines:
+                local_time = datetime.fromtimestamp(st.st_mtime).astimezone()
+                findings.append({
+                    "artifact_type": "FiveM/CitizenFX log indicator",
+                    "source": "Targeted FiveM/CitizenFX text-log inspection",
+                    "file_name": os.path.basename(path)[:260],
+                    "path": path[:1500],
+                    "size_bytes": int(st.st_size),
+                    "modified_at": utc_timestamp(st.st_mtime),
+                    "modified_display": local_time.strftime("%B %d, %Y %I:%M:%S %p"),
+                    "indicator_matches": sorted(matched_lines.keys()),
+                    "matched_line_numbers": {
+                        key: values[:30] for key, values in matched_lines.items()
+                    },
+                    "matched_line_count": sum(len(values) for values in matched_lines.values()),
+                    "log_contents_uploaded": False,
+                    "context_flags": ["FiveM/CitizenFX log"],
+                    "indicator_category": "مؤشرات داخل سجل اللعبة — تحتاج مراجعة",
+                    "assessment": "review",
+                    "evidence_confidence": "low",
+                    "evidence_reason": "ظهرت كلمات مفتاحية مرتبطة بأدوات معروفة داخل سجل نصي؛ لم يتم رفع نص السجل ولا يُعد ذلك إثباتًا على وجود غش.",
+                    "signature_status": "not_applicable",
+                    "signature_label": "سجل نصي — لا ينطبق التوقيع الرقمي",
+                })
+        except (OSError, UnicodeError):
+            continue
+        if index % 20 == 0 or index == len(candidates):
+            progress(65, f"تحليل سجلات FiveM النصية... {index}/{len(candidates)}")
+
+    return findings
+
 def collect_recent_apps(processes, progress):
     """Show apps started in the last 24h plus recent Windows Prefetch metadata."""
     import time
@@ -673,7 +777,7 @@ class InspectorApp(tk.Tk):
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
         tk.Checkbutton(consent_box,
-            text="أوافق على الخيار الثاني: فحص بيانات الملفات في C: وD: والتحقق من التوقيعات الرقمية، وإرسال تقرير البيانات الوصفية (الأسماء والمسارات والأحجام والتواريخ والبصمات وحالة التوثيق) إلى لوحة التحكم. لا تُرسل محتويات الملفات.",
+            text="أوافق على الخيار الثاني: فحص بيانات الملفات في C: وD: والتحقق من التوقيعات الرقمية، وفحص سجلات FiveM/CitizenFX النصية المحددة بحثًا عن مؤشرات معروفة. يُرسل تقرير البيانات الوصفية ومواقع/أرقام أسطر المؤشرات فقط؛ لا يُرسل نص السجلات أو محتويات الملفات.",
             variable=self.consent_files, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
@@ -752,10 +856,12 @@ class InspectorApp(tk.Tk):
             processes = collect_processes(self.update_progress)
             files = collect_files(self.update_progress)
             fivem_files = collect_fivem_artifacts(self.update_progress)
-            # Keep a unified evidence inventory for the existing dashboard and PDF workflow.
+            fivem_log_findings = collect_fivem_log_evidence(self.update_progress)
+            # Keep file and log indicators in the unified report inventory. Log text itself is never retained.
             for item in fivem_files:
                 item.setdefault("source", "FiveM/GTA V targeted locations")
             files.extend(fivem_files)
+            files.extend(fivem_log_findings)
             verify_authenticode_signatures(processes, files, self.update_progress)
             recent_apps = collect_recent_apps(processes, self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
@@ -767,21 +873,21 @@ class InspectorApp(tk.Tk):
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "Bounded metadata inventory of C: and D: (up to 15,000 items or 75 seconds), excluding Windows/system folders; plus targeted FiveM/GTA V install, CitizenFX, and user Documents locations (up to 8,000 items or 35 seconds; EXE/DLL/ASI/LUA/LUAC/JSON/CFG/INI/LOG/DAT/BIN/ZIP/RAR/7Z/RPF/META/XML); all currently running processes plus Windows Prefetch evidence from the last 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
+                "scan_scope": "Bounded metadata inventory of C: and D: (up to 15,000 items or 75 seconds), excluding Windows/system folders; plus targeted FiveM/GTA V install, CitizenFX, and user Documents locations (up to 8,000 items or 35 seconds; EXE/DLL/ASI/LUA/LUAC/JSON/CFG/INI/LOG/DAT/BIN/ZIP/RAR/7Z/RPF/META/XML); selected FiveM/CitizenFX text logs are scanned with strict file/byte/time limits and only marker names and line numbers are reported, never log contents; all currently running processes plus Windows Prefetch evidence from the last 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
                 "file_count": len(files),
                 "file_artifact_count": len(files),
                 "file_indicator_match_count": len(file_matches),
                 "fivem_artifact_count": len(fivem_files),
-                "fivem_indicator_match_count": len(fivem_matches),
+                "fivem_indicator_match_count": len(fivem_matches) + sum(1 for item in fivem_log_findings if item.get("indicator_matches")),\n                "fivem_log_files_with_indicators": len(fivem_log_findings),\n                "fivem_log_line_matches": sum(item.get("matched_line_count", 0) for item in fivem_log_findings),
                 "file_artifacts": files,
                 "recent_apps_24h": recent_apps,
                 "recent_apps_24h_count": len(recent_apps),
                 "signature_verified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "verified"),
                 "signature_unverified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "unverified"),
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded general inventory plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened and file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. A full-desktop screenshot is captured and retained with the report only when the separate screenshot-consent option is selected; otherwise no screenshot is taken. No files are modified and no processes are terminated.",
+                "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded general inventory plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. Selected FiveM/CitizenFX text logs are checked locally for specific known tool markers; only marker names and line numbers are retained, never log text. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened; only selected FiveM/CitizenFX text logs are read locally for specific known markers, and their text is never uploaded; file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. A full-desktop screenshot is captured and retained with the report only when the separate screenshot-consent option is selected; otherwise no screenshot is taken. No files are modified and no processes are terminated.",
                 "processes": processes,
             }
             self.update_progress(100, "اكتمل الفحص وتجهيز التقرير.")
