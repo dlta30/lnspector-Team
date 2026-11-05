@@ -1381,7 +1381,7 @@ def report_detail(report_id):
     for item in artifacts:
         if isinstance(item, dict):
             item["modified_display"] = str(item.get("modified_display") or item.get("modified_at") or "غير متاح")
-            item["created_display"] = str(item.get("created_at") or "غير متاح")
+            item["created_display"] = str(item.get("created_display") or item.get("created_at") or "غير متاح")
     artifact_findings = [item for item in artifacts if isinstance(item, dict) and item.get("indicator_matches")]
     try:
         match_count = max(int(report_data.get("indicator_match_count", len(findings)) or 0),
