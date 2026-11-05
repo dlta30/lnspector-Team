@@ -54,21 +54,73 @@ def utc_timestamp(value):
         return None
 
 
-def collect_files(progress, max_files=10000):
-    """Collect metadata and SHA-256 from Downloads and Windows Recent; exclude .txt files."""
-    home = os.path.expanduser("~")
-    roots = [os.path.join(home, "Downloads"),
-             os.path.join(os.environ.get("APPDATA", home), "Microsoft", "Windows", "Recent")]
+def collect_files(progress, max_files=50000):
+    """Inventory EXE/DLL/ZIP/RAR and suspiciously named folders on C:/D:.
+    Collect metadata only; never open archives or execute files.
+    """
+    import string
+    import time
+
+    allowed_extensions = {".exe", ".dll", ".zip", ".rar"}
+    excluded_dirs = {
+        "windows", "$recycle.bin", "system volume information", "perflogs",
+        "recovery", "config.msi", "winsxs", "servicing", "softwaredistribution",
+        "node_modules", ".git", "__pycache__", "cache", "caches"
+    }
+    indicators = tuple(dict.fromkeys(SUSPICIOUS_TERMS + (
+        "eulen", "menyo", "tiago", "tiago modz", "taigomodz", "falloutmenu",
+        "cobramenu", "lux menu", "dopamine menu", "lua menu", "phantom",
+        "monstermenu", "chiken's menu", "mysterious", "zentrix", "lambda",
+        "lamda", "vmenu", "fivesense_v2", "swoopiexyz", "kekhack", "nitwit",
+        "rely", "nove store", "redengine", "red engine", "hack_fivem",
+        "fivem mod menu", "mod gta", "modz gta", "fivem esp", "fivem wallhack",
+        "fivem cheat no ban", "sleezy spoofer", "aura spoofer",
+        "escape service hack", "fivemock", "duk_3", "loader.cfg", "loader.prod",
+        "loader.global", "launcher", "lua injector", "lua executor",
+        "gh injector", "extreme injector", "winject", "asi plugin bypass",
+        "cheat engine", "cheatengine", "unknowncheats", "dumper", "decrypter",
+        "bypass", "resource blocker", "memeproj.global", "loading.global",
+        "rxexv3", "hjaldrgo", "ice breaker", "popstar", "lovex",
+        "zc-firerate", "zc-mp_f_freemode", "zc-explosiveammo", "zc-pedlight",
+        "zc-electricammo", "zc-pedabilities", "zc-increasedrange",
+        "zc-weaponmodifier", "cr-fastrun", "zc-infiniteammo", "zc-damageboost",
+        "zc-bulletpenetration", "no_recoil", "ladders.meta", "aml.lua",
+        "fast_playboi_mods", "pedaccuracy.meta", "weaponcomponents.meta",
+        "weaponanimation.meta", "bsk_skills", "quickenter", "ad movement",
+        "filter key", "scod", "ali_unban_method"
+    )))
+    roots = [f"{drive}:\\" for drive in ("C", "D") if os.path.isdir(f"{drive}:\\")]
     candidates, seen = [], set()
+    started = time.monotonic()
     for root in roots:
-        if not os.path.isdir(root):
-            continue
         for current, dirs, names in os.walk(root, topdown=True, followlinks=False):
-            dirs[:] = [d for d in dirs if not os.path.islink(os.path.join(current, d))]
+            rel_parts = os.path.relpath(current, root).split(os.sep)
+            if any(part.casefold() in excluded_dirs for part in rel_parts):
+                dirs[:] = []
+                continue
+            dirs[:] = [
+                d for d in dirs
+                if d.casefold() not in excluded_dirs
+                and not os.path.islink(os.path.join(current, d))
+                and not d.casefold().startswith(("windows.", "$"))
+            ]
+            # Report only folders whose names themselves match a configured indicator.
+            for dirname in dirs:
+                matches = [term for term in indicators if term in dirname.casefold()]
+                if matches:
+                    folder = os.path.join(current, dirname)
+                    key = os.path.normcase(os.path.abspath(folder))
+                    if key not in seen:
+                        seen.add(key)
+                        try:
+                            st = os.stat(folder)
+                            candidates.append(("folder", folder, st))
+                        except OSError:
+                            pass
             for name in names:
-                if name.lower().endswith(".txt"):
-                    continue
                 path = os.path.join(current, name)
+                if os.path.splitext(name)[1].casefold() not in allowed_extensions:
+                    continue
                 try:
                     if os.path.islink(path) or not os.path.isfile(path):
                         continue
@@ -76,34 +128,48 @@ def collect_files(progress, max_files=10000):
                     if key in seen:
                         continue
                     seen.add(key)
-                    candidates.append(path)
-                    if len(candidates) >= max_files:
-                        break
+                    st = os.stat(path)
+                    candidates.append(("file", path, st))
                 except OSError:
                     continue
-            if len(candidates) >= max_files:
+                if len(candidates) >= max_files or time.monotonic() - started > 300:
+                    break
+            if len(candidates) >= max_files or time.monotonic() - started > 300:
                 break
-        if len(candidates) >= max_files:
+        if len(candidates) >= max_files or time.monotonic() - started > 300:
             break
-    rows, total = [], max(len(candidates), 1)
-    for i, path in enumerate(candidates, 1):
-        try:
-            st = os.stat(path)
-            too_large = st.st_size > 250 * 1024 * 1024
-            rows.append({
-                "file_name": os.path.basename(path)[:260],
-                "path": path[:1500],
-                "size_bytes": int(st.st_size),
-                "modified_at": utc_timestamp(st.st_mtime),
-                "sha256": None if too_large else sha256_file(path),
-                "hash_skipped_large_file": too_large,
-                "indicator_matches": [term for term in SUSPICIOUS_TERMS if term in (os.path.basename(path) + " " + path).lower()],
-            })
-        except OSError:
-            pass
-        progress(50 + int(i * 25 / total), f"Checking Downloads/Recent files {i}/{total}")
-    return rows
 
+    rows = []
+    total = max(len(candidates), 1)
+    for i, (kind, path, st) in enumerate(candidates, 1):
+        name = os.path.basename(path)
+        matches = [term for term in indicators if term in (name + " " + path).casefold()]
+        too_large = st.st_size > 250 * 1024 * 1024
+        created = utc_timestamp(st.st_ctime)
+        modified = utc_timestamp(st.st_mtime)
+        try:
+            local_modified = datetime.fromtimestamp(st.st_mtime).astimezone()
+            display_date = local_modified.strftime("%B %d, %Y %I:%M:%S %p")
+        except (ValueError, OSError, OverflowError):
+            display_date = modified
+        digest = sha256_file(path) if kind == "file" and matches and not too_large else None
+        rows.append({
+            "artifact_type": kind,
+            "file_name": name[:260],
+            "path": path[:1500],
+            "size_bytes": int(st.st_size),
+            "created_at": created,
+            "modified_at": modified,
+            "modified_display": display_date,
+            "sha256": digest,
+            "hash_skipped_large_file": too_large,
+            "indicator_matches": matches,
+            "assessment": "review" if matches else "metadata_only",
+        })
+        if i % 100 == 0 or i == total:
+            progress(50 + int(i * 25 / total), f"فحص ملفات C وD... {i}/{total}")
+    rows.sort(key=lambda row: row.get("modified_at") or "", reverse=True)
+    return rows
 
 def capture_desktop_screenshot():
     """Capture a resized JPEG only after separate user consent."""
@@ -362,7 +428,7 @@ class InspectorApp(tk.Tk):
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "process metadata plus file names, paths, sizes, modification timestamps and SHA-256 hashes in Downloads and Windows Recent; .txt files excluded; file contents are never uploaded",
+                "scan_scope": "C: and D: drives, excluding Windows/system folders; EXE, DLL, ZIP, RAR and indicator-matching folder names; metadata and selected SHA-256 only; archives are not opened and file contents are never uploaded",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
                 "file_count": len(files),
@@ -371,7 +437,7 @@ class InspectorApp(tk.Tk):
                 "file_artifacts": files,
                 "desktop_screenshot_base64": desktop_screenshot,
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Process and file name/path indicators are leads, not proof of cheating. File scan covers Downloads and Windows Recent, excluding .txt; it uploads metadata and SHA-256 only, never file contents. Desktop screenshot is included only after separate opt-in. No files are modified and no processes are terminated. Manual review is required.",
+                "note": "Name/path indicators are leads for manual review, not proof of cheating. File scan covers C: and D: while excluding Windows/system folders. It inventories EXE, DLL, ZIP, RAR and matching folder names; archives are not opened and file contents are never uploaded. Dates are retained in UTC and local display format. Desktop screenshot is included only after separate opt-in. No files are modified and no processes are terminated. Manual review is required.",
                 "processes": processes,
             }
             self.delivery_status = "pending"
