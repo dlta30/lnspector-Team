@@ -110,37 +110,48 @@ def find_indicator_matches(name, path, indicators=None):
     return list(dict.fromkeys(matches))
 
 
-def collect_files(progress, max_files=50000):
-    """Collect file/folder metadata from C:/D:. Never execute or open files/archives."""
+def collect_files(progress, max_files=15000, max_scan_seconds=75):
+    """Bounded metadata inventory for C:/D:. Never execute or open files/archives."""
     import time
 
     allowed_extensions = {".exe", ".dll", ".zip", ".rar", ".rpf", ".meta", ".lua", ".cfg", ".pdf"}
-    primary_extensions = {".exe", ".dll", ".zip", ".rar"}
     excluded_dirs = {
         "windows", "$recycle.bin", "system volume information", "perflogs",
         "recovery", "config.msi", "winsxs", "servicing", "softwaredistribution",
-        "node_modules", ".git", "__pycache__", "cache", "caches", "windowsapps"
+        "node_modules", ".git", "__pycache__", "cache", "caches", "windowsapps",
+        "programdata\\microsoft\\windows defender", "package cache", "installer",
+        "appdata\\local\\temp"
     }
-    roots = [f"{drive}:\\" for drive in ("C", "D") if os.path.isdir(f"{drive}:\\")]
+    roots = [f"{drive}:\\\\" for drive in ("C", "D") if os.path.isdir(f"{drive}:\\\\")]
     candidates, seen = [], set()
     started = time.monotonic()
+    last_progress = started
+    stopped_early = False
+
     for root in roots:
         for current, dirs, names in os.walk(root, topdown=True, followlinks=False):
+            now = time.monotonic()
+            if len(candidates) >= max_files or now - started >= max_scan_seconds:
+                stopped_early = True
+                break
+
             rel_parts = os.path.relpath(current, root).split(os.sep)
             if any(part.casefold() in excluded_dirs for part in rel_parts):
                 dirs[:] = []
                 continue
+
             dirs[:] = [
                 d for d in dirs
                 if d.casefold() not in excluded_dirs
                 and not os.path.islink(os.path.join(current, d))
                 and not d.casefold().startswith(("windows.", "$"))
             ]
+            in_mods_ai = any(part.casefold() in {"mods", "ai"} for part in Path(current).parts)
+
             for dirname in dirs:
                 folder = os.path.join(current, dirname)
                 matches = find_indicator_matches(dirname, folder)
-                context_flags = ["Mods/AI folder context"] if dirname.casefold() in {"mods", "ai"} else []
-                if matches or context_flags:
+                if matches or dirname.casefold() in {"mods", "ai"}:
                     key = os.path.normcase(os.path.abspath(folder))
                     if key not in seen:
                         seen.add(key)
@@ -148,13 +159,11 @@ def collect_files(progress, max_files=50000):
                             candidates.append(("folder", folder, os.stat(folder)))
                         except OSError:
                             pass
+
             for name in names:
                 path = os.path.join(current, name)
                 extension = os.path.splitext(name)[1].casefold()
                 matches = find_indicator_matches(name, current)
-                in_mods_ai = any(part.casefold() in {"mods", "ai"} for part in Path(current).parts)
-                # Include any filename matching a supplied indicator, regardless of extension.
-                # Inventory all file types inside Mods/AI folders as requested; metadata only.
                 if extension not in allowed_extensions and not matches and not in_mods_ai:
                     continue
                 try:
@@ -167,11 +176,18 @@ def collect_files(progress, max_files=50000):
                     candidates.append(("file", path, os.stat(path)))
                 except OSError:
                     continue
-                if len(candidates) >= max_files or time.monotonic() - started > 300:
+                if len(candidates) >= max_files or time.monotonic() - started >= max_scan_seconds:
+                    stopped_early = True
                     break
-            if len(candidates) >= max_files or time.monotonic() - started > 300:
+
+            now = time.monotonic()
+            if now - last_progress >= 2:
+                pct = 25 + int(min((now - started) / max_scan_seconds, 1.0) * 20)
+                progress(pct, f"استكشاف الملفات... جُمِع {len(candidates):,} عنصر")
+                last_progress = now
+            if stopped_early:
                 break
-        if len(candidates) >= max_files or time.monotonic() - started > 300:
+        if stopped_early:
             break
 
     rows = []
@@ -179,7 +195,9 @@ def collect_files(progress, max_files=50000):
     for i, (kind, path, st) in enumerate(candidates, 1):
         name = os.path.basename(path)
         matches = find_indicator_matches(name, path)
-        context_flags = ["Mods/AI folder context"] if any(part.casefold() in {"mods", "ai"} for part in Path(path).parts) else []
+        context_flags = [ "Mods/AI folder context" ] if any(
+            part.casefold() in {"mods", "ai"} for part in Path(path).parts
+        ) else []
         too_large = st.st_size > 250 * 1024 * 1024
         created = utc_timestamp(st.st_ctime)
         modified = utc_timestamp(st.st_mtime)
@@ -188,6 +206,7 @@ def collect_files(progress, max_files=50000):
             created_display = datetime.fromtimestamp(st.st_ctime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
         except (ValueError, OSError, OverflowError):
             display_date, created_display = modified, created
+
         digest = sha256_file(path) if kind == "file" and matches and not too_large else None
         rows.append({
             "artifact_type": kind, "file_name": name[:260], "path": path[:1500],
@@ -201,10 +220,12 @@ def collect_files(progress, max_files=50000):
             "signature_label": "جارٍ التحقق" if kind == "file" and os.path.splitext(name)[1].casefold() in {".exe", ".dll"} else "غير موثق — لا يوجد توقيع رقمي قابل للتحقق لهذا النوع"
         })
         if i % 100 == 0 or i == total:
-            progress(50 + int(i * 20 / total), f"فحص الملفات والمجلدات... {i}/{total}")
-    rows.sort(key=lambda row: row.get("modified_at") or "", reverse=True)
-    return rows
+            progress(45 + int(i * 20 / total), f"تجهيز بيانات الملفات... {i:,}/{total:,}")
 
+    rows.sort(key=lambda row: row.get("modified_at") or "", reverse=True)
+    if stopped_early:
+        progress(65, f"اكتمل الجزء المحدد زمنيًا: {len(rows):,} عنصر (حد الفحص {max_scan_seconds} ثانية)")
+    return rows
 
 def collect_recent_apps(processes, progress):
     """Show apps started in the last 24h plus recent Windows Prefetch metadata."""
@@ -275,11 +296,11 @@ def collect_recent_apps(processes, progress):
         except OSError:
             pass
     recent.sort(key=lambda row: row.get("last_seen_at") or "", reverse=True)
-    progress(75, f"اكتمل تجميع التطبيقات خلال آخر 24 ساعة: {len(recent)}")
+    progress(90, f"اكتمل تجميع التطبيقات خلال آخر 24 ساعة: {len(recent)}")
     return recent
 
 
-def verify_authenticode_signatures(processes, artifacts, progress, max_checks=2000):
+def verify_authenticode_signatures(processes, artifacts, progress, max_checks=400):
     """Verify Windows Authenticode signatures in batches; unsigned/invalid files are unverified."""
     if platform.system().lower() != "windows":
         for row in list(processes) + list(artifacts):
@@ -334,12 +355,12 @@ ConvertTo-Json -InputObject @($results) -Compress -Depth 4
 """
     executable = "powershell.exe"
     checked = 0
-    for offset in range(0, len(check_paths), 200):
-        batch = check_paths[offset:offset + 200]
+    for offset in range(0, len(check_paths), 100):
+        batch = check_paths[offset:offset + 100]
         try:
             result = subprocess.run(
                 [executable, "-NoProfile", "-NonInteractive", "-Command", script],
-                input=json.dumps(batch), capture_output=True, text=True, timeout=55,
+                input=json.dumps(batch), capture_output=True, text=True, timeout=35,
                 encoding="utf-8", errors="replace", creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
             )
             if result.returncode != 0 or not result.stdout.strip():
@@ -363,7 +384,7 @@ ConvertTo-Json -InputObject @($results) -Compress -Depth 4
                     row["signature_publisher"] = str(item.get("publisher") or "")[:160] if item else ""
                     row["signature_thumbprint"] = str(item.get("thumbprint") or "")[:80] if item else ""
             checked += len(batch)
-            progress(75 + int(checked * 10 / max(len(check_paths), 1)), f"التحقق من مصدر البرامج... {checked}/{len(check_paths)}")
+            progress(65 + int(checked * 20 / max(len(check_paths), 1)), f"التحقق من مصدر البرامج... {checked}/{len(check_paths)}")
         except Exception:
             for path in batch:
                 for row in path_rows.get(path, []):
@@ -421,7 +442,7 @@ def collect_processes(progress):
             })
         except (psutil.Error, OSError):
             continue
-        progress(int(i * 100 / total), f"جمع بيانات العمليات {i}/{total}")
+        progress(int(i * 25 / total), f"جمع بيانات العمليات {i}/{total}")
     return rows
 
 
@@ -621,7 +642,7 @@ class InspectorApp(tk.Tk):
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "C: and D: drives excluding Windows/system folders; EXE/DLL/ZIP/RAR and matching RPF/META/LUA/CFG/PDF; recent app evidence from running processes and Windows Prefetch metadata within 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
+                "scan_scope": "Bounded metadata inventory of C: and D: (up to 15,000 items or 75 seconds), excluding Windows/system folders; EXE/DLL/ZIP/RAR and matching RPF/META/LUA/CFG/PDF; recent app evidence from running processes and Windows Prefetch metadata within 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
                 "file_count": len(files),
@@ -636,6 +657,7 @@ class InspectorApp(tk.Tk):
                 "note": "Configured names are indicators for manual review, not proof of cheating. Recent apps include processes started within the last 24 hours and Windows Prefetch file timestamps, which are approximate evidence and may be unavailable if Prefetch is disabled. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless or cheat-free. Unsigned, invalid, unsupported, or unchecked files are labeled separately. File scan covers C: and D: excluding Windows/system folders; archives are not opened and file contents are never uploaded. Dates are retained in UTC and local display format. No screenshots are captured. No files are modified and no processes are terminated.",
                 "processes": processes,
             }
+            self.update_progress(100, "اكتمل الفحص وتجهيز التقرير.")
             self.delivery_status = "pending"
             self.after(0, self._show_report)
         except Exception as exc:
