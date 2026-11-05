@@ -349,7 +349,7 @@ ConvertTo-Json -InputObject @($results) -Compress -Depth 4
                 item = by_path.get(path)
                 rows_for_path = path_rows.get(path, [])
                 if item and str(item.get("status", "")).casefold() == "valid":
-                    label = "موثق — " + (str(item.get("publisher") or "ناشر معتمد من Windows")[:160])
+                    label = "موثق رقمياً — " + (str(item.get("publisher") or "ناشر معتمد من Windows")[:160])
                     status = "verified"
                 else:
                     label = "غير موثق — توقيع مفقود أو غير صالح"
