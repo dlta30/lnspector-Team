@@ -810,7 +810,8 @@ def collect_recent_files(progress, max_entries=500):
         script = r"""
 $ErrorActionPreference = 'SilentlyContinue'
 $shell = New-Object -ComObject WScript.Shell
-$items = @($input | ConvertFrom-Json)
+$raw = [Console]::In.ReadToEnd()
+$items = @($raw | ConvertFrom-Json)
 $out = foreach ($p in $items) {
   try {
     $shortcut = $shell.CreateShortcut([string]$p)
@@ -1345,36 +1346,150 @@ class InspectorApp(tk.Tk):
             messagebox.showinfo(APP, "ابدأ الفحص أولاً.")
             return
         path = filedialog.asksaveasfilename(defaultextension=".pdf",
-                    filetypes=[("PDF report", "*.pdf")], initialfile="3eN-inspection-report.pdf")
+                    filetypes=[("PDF report", "*.pdf")], initialfile="3EN-Inspect-Full-Report.pdf")
         if not path:
             return
         try:
+            from xml.sax.saxutils import escape
             from reportlab.lib import colors
             from reportlab.lib.pagesizes import A4
             from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
             from reportlab.lib.units import mm
-            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
+
+            report = self.report
             styles = getSampleStyleSheet()
-            styles.add(ParagraphStyle(name="RedTitle", parent=styles["Title"], textColor=colors.HexColor("#d92345")))
-            doc = SimpleDocTemplate(path, pagesize=A4, rightMargin=16*mm, leftMargin=16*mm, topMargin=16*mm, bottomMargin=16*mm)
-            story = [Paragraph("3eN INSPECT TEAM", styles["RedTitle"]), Paragraph("Security inspection report - by:ROITH", styles["Normal"]), Spacer(1, 8*mm)]
-            summary = [["Device", str(self.report["device_label"])], ["Created (UTC)", str(self.report["created_at"])], ["Platform", str(self.report["platform"])], ["Processes reviewed", str(self.report["process_count"])], ["Name-based leads", str(self.report["indicator_match_count"])]]
-            table = Table(summary, colWidths=[42*mm, 120*mm])
-            table.setStyle(TableStyle([("BACKGROUND",(0,0),(0,-1),colors.HexColor("#fbe7eb")),("TEXTCOLOR",(0,0),(0,-1),colors.HexColor("#86152b")),("GRID",(0,0),(-1,-1),0.4,colors.HexColor("#dddddd")),("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),7)]))
-            story.extend([table, Spacer(1, 7*mm), Paragraph("Review findings", styles["Heading2"])])
-            findings = [p for p in self.report["processes"] if p["indicator_matches"]]
-            if not findings:
-                story.append(Paragraph("No configured process-name indicators matched. This does not guarantee the device is clean.", styles["BodyText"]))
-            else:
-                data = [["PID", "Process", "Indicators", "SHA-256"]]
-                for item in findings:
-                    data.append([str(item.get("pid") or ""), str(item["process_name"])[:50], ", ".join(item["indicator_matches"]), str(item.get("sha256") or "unavailable")[:64]])
-                t = Table(data, repeatRows=1, colWidths=[14*mm, 42*mm, 40*mm, 66*mm])
-                t.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#25111a")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#cccccc")),("FONTSIZE",(0,0),(-1,-1),7),("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),5)]))
+            styles.add(ParagraphStyle(name="BrandTitle", parent=styles["Title"], textColor=colors.HexColor("#b51f3b"), fontSize=22, leading=27, spaceAfter=4))
+            styles.add(ParagraphStyle(name="SectionTitle", parent=styles["Heading2"], textColor=colors.HexColor("#8f1830"), spaceBefore=10, spaceAfter=5))
+            styles.add(ParagraphStyle(name="SmallCell", parent=styles["BodyText"], fontSize=7, leading=9, wordWrap="CJK"))
+            styles.add(ParagraphStyle(name="MutedNote", parent=styles["BodyText"], textColor=colors.HexColor("#555555"), fontSize=8, leading=11))
+            doc = SimpleDocTemplate(path, pagesize=A4, rightMargin=13*mm, leftMargin=13*mm, topMargin=15*mm, bottomMargin=15*mm)
+            story = [
+                Paragraph("3EN INSPECT TEAM", styles["BrandTitle"]),
+                Paragraph("FiveM & Grand Theft Auto V | Security Inspection Report", styles["Heading2"]),
+                Paragraph("Generated: " + escape(str(report.get("created_at", ""))) + " UTC", styles["MutedNote"]),
+                Spacer(1, 5*mm)
+            ]
+
+            processes = report.get("processes", [])
+            artifacts = report.get("file_artifacts", [])
+            recent_apps = report.get("recent_apps_24h", [])
+            recent_files = report.get("recent_files", [])
+            deleted = [x for x in artifacts if x.get("scan_group") == "آثار ملفات محذوفة"]
+            game_evidence = [x for x in artifacts if x.get("scan_group") in {
+                "ملفات FiveM وGTA V", "سجلات FiveM وCitizenFX", "سكربتات وإعدادات FiveM"
+            }]
+            flagged_processes = [x for x in processes if x.get("indicator_matches")]
+            flagged_files = [x for x in artifacts if x.get("indicator_matches")]
+
+            summary = [
+                ["Device", str(report.get("device_label", "Unknown"))],
+                ["Operating system", str(report.get("platform", "Unknown"))[:150]],
+                ["Running processes", str(len(processes))],
+                ["Process indicators", str(len(flagged_processes))],
+                ["FiveM / GTA V artifacts", str(len(game_evidence))],
+                ["Files with indicators", str(len(flagged_files))],
+                ["Deleted-file records (Recycle Bin)", str(len(deleted))],
+                ["Recent apps / execution evidence", str(len(recent_apps))],
+                ["Windows Recent shortcuts", str(len(recent_files))]
+            ]
+            table = Table(summary, colWidths=[62*mm, 112*mm])
+            table.setStyle(TableStyle([
+                ("BACKGROUND",(0,0),(0,-1),colors.HexColor("#f8e6ea")),
+                ("TEXTCOLOR",(0,0),(0,-1),colors.HexColor("#86152b")),
+                ("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#d6d6d6")),
+                ("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),6),
+                ("FONTSIZE",(0,0),(-1,-1),8)
+            ]))
+            story.extend([Paragraph("Executive summary", styles["SectionTitle"]), table])
+
+            def cell(value, limit=500):
+                return Paragraph(escape(str(value if value not in (None, "") else "—"))[:limit], styles["SmallCell"])
+
+            def add_section(title, rows, headers, widths, empty_note, cap=80):
+                story.append(Paragraph(title, styles["SectionTitle"]))
+                if not rows:
+                    story.append(Paragraph(empty_note, styles["MutedNote"]))
+                    return
+                data = [[cell(h, 80) for h in headers]]
+                for row in rows[:cap]:
+                    data.append([cell(value) for value in row])
+                t = Table(data, colWidths=widths, repeatRows=1, hAlign="LEFT")
+                t.setStyle(TableStyle([
+                    ("BACKGROUND",(0,0),(-1,0),colors.HexColor("#25111a")),
+                    ("TEXTCOLOR",(0,0),(-1,0),colors.white),
+                    ("GRID",(0,0),(-1,-1),0.3,colors.HexColor("#cccccc")),
+                    ("VALIGN",(0,0),(-1,-1),"TOP"),
+                    ("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#faf6f7")]),
+                    ("FONTSIZE",(0,0),(-1,-1),7),("LEFTPADDING",(0,0),(-1,-1),4),
+                    ("RIGHTPADDING",(0,0),(-1,-1),4),("TOPPADDING",(0,0),(-1,-1),5),
+                    ("BOTTOMPADDING",(0,0),(-1,-1),5)
+                ]))
                 story.append(t)
-            story.extend([Spacer(1, 7*mm), Paragraph("Important: name-based indicators are leads for manual review, not proof of cheating. Scope: running process metadata and readable executable SHA-256 only.", styles["Italic"])])
+                if len(rows) > cap:
+                    story.append(Paragraph("Showing first " + str(cap) + " of " + str(len(rows)) + " entries in this PDF section. Full structured evidence remains in the dashboard report.", styles["MutedNote"]))
+
+            story.append(Paragraph("FiveM / GTA V findings", styles["SectionTitle"]))
+            add_section("Game files, logs and resource scripts", [
+                (x.get("scan_group"), x.get("file_name"), x.get("indicator_category"),
+                 ", ".join(x.get("indicator_matches", [])), x.get("evidence_reason", x.get("path", "")))
+                for x in game_evidence
+            ], ["Evidence group", "File", "Assessment", "Matched indicators", "Context / path"],
+            [30*mm, 34*mm, 30*mm, 35*mm, 45*mm],
+            "No FiveM/GTA V evidence rows were collected in the scanned locations.")
+
+            add_section("Suspicious process leads", [
+                (x.get("process_name"), x.get("pid"), x.get("indicator_category"),
+                 ", ".join(x.get("indicator_matches", [])), x.get("executable_path", ""))
+                for x in flagged_processes
+            ], ["Process", "PID", "Category", "Indicators", "Executable path"],
+            [30*mm, 12*mm, 28*mm, 42*mm, 62*mm],
+            "No configured process-name indicators matched. This is not proof that no cheat is present.")
+
+            add_section("Files with name-based indicators", [
+                (x.get("scan_group"), x.get("file_name"), ", ".join(x.get("indicator_matches", [])),
+                 x.get("signature_label", ""), x.get("path", x.get("file_path", "")))
+                for x in flagged_files
+            ], ["Group", "File", "Indicators", "Signature", "Path / source"],
+            [27*mm, 32*mm, 38*mm, 30*mm, 47*mm],
+            "No configured file-name indicators matched.")
+
+            add_section("Deleted-file evidence — Recycle Bin only", [
+                (x.get("file_name"), x.get("extension"), x.get("deleted_at"),
+                 "Yes" if x.get("recycle_payload_present") else "No",
+                 x.get("evidence_reason", ""))
+                for x in deleted
+            ], ["Deleted file", "Type", "Deletion time (UTC)", "Payload in bin", "Interpretation"],
+            [32*mm, 18*mm, 35*mm, 22*mm, 67*mm],
+            "No matching deleted-file metadata was found in the scanned Recycle Bin locations.")
+
+            add_section("Apps active / execution evidence — last 24 hours", [
+                (x.get("app_name"), x.get("last_seen_display"), x.get("evidence_source"),
+                 "Yes" if x.get("started_within_24h") else "No / approximate",
+                 ", ".join(x.get("indicator_matches", [])))
+                for x in recent_apps
+            ], ["Application", "Time", "Evidence source", "Started within 24h", "Indicators"],
+            [32*mm, 32*mm, 43*mm, 30*mm, 37*mm],
+            "No current process or Prefetch entries were available.")
+
+            add_section("Windows Recent folder — recent shortcuts", [
+                (x.get("file_name"), x.get("last_accessed_display"),
+                 x.get("target_path") or x.get("recent_shortcut_path"),
+                 x.get("evidence_source", ""))
+                for x in recent_files
+            ], ["File / target", "Shortcut timestamp", "Resolved target or shortcut", "Evidence source"],
+            [35*mm, 34*mm, 70*mm, 35*mm],
+            "No shortcut entries were available in the Windows Recent folder.")
+
+            story.extend([
+                Spacer(1, 5*mm),
+                Paragraph("Scope and limitations", styles["SectionTitle"]),
+                Paragraph("This is a targeted, bounded inspection of common FiveM, CitizenFX and GTA V locations, selected user/application folders, running processes, selected text logs and resource files, Windows Prefetch metadata, the Windows Recent shortcut folder, and Windows Recycle Bin metadata. It does not inspect every location or every possible cheat, and it cannot guarantee detection of all cheats.", styles["MutedNote"]),
+                Paragraph("A Recent shortcut timestamp is not definitive proof that a file was opened. Prefetch timestamps are approximate execution evidence and may be unavailable. Recycle Bin records cover items still represented by Windows Recycle Bin metadata only; permanently deleted files are not recovered. Files are not executed, deleted, modified, or uploaded as content. Log/resource text is analyzed locally; only matched indicator names and line numbers are retained. Indicators are leads for human review, not proof of cheating. A valid digital signature does not guarantee software is safe.", styles["MutedNote"]),
+                Paragraph("Report generated by 3EN Inspect Team.", styles["MutedNote"])
+            ])
             doc.build(story)
-            messagebox.showinfo(APP, "تم تصدير تقرير PDF بنجاح.")
+            messagebox.showinfo(APP, "تم تصدير تقرير الفحص الكامل PDF بنجاح.")
         except Exception as exc:
             messagebox.showerror(APP, "PDF export failed: " + str(exc))
 
