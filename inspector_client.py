@@ -136,7 +136,7 @@ def find_indicator_matches(name, path, indicators=None):
     return list(dict.fromkeys(matches))
 
 
-def collect_files(progress, max_files=15000, max_scan_seconds=75):
+def collect_files(progress, max_files=10000, max_scan_seconds=45):
     """Bounded metadata inventory for C:/D:. Never execute or open files/archives."""
     import time
 
@@ -982,7 +982,7 @@ class InspectorApp(tk.Tk):
         heading.pack(fill="x", pady=(0, 14))
         tk.Label(heading, text="فحص أمان الجهاز", bg=BG, fg=WHITE,
                  font=("Segoe UI", 23, "bold")).pack(anchor="w")
-        tk.Label(heading, text="وافق على الفحص ثم ابدأ — ستظهر حالة التقدم هنا.",
+        tk.Label(heading, text="موافقة واحدة للفحص، ثم يبدأ مباشرة — ستظهر حالة التقدم هنا.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(4, 0))
 
         # Keep metric variables for report processing without displaying extra cards.
@@ -995,17 +995,11 @@ class InspectorApp(tk.Tk):
         consent_box.pack(fill="x", pady=(0, 12))
         tk.Label(consent_box, text="01  /  الموافقة والصلاحية", bg=PANEL, fg="#ff8ca0",
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
-        self.consent_processes = tk.BooleanVar(value=False)
-        self.consent_files = tk.BooleanVar(value=False)
+        self.consent_scan = tk.BooleanVar(value=False)
         self.consent_screenshot = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على الخيار الأول: مراجعة بيانات العمليات والتطبيقات التي استُخدمت خلال آخر 24 ساعة، مثل الاسم والمسار ووقت التشغيل ومؤشرات المطابقة.",
-            variable=self.consent_processes, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
-            activebackground=PANEL, activeforeground=WHITE, wraplength=900,
-            font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
-        tk.Checkbutton(consent_box,
-            text="أوافق على الخيار الثاني: فحص بيانات الملفات في C: وD: والتحقق من التوقيعات الرقمية، وفحص سجلات FiveM/CitizenFX النصية المحددة بحثًا عن مؤشرات معروفة. يُرسل تقرير البيانات الوصفية ومواقع/أرقام أسطر المؤشرات فقط؛ لا يُرسل نص السجلات أو محتويات الملفات.",
-            variable=self.consent_files, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
+            text="أوافق على إجراء فحص الجهاز: مراجعة العمليات والتطبيقات المستخدمة خلال آخر 24 ساعة، وفحص بيانات الملفات في C: وD: ومواقع FiveM/GTA V وCitizenFX، والتحقق من التوقيعات الرقمية، وتحليل سجلات وملفات الإعدادات بحثًا عن مؤشرات معروفة. يُرسل إلى لوحة الفحص تقرير البيانات الوصفية والمؤشرات ومواقع/أرقام الأسطر فقط؛ لا تُرفع محتويات الملفات أو نصوص السجلات ولا تُنفّذ الملفات.",
+            variable=self.consent_scan, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
         tk.Checkbutton(consent_box,
@@ -1059,8 +1053,8 @@ class InspectorApp(tk.Tk):
     def start(self):
         # The dashboard enforces one-time session use; the client does not
         # create local completion files or persist session state on the device.
-        if not (self.consent_processes.get() and self.consent_files.get()):
-            messagebox.showwarning(APP, "يجب الموافقة على الخيارين قبل بدء الفحص.")
+        if not self.consent_scan.get():
+            messagebox.showwarning(APP, "وافق على فحص الجهاز مرة واحدة قبل البدء.")
             return
 
         # Session-specific builds contain the session code and dashboard URL.
@@ -1081,7 +1075,7 @@ class InspectorApp(tk.Tk):
     def _scan_worker(self):
         try:
             processes = collect_processes(self.update_progress)
-            files = collect_files(self.update_progress)
+            files = collect_files(self.update_progress, max_files=10000, max_scan_seconds=45)
             fivem_files = collect_fivem_artifacts(self.update_progress)
             fivem_log_findings = collect_fivem_log_evidence(self.update_progress)
             fivem_script_findings = collect_fivem_script_evidence(self.update_progress)
@@ -1106,7 +1100,7 @@ class InspectorApp(tk.Tk):
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "Bounded metadata inventory of C: and D: (up to 15,000 items or 75 seconds), excluding Windows/system folders; plus targeted FiveM/GTA V install, CitizenFX, and user Documents locations (up to 8,000 items or 35 seconds; EXE/DLL/ASI/LUA/LUAC/JSON/CFG/INI/LOG/DAT/BIN/ZIP/RAR/7Z/RPF/META/XML); selected FiveM/CitizenFX text logs are scanned with strict file/byte/time limits and only marker names and line numbers are reported, never log contents; selected FiveM/CitizenFX resource and configuration text files are also checked locally with strict file/byte/time limits; only matched indicators and line numbers are retained, never file contents; Windows Recycle Bin $I metadata is checked on C: and D: for selected executable/script/config/archive file types, without reading or restoring deleted file contents; all currently running processes plus Windows Prefetch evidence from the last 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
+                "scan_scope": "Bounded metadata inventory of C: and D: (up to 10,000 items or 45 seconds), excluding Windows/system folders; plus targeted FiveM/GTA V install, CitizenFX, and user Documents locations (up to 8,000 items or 35 seconds; EXE/DLL/ASI/LUA/LUAC/JSON/CFG/INI/LOG/DAT/BIN/ZIP/RAR/7Z/RPF/META/XML); selected FiveM/CitizenFX text logs are scanned with strict file/byte/time limits and only marker names and line numbers are reported, never log contents; selected FiveM/CitizenFX resource and configuration text files are also checked locally with strict file/byte/time limits; only matched indicators and line numbers are retained, never file contents; Windows Recycle Bin $I metadata is checked on C: and D: for selected executable/script/config/archive file types, without reading or restoring deleted file contents; all currently running processes plus Windows Prefetch evidence from the last 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
                 "file_count": len(files),
