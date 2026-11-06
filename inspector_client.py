@@ -598,6 +598,98 @@ def collect_fivem_script_evidence(progress, max_files=1000, max_file_bytes=512_0
     return findings
 
 
+
+def analyze_fivem_binaries(artifacts, progress, max_files=500,
+                           max_file_bytes=64 * 1024 * 1024,
+                           max_total_bytes=512 * 1024 * 1024,
+                           max_scan_seconds=35):
+    """Hash and locally triage bounded FiveM/GTA V PE/plugin binaries; never upload binary content."""
+    import time
+
+    known_tool_markers = (
+        "eulen", "redengine", "red engine", "lynx", "lambda menu", "menyo",
+        "tiago modz", "taigomodz", "swoopiexyz", "xenos", "extreme injector",
+        "phantom menu", "lua executor", "cheat engine", "falloutmenu",
+        "cobramenu", "dopamine menu", "monstermenu", "fivesense_v2",
+    )
+    injection_markers = (
+        "VirtualAllocEx", "WriteProcessMemory", "CreateRemoteThread",
+        "NtCreateThreadEx", "QueueUserAPC", "SetWindowsHookEx",
+        "ReadProcessMemory", "OpenProcess",
+    )
+    candidates = []
+    allowed = {".exe", ".dll", ".asi", ".bin"}
+    for row in artifacts:
+        path = row.get("path")
+        if (row.get("scan_group") == "ملفات FiveM وGTA V"
+                and path and os.path.splitext(path)[1].casefold() in allowed):
+            candidates.append((path, row))
+
+    started = time.monotonic()
+    total_bytes = analyzed = hashed = flagged = 0
+    for index, (path, row) in enumerate(candidates[:max_files], 1):
+        if time.monotonic() - started >= max_scan_seconds or total_bytes >= max_total_bytes:
+            break
+        try:
+            size = os.path.getsize(path)
+            if size <= 0 or size > max_file_bytes or total_bytes + size > max_total_bytes:
+                row["binary_analysis_status"] = "skipped_size_or_budget"
+                continue
+            with open(path, "rb") as stream:
+                raw = stream.read(size + 1)
+            if len(raw) != size:
+                row["binary_analysis_status"] = "changed_during_scan"
+                continue
+            total_bytes += len(raw)
+            analyzed += 1
+            row["sha256"] = hashlib.sha256(raw).hexdigest()
+            row["hash_scope"] = "FiveM/GTA V executable/plugin binary"
+            hashed += 1
+
+            lower = raw.lower()
+            hits, api_hits = [], []
+            for marker in known_tool_markers:
+                needle = marker.encode("ascii", errors="ignore").lower()
+                wide = b"".join(bytes((byte, 0)) for byte in needle)
+                if needle and (needle in lower or wide in lower):
+                    hits.append(marker)
+            for marker in injection_markers:
+                needle = marker.encode("ascii").lower()
+                wide = b"".join(bytes((byte, 0)) for byte in needle)
+                if needle in lower or wide in lower:
+                    api_hits.append(marker)
+
+            if hits or len(api_hits) >= 3:
+                existing = list(row.get("indicator_matches") or [])
+                existing.extend(hits or api_hits)
+                row["indicator_matches"] = list(dict.fromkeys(existing))
+                row["indicator_category"] = "مؤشرات داخل ملف ثنائي — تحتاج مراجعة"
+                row["assessment"] = "review"
+                row["binary_indicator_type"] = "known_tool_string" if hits else "multiple_process_memory_api_strings"
+                row["binary_evidence_confidence"] = "medium" if hits else "low"
+                row["evidence_confidence"] = row["binary_evidence_confidence"]
+                row["evidence_reason"] = (
+                    "عُثر على اسم/سلسلة مرتبطة بأداة معروفة داخل الملف الثنائي؛ قد تكون سلسلة مضمّنة أو مرجعًا ولا تثبت التشغيل أو الغش."
+                    if hits else
+                    "عُثر على عدة سلاسل API مرتبطة بقراءة/كتابة ذاكرة العمليات أو إنشاء خيوط؛ قد تستخدمها برامج مشروعة أيضًا."
+                )
+                flagged += 1
+            row["binary_analysis_status"] = "analyzed"
+        except (OSError, PermissionError, MemoryError):
+            row["binary_analysis_status"] = "read_error"
+        if index % 25 == 0 or index == min(len(candidates), max_files):
+            progress(82, f"تحليل بصمات وملفات FiveM التنفيذية... {index}/{min(len(candidates), max_files)}")
+
+    return {
+        "binary_candidate_count": len(candidates),
+        "binary_files_analyzed": analyzed,
+        "binary_files_hashed": hashed,
+        "binary_indicator_files": flagged,
+        "binary_bytes_analyzed": total_bytes,
+        "binary_analysis_limited": analyzed < min(len(candidates), max_files),
+    }
+
+
 def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=12):
     """Read bounded Windows Recycle Bin metadata for deleted executable/script/config artifacts only."""
     import struct
@@ -1210,6 +1302,7 @@ class InspectorApp(tk.Tk):
             fivem_files = collect_fivem_artifacts(self.update_progress)
             fivem_log_findings = collect_fivem_log_evidence(self.update_progress)
             fivem_script_findings = collect_fivem_script_evidence(self.update_progress)
+            binary_analysis = analyze_fivem_binaries(fivem_files, self.update_progress)
             deleted_file_findings = collect_deleted_file_evidence(self.update_progress)
             # Keep targeted game evidence, log indicators, and deleted-file metadata in the unified inventory.
             for item in fivem_files:
@@ -1250,6 +1343,7 @@ class InspectorApp(tk.Tk):
                 "file_artifact_count": len(files),
                 "file_indicator_match_count": len(file_matches),
                 "fivem_artifact_count": len(fivem_files),
+                "binary_analysis": binary_analysis,
                 "fivem_indicator_match_count": len(fivem_matches) + sum(1 for item in fivem_log_findings if item.get("indicator_matches")),
                 "fivem_log_files_with_indicators": len(fivem_log_findings),
                 "fivem_log_line_matches": sum(item.get("matched_line_count", 0) for item in fivem_log_findings),
@@ -1266,7 +1360,7 @@ class InspectorApp(tk.Tk):
                 "signature_verified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "verified"),
                 "signature_unverified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "unverified"),
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded user/application-file inventory with Windows/system locations excluded, plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. Selected FiveM/CitizenFX text logs are checked locally for specific known tool markers; only marker names and line numbers are retained, never log text. Selected FiveM resource/configuration text files are also checked locally for known tool names and combinations of gameplay-manipulation indicators; only matched marker names and line numbers are retained, never file text. Windows Recycle Bin metadata is also checked for selected security-relevant file types; only filename, approximate deletion time, size, and a coarse folder category are retained, not the original full path or deleted contents. This does not detect every permanently deleted file and does not perform recovery. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened; only selected FiveM/CitizenFX text logs are read locally for specific known markers, and their text is never uploaded; file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. A full-desktop screenshot is captured and retained with the report only when the separate screenshot-consent option is selected; otherwise no screenshot is taken. No files are modified and no processes are terminated.",
+                "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded user/application-file inventory with Windows/system locations excluded, plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. Selected FiveM/CitizenFX text logs are checked locally for specific known tool markers; only marker names and line numbers are retained, never log text. Selected FiveM resource/configuration text files are also checked locally; targeted EXE/DLL/ASI/BIN game binaries receive bounded SHA-256 hashing and local static string triage for known tool names and multiple process-memory API markers; only hashes and marker names are retained, never binary contents. Selected resources for known tool names and combinations of gameplay-manipulation indicators; only matched marker names and line numbers are retained, never file text. Windows Recycle Bin metadata is also checked for selected security-relevant file types; only filename, approximate deletion time, size, and a coarse folder category are retained, not the original full path or deleted contents. This does not detect every permanently deleted file and does not perform recovery. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened; only selected FiveM/CitizenFX text logs are read locally for specific known markers, and their text is never uploaded; file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. A full-desktop screenshot is captured and retained with the report only when the separate screenshot-consent option is selected; otherwise no screenshot is taken. No files are modified and no processes are terminated.",
                 "processes": processes,
             }
             self.update_progress(100, "اكتمل الفحص وتجهيز التقرير.")
@@ -1388,6 +1482,8 @@ class InspectorApp(tk.Tk):
                 ["Running processes", str(len(processes))],
                 ["Process indicators", str(len(flagged_processes))],
                 ["FiveM / GTA V artifacts", str(len(game_evidence))],
+                ["Game binaries hashed", str((report.get("binary_analysis") or {}).get("binary_files_hashed", 0))],
+                ["Binary static indicator hits", str((report.get("binary_analysis") or {}).get("binary_indicator_files", 0))],
                 ["Files with indicators", str(len(flagged_files))],
                 ["Deleted-file records (Recycle Bin)", str(len(deleted))],
                 ["Recent apps / execution evidence", str(len(recent_apps))],
