@@ -182,17 +182,41 @@ def finalize_evidence_quality(processes, artifacts, recent_apps, recent_files):
     for row in artifacts:
         score(row)
 
+    # Raise confidence only when the same exact file is corroborated by
+    # independent evidence collectors (for example, process + inventory + binary).
+    corroboration = {}
+    for row in processes + artifacts:
+        if not row.get("indicator_matches"):
+            continue
+        raw_path = row.get("executable_path") or row.get("path")
+        if raw_path and os.path.isabs(str(raw_path)):
+            key = os.path.normcase(os.path.abspath(str(raw_path)))
+            corroboration.setdefault(key, set()).add(str(row.get("artifact_type") or row.get("source") or "evidence"))
+    for row in processes + artifacts:
+        raw_path = row.get("executable_path") or row.get("path")
+        if not row.get("indicator_matches") or not raw_path or not os.path.isabs(str(raw_path)):
+            continue
+        key = os.path.normcase(os.path.abspath(str(raw_path)))
+        if len(corroboration.get(key, set())) >= 2:
+            row["triage_score"] = max(int(row.get("triage_score") or 0), 80)
+            row["triage_level"] = "high"
+            row["evidence_confidence"] = "high"
+            row["evidence_reason"] = (str(row.get("evidence_reason") or "") +
+                " وتوافقت معها قرينة مستقلة أخرى على الملف نفسه؛ يلزم تأكيد المفتش قبل التصنيف النهائي.")
+
     # Count unique paths, not every matched keyword or duplicate log line.
     unique_file_keys = set()
     unique_process_keys = set()
     for row in artifacts:
         if row.get("indicator_matches"):
-            key = os.path.normcase(os.path.abspath(str(row.get("path") or row.get("file_path") or row.get("file_name") or "")))
+            raw_path = row.get("path") or row.get("file_path") or row.get("file_name")
+            key = os.path.normcase(os.path.abspath(str(raw_path))) if raw_path else None
             if key:
                 unique_file_keys.add(key)
     for row in processes:
         if row.get("indicator_matches"):
-            key = os.path.normcase(os.path.abspath(str(row.get("executable_path") or row.get("file_name") or "")))
+            raw_path = row.get("executable_path") or row.get("file_name")
+            key = os.path.normcase(os.path.abspath(str(raw_path))) if raw_path else None
             if key:
                 unique_process_keys.add(key)
     return {
@@ -1534,6 +1558,10 @@ class InspectorApp(tk.Tk):
                 ["Operating system", str(report.get("platform", "Unknown"))[:150]],
                 ["Running processes", str(len(processes))],
                 ["Process indicators", str(len(flagged_processes))],
+                ["Unique indicator files", str(report.get("unique_indicator_file_count", len(flagged_files)))],
+                ["High-confidence corroborated findings", str(report.get("high_confidence_finding_count", 0))],
+                ["Medium-confidence findings", str(report.get("medium_confidence_finding_count", 0))],
+                ["Low-confidence leads (manual review)", str(report.get("low_confidence_finding_count", 0))],
                 ["FiveM / GTA V artifacts", str(len(game_evidence))],
                 ["Game binaries hashed", str((report.get("binary_analysis") or {}).get("binary_files_hashed", 0))],
                 ["Binary static indicator hits", str((report.get("binary_analysis") or {}).get("binary_indicator_files", 0))],
