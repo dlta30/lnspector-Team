@@ -130,6 +130,80 @@ def find_indicator_matches(name, path, indicators=None):
     return list(dict.fromkeys(matches))
 
 
+def finalize_evidence_quality(processes, artifacts, recent_apps, recent_files):
+    """Normalize evidence, hide OS paths, and calculate conservative explainable triage scores."""
+    # Never expose Windows OS binaries as user file/process findings.
+    processes[:] = [
+        row for row in processes
+        if not is_windows_system_path(row.get("executable_path"))
+    ]
+    artifacts[:] = [
+        row for row in artifacts
+        if not is_windows_system_path(row.get("path"))
+    ]
+    recent_files[:] = [
+        row for row in recent_files
+        if not is_windows_system_path(row.get("target_path"))
+    ]
+
+    def score(row):
+        matches = list(dict.fromkeys(
+            str(x).strip().casefold() for x in row.get("indicator_matches", []) if str(x).strip()
+        ))
+        row["indicator_matches"] = matches
+        if not matches:
+            row["triage_score"] = 0
+            row["triage_level"] = "none"
+            row["evidence_confidence"] = "none"
+            return
+        kind = str(row.get("artifact_type") or "")
+        binary_type = row.get("binary_indicator_type")
+        if binary_type == "known_tool_string":
+            value, confidence = 65, "medium"
+        elif binary_type == "multiple_process_memory_api_strings":
+            value, confidence = 25, "low"
+        elif "log" in kind.casefold():
+            value, confidence = 15, "low"
+        elif "script" in kind.casefold() or "resource" in kind.casefold():
+            value, confidence = (45, "medium") if len(matches) >= 2 else (25, "low")
+        elif row.get("kind") == "deleted_file_metadata":
+            value, confidence = 10, "low"
+        else:
+            value, confidence = 20, "low"
+        row["triage_score"] = value
+        row["triage_level"] = "high" if value >= 65 else ("medium" if value >= 35 else "low")
+        row["evidence_confidence"] = row.get("evidence_confidence") or confidence
+        row["evidence_reason"] = row.get("evidence_reason") or (
+            "مطابقة اسمية/مسارية فقط؛ يلزم التحقق من الملف والسياق قبل أي استنتاج."
+        )
+
+    for row in processes:
+        score(row)
+    for row in artifacts:
+        score(row)
+
+    # Count unique paths, not every matched keyword or duplicate log line.
+    unique_file_keys = set()
+    unique_process_keys = set()
+    for row in artifacts:
+        if row.get("indicator_matches"):
+            key = os.path.normcase(os.path.abspath(str(row.get("path") or row.get("file_path") or row.get("file_name") or "")))
+            if key:
+                unique_file_keys.add(key)
+    for row in processes:
+        if row.get("indicator_matches"):
+            key = os.path.normcase(os.path.abspath(str(row.get("executable_path") or row.get("file_name") or "")))
+            if key:
+                unique_process_keys.add(key)
+    return {
+        "unique_indicator_file_count": len(unique_file_keys),
+        "unique_indicator_process_count": len(unique_process_keys),
+        "high_confidence_finding_count": sum(1 for row in processes + artifacts if row.get("triage_level") == "high"),
+        "medium_confidence_finding_count": sum(1 for row in processes + artifacts if row.get("triage_level") == "medium"),
+        "low_confidence_finding_count": sum(1 for row in processes + artifacts if row.get("triage_level") == "low"),
+    }
+
+
 def collect_files(progress, max_files=5000, max_scan_seconds=25):
     """Bounded inventory of user-facing app files only; Windows/system locations are never traversed."""
     import time
@@ -852,7 +926,7 @@ def collect_recent_apps(processes, progress):
                         prefetch_category = "مؤشرات حركة" if any(term in prefetch_matches for term in ("ad movement", "filter key", "scod", "cr-fastrun")) else ("مؤشرات هاك/غش" if prefetch_matches else "لا توجد مطابقة اسمية")
                         recent.append({
                             "app_name": app_name, "file_name": entry.name,
-                            "path": entry.path, "last_seen_at": utc_timestamp(st.st_mtime),
+                            "path": "Windows Prefetch metadata (system path hidden)", "last_seen_at": utc_timestamp(st.st_mtime),
                             "last_seen_display": local.strftime("%B %d, %Y %I:%M:%S %p"),
                             "evidence_source": "Windows Prefetch (.pf) — قرينة تشغيل تقريبية",
                             "time_accuracy": "approximate_prefetch_timestamp",
@@ -934,7 +1008,7 @@ ConvertTo-Json -InputObject @($out) -Compress
         results.append({
             "file_name": (os.path.basename(target) if target else shortcut.stem)[:240],
             "shortcut_name": shortcut.name[:240],
-            "target_path": target[:1200] if target else None,
+            "target_path": (target[:1200] if target and not is_windows_system_path(target) else None),
             "recent_shortcut_path": str(shortcut)[:1200],
             "last_accessed_at": utc_timestamp(st.st_mtime),
             "last_accessed_display": display,
@@ -1300,6 +1374,7 @@ class InspectorApp(tk.Tk):
             verify_authenticode_signatures(processes, files, self.update_progress)
             recent_apps = collect_recent_apps(processes, self.update_progress)
             recent_files = collect_recent_files(self.update_progress)
+            evidence_quality = finalize_evidence_quality(processes, files, recent_apps, recent_files)
             matches = [p for p in processes if p["indicator_matches"]]
             file_matches = [item for item in files if item["indicator_matches"]]
             fivem_matches = [item for item in fivem_files if item["indicator_matches"]]
@@ -1311,7 +1386,12 @@ class InspectorApp(tk.Tk):
                 "platform": platform.platform()[:200],
                 "scan_scope": "Bounded inventory of user folders and selected third-party app locations only (up to 5,000 items or 25 seconds); Windows/system directories and Windows components are not traversed; plus targeted FiveM/GTA V install, CitizenFX, and user Documents locations (up to 8,000 items or 35 seconds; EXE/DLL/ASI/LUA/LUAC/JSON/CFG/INI/LOG/DAT/BIN/ZIP/RAR/7Z/RPF/META/XML); selected FiveM/CitizenFX text logs are scanned with strict file/byte/time limits and only marker names and line numbers are reported, never log contents; selected FiveM/CitizenFX resource and configuration text files are also checked locally with strict file/byte/time limits; only matched indicators and line numbers are retained, never file contents; Windows Recycle Bin $I metadata is checked on C: and D: for selected executable/script/config/archive file types, without reading or restoring deleted file contents; all currently running processes plus Windows Prefetch evidence from the last 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
                 "process_count": len(processes),
-                "indicator_match_count": len(matches),
+                "indicator_match_count": len(matches) + len(file_matches),
+                "unique_indicator_file_count": evidence_quality["unique_indicator_file_count"],
+                "unique_indicator_process_count": evidence_quality["unique_indicator_process_count"],
+                "high_confidence_finding_count": evidence_quality["high_confidence_finding_count"],
+                "medium_confidence_finding_count": evidence_quality["medium_confidence_finding_count"],
+                "low_confidence_finding_count": evidence_quality["low_confidence_finding_count"],
                 "file_count": len(files),
                 "file_artifact_count": len(files),
                 "file_indicator_match_count": len(file_matches),
