@@ -1092,7 +1092,7 @@ class InspectorApp(tk.Tk):
             self.status.set(text)
             names = ("العمليات", "ملفات البرامج", "FiveM / GTA V", "السجلات والموارد", "التحقق والتقرير")
             thresholds = (25, 45, 65, 82, 100)
-            active = next((i for i, edge in enumerate(thresholds) if value < edge), 4)
+            active = next((i for i, edge in enumerate(thresholds) if value < edge), len(thresholds))
             for index, label in enumerate(self.stage_labels):
                 if index < active:
                     label.configure(text="✓  " + names[index], fg="#62e0b0", bg="#142b28")
