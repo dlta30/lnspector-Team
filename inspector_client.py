@@ -1226,22 +1226,6 @@ class InspectorApp(tk.Tk):
         self.progress_percent = tk.Label(progress_row, text="0%", bg=PANEL, fg=RED,
                                           font=("Segoe UI", 11, "bold"), width=5)
         self.progress_percent.pack(side="right", padx=(12, 0))
-        tk.Label(scanbox, text="LIVE SCAN PROGRESS  /  3EN SECURITY ENGINE",
-                 bg=PANEL, fg="#69758c", font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(8, 0))
-
-        # Visible, ordered inspection stages make the scan easier to follow.
-        stages = tk.Frame(scanbox, bg=PANEL)
-        stages.pack(fill="x", pady=(12, 0))
-        self.stage_labels = []
-        stage_names = ("العمليات", "ملفات البرامج", "FiveM / GTA V", "السجلات والموارد", "التحقق والتقرير")
-        for stage_name in stage_names:
-            cell = tk.Frame(stages, bg=PANEL_ALT, padx=8, pady=8,
-                            highlightbackground=LINE, highlightthickness=1)
-            cell.pack(side="left", fill="x", expand=True, padx=(0, 6))
-            label = tk.Label(cell, text="○  " + stage_name, bg=PANEL_ALT, fg=MUTED,
-                             font=("Segoe UI", 8, "bold"), anchor="center")
-            label.pack(fill="x")
-            self.stage_labels.append(label)
 
         controls = tk.Frame(body, bg=BG)
         controls.pack(fill="x", pady=(0, 12))
@@ -1258,16 +1242,7 @@ class InspectorApp(tk.Tk):
             self.progress.configure(value=value)
             self.progress_percent.configure(text=f"{value}%")
             self.status.set(text)
-            names = ("العمليات", "ملفات البرامج", "FiveM / GTA V", "السجلات والموارد", "التحقق والتقرير")
-            thresholds = (25, 45, 65, 82, 100)
-            active = next((i for i, edge in enumerate(thresholds) if value < edge), len(thresholds))
-            for index, label in enumerate(self.stage_labels):
-                if index < active:
-                    label.configure(text="✓  " + names[index], fg="#62e0b0", bg="#142b28")
-                elif index == active:
-                    label.configure(text="●  " + names[index], fg="#ffbd69", bg="#332616")
-                else:
-                    label.configure(text="○  " + names[index], fg="#98a3b8", bg=PANEL_ALT)
+
         self.after(0, paint)
 
     def _close_then_offer_folder(self):
