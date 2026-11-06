@@ -143,8 +143,8 @@ def collect_files(progress, max_files=5000, max_scan_seconds=25):
     home = Path.home()
     local = Path(os.environ.get("LOCALAPPDATA", str(home / "AppData" / "Local")))
     roaming = Path(os.environ.get("APPDATA", str(home / "AppData" / "Roaming")))
-    program_files = Path(os.environ.get("ProgramFiles", r"C:\\Program Files"))
-    program_files_x86 = Path(os.environ.get("ProgramFiles(x86)", r"C:\\Program Files (x86)"))
+    program_files = Path(os.environ.get("ProgramFiles", r"C:\Program Files"))
+    program_files_x86 = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
     # User folders plus common third-party application folders. Do not walk drive roots.
     roots = [
         home / "Downloads", home / "Desktop", home / "Documents",
@@ -658,9 +658,9 @@ def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=1
                         continue
                     lower_path = original_path.casefold()
                     system_path_markers = (
-                        "\\\\windows\\\\", "\\\\programdata\\\\microsoft\\\\",
-                        "\\\\program files\\\\windowsapps\\\\",
-                        "\\\\system volume information\\\\",
+                        "\\windows\\", "\\programdata\\microsoft\\",
+                        "\\program files\\windowsapps\\",
+                        "\\system volume information\\",
                     )
                     if any(marker in lower_path for marker in system_path_markers):
                         continue
@@ -1125,11 +1125,11 @@ class InspectorApp(tk.Tk):
                 "آثار ملفات محذوفة": 3,
                 "ملفات برامج المستخدم": 4,
             }
-            files.sort(key=lambda item: (
-                group_order.get(item.get("scan_group"), 9),
-                0 if item.get("indicator_matches") else 1,
-                item.get("accessed_at") or item.get("modified_at") or item.get("created_at") or ""
-            ), reverse=False)
+            # Stable multi-key ordering: game evidence first, matched indicators next,
+            # then newest available access/modification timestamp within each group.
+            files.sort(key=lambda item: item.get("accessed_at") or item.get("modified_at") or item.get("created_at") or "", reverse=True)
+            files.sort(key=lambda item: 0 if item.get("indicator_matches") else 1)
+            files.sort(key=lambda item: group_order.get(item.get("scan_group"), 9))
             verify_authenticode_signatures(processes, files, self.update_progress)
             recent_apps = collect_recent_apps(processes, self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
