@@ -1236,9 +1236,22 @@ class InspectorApp(tk.Tk):
 
 
 
+def set_windows_app_identity():
+    """Give Windows a stable 3EN identity so the branded EXE icon is used on the taskbar."""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("3EN.Inspect.Team")
+    except Exception:
+        # The window icon below remains the fallback if Windows rejects the AppUserModelID.
+        pass
+
+
 if __name__ == "__main__":
     # PyInstaller --windowed builds need an explicit GUI entry point.
     try:
+        set_windows_app_identity()
         app = InspectorApp()
         app.mainloop()
     except Exception as exc:
