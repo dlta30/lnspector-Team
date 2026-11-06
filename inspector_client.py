@@ -383,8 +383,9 @@ def collect_fivem_artifacts(progress, max_files=8000, max_scan_seconds=35):
         ".log", ".dat", ".bin", ".zip", ".rar", ".7z", ".rpf", ".meta", ".xml"
     }
     excluded_dirs = {
-        "$recycle.bin", "system volume information", "windows", "winsxs",
-        "node_modules", ".git", "__pycache__"
+        "$recycle.bin", "system volume information", "windows", "windows.old",
+        "system32", "syswow64", "winsxs", "servicing", "driverstore",
+        "windowsapps", "programdata", "node_modules", ".git", "__pycache__"
     }
     started = time.monotonic()
     candidates, seen = [], set()
@@ -1033,7 +1034,7 @@ ConvertTo-Json -InputObject @($out) -Compress
             "file_name": (os.path.basename(target) if target else shortcut.stem)[:240],
             "shortcut_name": shortcut.name[:240],
             "target_path": (target[:1200] if target and not is_windows_system_path(target) else None),
-            "recent_shortcut_path": str(shortcut)[:1200],
+            "recent_shortcut_path": "Windows Recent shortcut metadata (system path hidden)",
             "last_accessed_at": utc_timestamp(st.st_mtime),
             "last_accessed_display": display,
             "evidence_source": "Windows Recent folder (.lnk shortcut metadata)",
@@ -1154,6 +1155,9 @@ def collect_processes(progress):
         try:
             info = proc.info
             name = str(info.get("name") or "Unknown")[:180]
+            if name.casefold() in {"system", "registry", "secure system", "memory compression", "smss.exe", "csrss.exe", "wininit.exe", "services.exe", "lsass.exe", "winlogon.exe", "svchost.exe"}:
+                progress(int(i * 25 / total), f"تجاوز عمليات Windows الأساسية {i}/{total}")
+                continue
             exe = str(info.get("exe") or "")[:1000]
             # Exclude Windows OS binaries entirely from the user-facing process inventory.
             if exe and is_windows_system_path(exe):
