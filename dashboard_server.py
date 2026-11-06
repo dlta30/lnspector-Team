@@ -1525,20 +1525,6 @@ def report_detail(report_id):
         <div class="report-metric">ملفات مواقع FiveM<strong>{{ report_data.get('fivem_artifact_count', 0) }}</strong></div>
         <div class="report-metric">مؤشرات FiveM<strong>{{ report_data.get('fivem_indicator_match_count', 0) }}</strong></div>
       </div>
-      <div class="card" style="border-color:#754052;background:linear-gradient(145deg,#17131d,#10131a)">
-        <h2>اعتماد نتيجة المراجعة</h2>
-        <p class="muted">يصل التقرير تلقائيًا إلى اللوحة بعد انتهاء الفحص. اختر التصنيف يدويًا واكتب السبب قبل اعتماده؛ مؤشرات الفحص وحدها لا تثبت وجود هاك.</p>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
-          <span class="tag">الحالة: {% if r['review_verdict']=='clean' %}Clean{% elif r['review_verdict']=='hack' %}Hack{% else %}بانتظار التصنيف{% endif %}</span>
-          {% if r['reviewed_by'] %}<span class="muted">اعتمده: {{ r['reviewed_by'] }} · {{ r['reviewed_at'] or '' }}</span>{% endif %}
-        </div>
-        {% if r['review_reason'] %}<p><b>سبب التصنيف:</b> {{ r['review_reason'] }}</p>{% endif %}
-        {% if r['discord_sent_at'] %}<p class="muted">تم الإرسال إلى Discord: {{ r['discord_sent_at'] }}</p>{% endif %}
-        <form method="post" action="{{ url_for('report_classify',report_id=r['id']) }}" onsubmit="return chooseReportVerdict(this);" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <input type="hidden" name="verdict" value=""><input type="hidden" name="reason" value="">
-          <button class="btn" type="submit" style="background:linear-gradient(120deg,#e72f53,#8f1737);color:#fff;border-color:#ff5b78;font-weight:800">اعتماد Clean / Hack</button>
-        </form>
-      </div>
       <div class="card" id="recent-apps">
         <h2>التطبيقات المستخدمة خلال آخر 24 ساعة</h2>
         <p class="muted">يعرض العمليات التي بدأ تشغيلها خلال آخر 24 ساعة، وسجلات Prefetch في Windows كقرينة تقريبية لآخر تشغيل. قد لا تظهر التطبيقات إذا كان سجل Prefetch معطلاً أو محذوفًا.</p>
@@ -1607,31 +1593,6 @@ def report_detail(report_id):
       <script>(function(){const input=document.getElementById('file-search'),items=Array.from(document.querySelectorAll('[data-file-search]')),none=document.getElementById('file-none');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase();let n=0;items.forEach(el=>{const ok=el.dataset.fileSearch.toLocaleLowerCase().includes(q);el.style.display=ok?'block':'none';if(ok)n++;});if(none)none.style.display=n?'none':'block';});})();</script>
     </div>
     """,r=r,report_data=report_data,processes=processes,visible_processes=visible_processes,process_page=process_page,process_pages=process_pages,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,visible_artifacts=visible_artifacts,artifact_page=artifact_page,artifact_pages=artifact_pages,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"],source_label=source_label,target_label=target_label,recent_apps=recent_apps,visible_recent_apps=visible_recent_apps)
-
-@app.post("/reports/<int:report_id>/classify")
-@login_required
-def report_classify(report_id):
-    actor = current_user()
-    if actor["role"] not in ("owner", "deputy", "inspector"):
-        abort(403)
-    with db() as con:
-        r = con.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
-    if not r:
-        abort(404)
-    if actor["role"] == "inspector" and r["submitted_by"] != "session:" + actor["username"]:
-        abort(403)
-    verdict = request.form.get("verdict", "").strip().lower()
-    reason = request.form.get("reason", "").strip()[:900]
-    if verdict not in ("clean", "hack") or not reason:
-        flash("اختر Clean أو Hack واكتب سبب التصنيف.")
-        return redirect(url_for("report_detail", report_id=report_id))
-    with db() as con:
-        con.execute("UPDATE reports SET review_verdict=?,review_reason=?,reviewed_by=?,reviewed_at=? WHERE id=?",
-                    (verdict, reason, actor["username"], now(), report_id))
-    log_action(actor["username"], "classified report #" + str(report_id) + " as " + verdict)
-    flash("تم حفظ تصنيف التقرير وسببه في لوحة التحكم.")
-    return redirect(url_for("report_detail", report_id=report_id))
-
 
 @app.post("/reports/<int:report_id>/send-discord")
 @login_required
