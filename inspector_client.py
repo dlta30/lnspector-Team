@@ -784,6 +784,81 @@ def collect_recent_apps(processes, progress):
     return recent
 
 
+
+def collect_recent_files(progress, max_entries=500):
+    """Collect Windows Recent-folder shortcut metadata and resolved targets, without opening targets."""
+    import subprocess
+
+    recent_dir = Path(os.environ.get("APPDATA", str(Path.home() / "AppData" / "Roaming"))) / "Microsoft" / "Windows" / "Recent"
+    if not recent_dir.is_dir():
+        progress(91, "مجلد Recent غير متاح")
+        return []
+    entries = []
+    try:
+        for item in recent_dir.iterdir():
+            if item.is_file() and item.suffix.casefold() == ".lnk" and not item.is_symlink():
+                try:
+                    entries.append((item, item.stat()))
+                except OSError:
+                    continue
+    except OSError:
+        return []
+    entries.sort(key=lambda pair: pair[1].st_mtime, reverse=True)
+    entries = entries[:max_entries]
+    targets = {}
+    if entries and platform.system().lower() == "windows":
+        script = r"""
+$ErrorActionPreference = 'SilentlyContinue'
+$shell = New-Object -ComObject WScript.Shell
+$items = @($input | ConvertFrom-Json)
+$out = foreach ($p in $items) {
+  try {
+    $shortcut = $shell.CreateShortcut([string]$p)
+    [PSCustomObject]@{ shortcut = [string]$p; target = [string]$shortcut.TargetPath }
+  } catch {}
+}
+ConvertTo-Json -InputObject @($out) -Compress
+"""
+        try:
+            raw = subprocess.run(
+                ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script],
+                input=json.dumps([str(path) for path, _ in entries]),
+                capture_output=True, text=True, timeout=15,
+                encoding="utf-8", errors="replace",
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            )
+            if raw.returncode == 0 and raw.stdout.strip():
+                parsed = json.loads(raw.stdout.strip())
+                if isinstance(parsed, dict):
+                    parsed = [parsed]
+                targets = {
+                    os.path.normcase(os.path.abspath(row.get("shortcut", ""))): row.get("target", "")
+                    for row in parsed if isinstance(row, dict)
+                }
+        except Exception:
+            targets = {}
+    results = []
+    for shortcut, st in entries:
+        target = targets.get(os.path.normcase(os.path.abspath(str(shortcut))), "")
+        try:
+            display = datetime.fromtimestamp(st.st_mtime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
+        except (ValueError, OSError, OverflowError):
+            display = utc_timestamp(st.st_mtime)
+        results.append({
+            "file_name": (os.path.basename(target) if target else shortcut.stem)[:240],
+            "shortcut_name": shortcut.name[:240],
+            "target_path": target[:1200] if target else None,
+            "recent_shortcut_path": str(shortcut)[:1200],
+            "last_accessed_at": utc_timestamp(st.st_mtime),
+            "last_accessed_display": display,
+            "evidence_source": "Windows Recent folder (.lnk shortcut metadata)",
+            "time_accuracy": "shortcut_timestamp_not_proof_of_open"
+        })
+    progress(92, "اكتمل جمع عناصر Windows Recent: " + str(len(results)))
+    return results
+
+
+
 def verify_authenticode_signatures(processes, artifacts, progress, max_checks=400):
     """Verify Windows Authenticode signatures in batches; unsigned/invalid files are unverified."""
     if platform.system().lower() != "windows":
@@ -1157,6 +1232,7 @@ class InspectorApp(tk.Tk):
             files.sort(key=lambda item: group_order.get(item.get("scan_group"), 9))
             verify_authenticode_signatures(processes, files, self.update_progress)
             recent_apps = collect_recent_apps(processes, self.update_progress)
+            recent_files = collect_recent_files(self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
             file_matches = [item for item in files if item["indicator_matches"]]
             fivem_matches = [item for item in fivem_files if item["indicator_matches"]]
@@ -1184,6 +1260,8 @@ class InspectorApp(tk.Tk):
                 "file_artifacts": files,
                 "recent_apps_24h": recent_apps,
                 "recent_apps_24h_count": len(recent_apps),
+                "recent_files": recent_files,
+                "recent_files_count": len(recent_files),
                 "signature_verified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "verified"),
                 "signature_unverified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "unverified"),
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
