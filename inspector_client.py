@@ -216,16 +216,19 @@ def collect_files(progress, max_files=15000, max_scan_seconds=75):
         too_large = st.st_size > 250 * 1024 * 1024
         created = utc_timestamp(st.st_ctime)
         modified = utc_timestamp(st.st_mtime)
+        accessed = utc_timestamp(st.st_atime)
         try:
             display_date = datetime.fromtimestamp(st.st_mtime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
             created_display = datetime.fromtimestamp(st.st_ctime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
+            accessed_display = datetime.fromtimestamp(st.st_atime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
         except (ValueError, OSError, OverflowError):
-            display_date, created_display = modified, created
+            display_date, created_display, accessed_display = modified, created, accessed
 
         digest = sha256_file(path) if kind == "file" and matches and not too_large else None
         rows.append({
             "artifact_type": kind, "file_name": name[:260], "path": path[:1500],
             "size_bytes": int(st.st_size), "created_at": created, "created_display": created_display,
+            "accessed_at": accessed, "accessed_display": accessed_display,
             "modified_at": modified, "modified_display": display_date, "sha256": digest,
             "hash_skipped_large_file": too_large, "indicator_matches": list(dict.fromkeys(matches)),
             "context_flags": context_flags,
@@ -317,11 +320,13 @@ def collect_fivem_artifacts(progress, max_files=8000, max_scan_seconds=35):
         too_large = st.st_size > 250 * 1024 * 1024
         created = utc_timestamp(st.st_ctime)
         modified = utc_timestamp(st.st_mtime)
+        accessed = utc_timestamp(st.st_atime)
         try:
             modified_display = datetime.fromtimestamp(st.st_mtime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
             created_display = datetime.fromtimestamp(st.st_ctime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
+            accessed_display = datetime.fromtimestamp(st.st_atime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
         except (ValueError, OSError, OverflowError):
-            modified_display, created_display = modified, created
+            modified_display, created_display, accessed_display = modified, created, accessed
         ext = Path(name).suffix.casefold()
         digest = sha256_file(path) if matches and not too_large else None
         rows.append({
@@ -329,7 +334,8 @@ def collect_fivem_artifacts(progress, max_files=8000, max_scan_seconds=35):
             "source": "FiveM/GTA V targeted locations",
             "file_name": name[:260], "path": path[:1500],
             "size_bytes": int(st.st_size), "created_at": created,
-            "created_display": created_display, "modified_at": modified,
+            "created_display": created_display, "accessed_at": accessed,
+            "accessed_display": accessed_display, "modified_at": modified,
             "modified_display": modified_display, "sha256": digest,
             "hash_skipped_large_file": too_large,
             "indicator_matches": matches,
@@ -1087,6 +1093,8 @@ class InspectorApp(tk.Tk):
             files.extend(fivem_log_findings)
             files.extend(fivem_script_findings)
             files.extend(deleted_file_findings)
+            # Newest available last-access timestamp first; fall back to last modification.
+            files.sort(key=lambda item: item.get("accessed_at") or item.get("modified_at") or item.get("created_at") or "", reverse=True)
             verify_authenticode_signatures(processes, files, self.update_progress)
             recent_apps = collect_recent_apps(processes, self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
