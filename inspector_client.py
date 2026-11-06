@@ -1057,8 +1057,11 @@ def collect_processes(progress):
             info = proc.info
             name = str(info.get("name") or "Unknown")[:180]
             exe = str(info.get("exe") or "")[:1000]
-            # Windows components are never classified as cheat evidence.
-            matches = [] if is_windows_system_path(exe) else find_indicator_matches(name, exe)
+            # Exclude Windows OS binaries entirely from the user-facing process inventory.
+            if exe and is_windows_system_path(exe):
+                progress(int(i * 25 / total), f"تجاوز ملفات وعمليات Windows النظامية {i}/{total}")
+                continue
+            matches = find_indicator_matches(name, exe)
             exists = bool(exe and os.path.isfile(exe))
             digest = sha256_file(exe) if exists and matches else None
             file_created = file_modified = None
