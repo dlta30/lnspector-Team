@@ -136,50 +136,69 @@ def find_indicator_matches(name, path, indicators=None):
     return list(dict.fromkeys(matches))
 
 
-def collect_files(progress, max_files=10000, max_scan_seconds=45):
-    """Bounded metadata inventory for C:/D:. Never execute or open files/archives."""
+def collect_files(progress, max_files=5000, max_scan_seconds=25):
+    """Bounded inventory of user-facing app files only; Windows/system locations are never traversed."""
     import time
 
-    allowed_extensions = {".exe", ".dll", ".zip", ".rar"}
+    home = Path.home()
+    local = Path(os.environ.get("LOCALAPPDATA", str(home / "AppData" / "Local")))
+    roaming = Path(os.environ.get("APPDATA", str(home / "AppData" / "Roaming")))
+    program_files = Path(os.environ.get("ProgramFiles", r"C:\\Program Files"))
+    program_files_x86 = Path(os.environ.get("ProgramFiles(x86)", r"C:\\Program Files (x86)"))
+    # User folders plus common third-party application folders. Do not walk drive roots.
+    roots = [
+        home / "Downloads", home / "Desktop", home / "Documents",
+        local / "Programs", roaming,
+        program_files / "Google", program_files / "Epic Games",
+        program_files / "Rockstar Games", program_files / "Steam",
+        program_files_x86 / "Google", program_files_x86 / "Epic Games",
+        program_files_x86 / "Rockstar Games", program_files_x86 / "Steam",
+    ]
+    allowed_extensions = {".exe", ".dll", ".zip", ".rar", ".7z"}
     excluded_dirs = {
-        "windows", "$recycle.bin", "system volume information", "perflogs",
-        "recovery", "config.msi", "winsxs", "servicing", "softwaredistribution",
-        "node_modules", ".git", "__pycache__", "cache", "caches", "windowsapps",
-        "windows defender", "package cache", "installer", "temp"
+        "windows", "system32", "syswow64", "winsxs", "servicing",
+        "system volume information", "$recycle.bin", "perflogs", "recovery",
+        "config.msi", "softwaredistribution", "windowsapps", "windows defender",
+        "defender", "driverstore", "drivers", "installer", "package cache",
+        "common files", "crashdumps", "cache", "caches", "code cache",
+        "gpuCache".casefold(), "temp", "tmp", "node_modules", ".git",
+        "__pycache__", "cef", "browser",
     }
-    roots = [f"{drive}:\\" for drive in ("C", "D") if os.path.isdir(f"{drive}:\\")]
+    excluded_path_markers = (
+        "\\microsoft\\windows\\", "\\windows defender\\",
+        "\\windowsapps\\", "\\system32\\", "\\syswow64\\",
+        "\\winsxs\\", "\\driverstore\\", "\\programdata\\",
+    )
     candidates, seen = [], set()
     started = time.monotonic()
     last_progress = started
     stopped_early = False
 
     for root in roots:
-        for current, dirs, names in os.walk(root, topdown=True, followlinks=False):
+        if not root.is_dir():
+            continue
+        for current, dirs, names in os.walk(str(root), topdown=True, followlinks=False):
             now = time.monotonic()
             if len(candidates) >= max_files or now - started >= max_scan_seconds:
                 stopped_early = True
                 break
-
-            rel_parts = os.path.relpath(current, root).split(os.sep)
-            if any(part.casefold() in excluded_dirs for part in rel_parts):
+            current_lower = os.path.abspath(current).casefold()
+            if any(marker in current_lower for marker in excluded_path_markers):
                 dirs[:] = []
                 continue
-
             dirs[:] = [
                 d for d in dirs
                 if d.casefold() not in excluded_dirs
-                and not os.path.islink(os.path.join(current, d))
                 and not d.casefold().startswith(("windows.", "$"))
+                and not os.path.islink(os.path.join(current, d))
             ]
-            in_mods_ai = any(part.casefold() in {"mods", "ai"} for part in Path(current).parts)
-
             for name in names:
-                path = os.path.join(current, name)
-                extension = os.path.splitext(name)[1].casefold()
-                matches = find_indicator_matches(name, current)
-                # Keep the inventory strictly limited to the four declared file types.
-                # Indicator-name matches and Mods/AI folder context must never expand the scope.
+                extension = Path(name).suffix.casefold()
                 if extension not in allowed_extensions:
+                    continue
+                path = os.path.join(current, name)
+                path_lower = os.path.abspath(path).casefold()
+                if any(marker in path_lower for marker in excluded_path_markers):
                     continue
                 try:
                     if os.path.islink(path) or not os.path.isfile(path):
@@ -188,17 +207,16 @@ def collect_files(progress, max_files=10000, max_scan_seconds=45):
                     if key in seen:
                         continue
                     seen.add(key)
-                    candidates.append(("file", path, os.stat(path)))
+                    candidates.append((path, os.stat(path)))
                 except OSError:
                     continue
                 if len(candidates) >= max_files or time.monotonic() - started >= max_scan_seconds:
                     stopped_early = True
                     break
-
             now = time.monotonic()
             if now - last_progress >= 2:
-                pct = 25 + int(min((now - started) / max_scan_seconds, 1.0) * 20)
-                progress(pct, f"استكشاف الملفات... جُمِع {len(candidates):,} عنصر")
+                pct = 25 + int(min((now - started) / max_scan_seconds, 1.0) * 15)
+                progress(pct, f"فحص ملفات البرامج ومجلدات المستخدم فقط... {len(candidates):,} ملف")
                 last_progress = now
             if stopped_early:
                 break
@@ -207,42 +225,43 @@ def collect_files(progress, max_files=10000, max_scan_seconds=45):
 
     rows = []
     total = max(len(candidates), 1)
-    for i, (kind, path, st) in enumerate(candidates, 1):
+    for i, (path, st) in enumerate(candidates, 1):
         name = os.path.basename(path)
         matches = find_indicator_matches(name, path)
-        context_flags = [ "Mods/AI folder context" ] if any(
-            part.casefold() in {"mods", "ai"} for part in Path(path).parts
-        ) else []
         too_large = st.st_size > 250 * 1024 * 1024
         created = utc_timestamp(st.st_ctime)
         modified = utc_timestamp(st.st_mtime)
         accessed = utc_timestamp(st.st_atime)
         try:
-            display_date = datetime.fromtimestamp(st.st_mtime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
+            modified_display = datetime.fromtimestamp(st.st_mtime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
             created_display = datetime.fromtimestamp(st.st_ctime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
             accessed_display = datetime.fromtimestamp(st.st_atime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
         except (ValueError, OSError, OverflowError):
-            display_date, created_display, accessed_display = modified, created, accessed
-
-        digest = sha256_file(path) if kind == "file" and matches and not too_large else None
+            modified_display, created_display, accessed_display = modified, created, accessed
+        digest = sha256_file(path) if matches and not too_large else None
         rows.append({
-            "artifact_type": kind, "file_name": name[:260], "path": path[:1500],
-            "size_bytes": int(st.st_size), "created_at": created, "created_display": created_display,
-            "accessed_at": accessed, "accessed_display": accessed_display,
-            "modified_at": modified, "modified_display": display_date, "sha256": digest,
-            "hash_skipped_large_file": too_large, "indicator_matches": list(dict.fromkeys(matches)),
-            "context_flags": context_flags,
-            "indicator_category": "مؤشرات حركة" if any(term in matches for term in ("ad movement", "filter key", "scod", "cr-fastrun")) else ("مؤشرات هاك/غش" if matches else "لا توجد مطابقة اسمية"),
+            "artifact_type": "User application file",
+            "scan_group": "ملفات برامج المستخدم",
+            "source": "User folders / selected third-party app locations",
+            "file_name": name[:260], "path": path[:1500],
+            "size_bytes": int(st.st_size), "created_at": created,
+            "created_display": created_display, "accessed_at": accessed,
+            "accessed_display": accessed_display, "modified_at": modified,
+            "modified_display": modified_display, "sha256": digest,
+            "hash_skipped_large_file": too_large,
+            "indicator_matches": list(dict.fromkeys(matches)),
+            "context_flags": ["User/application location"],
+            "indicator_category": "مؤشرات هاك/غش" if matches else "لا توجد مطابقة اسمية",
             "assessment": "review" if matches else "metadata_only",
-            "signature_status": "pending" if kind == "file" and os.path.splitext(name)[1].casefold() in {".exe", ".dll"} else "not_checked",
-            "signature_label": "جارٍ التحقق" if kind == "file" and os.path.splitext(name)[1].casefold() in {".exe", ".dll"} else "غير موثق — لا يوجد توقيع رقمي قابل للتحقق لهذا النوع"
+            "signature_status": "pending" if Path(name).suffix.casefold() in {".exe", ".dll"} else "not_checked",
+            "signature_label": "جارٍ التحقق" if Path(name).suffix.casefold() in {".exe", ".dll"} else "لا ينطبق أو لم يتم التحقق"
         })
         if i % 100 == 0 or i == total:
-            progress(45 + int(i * 20 / total), f"تجهيز بيانات الملفات... {i:,}/{total:,}")
+            progress(40 + int(i * 15 / total), f"ترتيب ملفات البرامج... {i:,}/{total:,}")
 
-    rows.sort(key=lambda row: row.get("modified_at") or "", reverse=True)
+    rows.sort(key=lambda row: row.get("accessed_at") or row.get("modified_at") or row.get("created_at") or "", reverse=True)
     if stopped_early:
-        progress(65, f"اكتمل الجزء المحدد زمنيًا: {len(rows):,} عنصر (حد الفحص {max_scan_seconds} ثانية)")
+        progress(55, f"اكتمل فحص ملفات المستخدم والبرامج ضمن الحدود: {len(rows):,} ملف")
     return rows
 
 
@@ -331,6 +350,7 @@ def collect_fivem_artifacts(progress, max_files=8000, max_scan_seconds=35):
         digest = sha256_file(path) if matches and not too_large else None
         rows.append({
             "artifact_type": "FiveM/GTA V file",
+            "scan_group": "ملفات FiveM وGTA V",
             "source": "FiveM/GTA V targeted locations",
             "file_name": name[:260], "path": path[:1500],
             "size_bytes": int(st.st_size), "created_at": created,
@@ -430,6 +450,7 @@ def collect_fivem_log_evidence(progress, max_files=250, max_file_bytes=2_000_000
                 local_time = datetime.fromtimestamp(st.st_mtime).astimezone()
                 findings.append({
                     "artifact_type": "FiveM/CitizenFX log indicator",
+                    "scan_group": "سجلات FiveM وCitizenFX",
                     "source": "Targeted FiveM/CitizenFX text-log inspection",
                     "file_name": os.path.basename(path)[:260],
                     "path": path[:1500],
@@ -550,6 +571,7 @@ def collect_fivem_script_evidence(progress, max_files=1000, max_file_bytes=512_0
                     line_map[key] = values[:30]
                 findings.append({
                     "artifact_type": "FiveM resource/script/config indicator",
+                    "scan_group": "سكربتات وإعدادات FiveM",
                     "source": "Local FiveM/CitizenFX resource and configuration inspection",
                     "file_name": os.path.basename(path)[:260],
                     "file_path": path[:1500],
@@ -635,6 +657,13 @@ def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=1
                     if extension not in interesting_extensions:
                         continue
                     lower_path = original_path.casefold()
+                    system_path_markers = (
+                        "\\\\windows\\\\", "\\\\programdata\\\\microsoft\\\\",
+                        "\\\\program files\\\\windowsapps\\\\",
+                        "\\\\system volume information\\\\",
+                    )
+                    if any(marker in lower_path for marker in system_path_markers):
+                        continue
                     matched = [term for term in suspicious_terms if term in lower_path]
                     game_context = "FiveM/GTA V" if any(term in lower_path for term in fivem_terms) else None
                     recycle_payload = sid_dir / ("$R" + info_path.name[2:])
@@ -656,6 +685,7 @@ def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=1
                         "file_name": original_name,
                         "file_path": f"Recycle Bin metadata / {folder_hint}",
                         "source": "Windows Recycle Bin ($I metadata)",
+                        "scan_group": "آثار ملفات محذوفة",
                         "kind": "deleted_file_metadata",
                         "deleted_at": deleted_at_iso,
                         "original_size": int(original_size),
@@ -1075,7 +1105,7 @@ class InspectorApp(tk.Tk):
     def _scan_worker(self):
         try:
             processes = collect_processes(self.update_progress)
-            files = collect_files(self.update_progress, max_files=10000, max_scan_seconds=45)
+            files = collect_files(self.update_progress, max_files=5000, max_scan_seconds=25)
             fivem_files = collect_fivem_artifacts(self.update_progress)
             fivem_log_findings = collect_fivem_log_evidence(self.update_progress)
             fivem_script_findings = collect_fivem_script_evidence(self.update_progress)
@@ -1088,7 +1118,18 @@ class InspectorApp(tk.Tk):
             files.extend(fivem_script_findings)
             files.extend(deleted_file_findings)
             # Newest available last-access timestamp first; fall back to last modification.
-            files.sort(key=lambda item: item.get("accessed_at") or item.get("modified_at") or item.get("created_at") or "", reverse=True)
+            group_order = {
+                "ملفات FiveM وGTA V": 0,
+                "سجلات FiveM وCitizenFX": 1,
+                "سكربتات وإعدادات FiveM": 2,
+                "آثار ملفات محذوفة": 3,
+                "ملفات برامج المستخدم": 4,
+            }
+            files.sort(key=lambda item: (
+                group_order.get(item.get("scan_group"), 9),
+                0 if item.get("indicator_matches") else 1,
+                item.get("accessed_at") or item.get("modified_at") or item.get("created_at") or ""
+            ), reverse=False)
             verify_authenticode_signatures(processes, files, self.update_progress)
             recent_apps = collect_recent_apps(processes, self.update_progress)
             matches = [p for p in processes if p["indicator_matches"]]
@@ -1100,7 +1141,7 @@ class InspectorApp(tk.Tk):
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "Bounded metadata inventory of C: and D: (up to 10,000 items or 45 seconds), excluding Windows/system folders; plus targeted FiveM/GTA V install, CitizenFX, and user Documents locations (up to 8,000 items or 35 seconds; EXE/DLL/ASI/LUA/LUAC/JSON/CFG/INI/LOG/DAT/BIN/ZIP/RAR/7Z/RPF/META/XML); selected FiveM/CitizenFX text logs are scanned with strict file/byte/time limits and only marker names and line numbers are reported, never log contents; selected FiveM/CitizenFX resource and configuration text files are also checked locally with strict file/byte/time limits; only matched indicators and line numbers are retained, never file contents; Windows Recycle Bin $I metadata is checked on C: and D: for selected executable/script/config/archive file types, without reading or restoring deleted file contents; all currently running processes plus Windows Prefetch evidence from the last 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
+                "scan_scope": "Bounded inventory of user folders and selected third-party app locations only (up to 5,000 items or 25 seconds); Windows/system directories and Windows components are not traversed; plus targeted FiveM/GTA V install, CitizenFX, and user Documents locations (up to 8,000 items or 35 seconds; EXE/DLL/ASI/LUA/LUAC/JSON/CFG/INI/LOG/DAT/BIN/ZIP/RAR/7Z/RPF/META/XML); selected FiveM/CitizenFX text logs are scanned with strict file/byte/time limits and only marker names and line numbers are reported, never log contents; selected FiveM/CitizenFX resource and configuration text files are also checked locally with strict file/byte/time limits; only matched indicators and line numbers are retained, never file contents; Windows Recycle Bin $I metadata is checked on C: and D: for selected executable/script/config/archive file types, without reading or restoring deleted file contents; all currently running processes plus Windows Prefetch evidence from the last 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches),
                 "file_count": len(files),
@@ -1121,7 +1162,7 @@ class InspectorApp(tk.Tk):
                 "signature_verified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "verified"),
                 "signature_unverified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "unverified"),
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded general inventory plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. Selected FiveM/CitizenFX text logs are checked locally for specific known tool markers; only marker names and line numbers are retained, never log text. Selected FiveM resource/configuration text files are also checked locally for known tool names and combinations of gameplay-manipulation indicators; only matched marker names and line numbers are retained, never file text. Windows Recycle Bin metadata is also checked for selected security-relevant file types; only filename, approximate deletion time, size, and a coarse folder category are retained, not the original full path or deleted contents. This does not detect every permanently deleted file and does not perform recovery. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened; only selected FiveM/CitizenFX text logs are read locally for specific known markers, and their text is never uploaded; file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. A full-desktop screenshot is captured and retained with the report only when the separate screenshot-consent option is selected; otherwise no screenshot is taken. No files are modified and no processes are terminated.",
+                "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded user/application-file inventory with Windows/system locations excluded, plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. Selected FiveM/CitizenFX text logs are checked locally for specific known tool markers; only marker names and line numbers are retained, never log text. Selected FiveM resource/configuration text files are also checked locally for known tool names and combinations of gameplay-manipulation indicators; only matched marker names and line numbers are retained, never file text. Windows Recycle Bin metadata is also checked for selected security-relevant file types; only filename, approximate deletion time, size, and a coarse folder category are retained, not the original full path or deleted contents. This does not detect every permanently deleted file and does not perform recovery. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened; only selected FiveM/CitizenFX text logs are read locally for specific known markers, and their text is never uploaded; file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. A full-desktop screenshot is captured and retained with the report only when the separate screenshot-consent option is selected; otherwise no screenshot is taken. No files are modified and no processes are terminated.",
                 "processes": processes,
             }
             self.update_progress(100, "اكتمل الفحص وتجهيز التقرير.")
