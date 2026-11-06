@@ -83,55 +83,49 @@ def utc_timestamp(value):
 
 
 def build_indicator_terms():
-    return tuple(dict.fromkeys(SUSPICIOUS_TERMS + (
-        "eulen", "menyo", "tiago", "tiago modz", "taigomodz", "falloutmenu",
-        "cobramenu", "lux", "lux menu", "dopamine menu", "lua menu", "phantom",
-        "monstermenu", "chiken's menu", "mysterious", "zentrix", "lambda", "lamda",
-        "vmenu", "fivesense_v2", "swoopiexyz fivem", "swoopiexyz", "kekhack",
-        "nitwit", "rely", "nove store", "redengine", "red engine", "mod menu.rar",
-        "hack_fivem", "fivem mod menu", "mod gta", "modz gta", "fivem esp",
-        "fivem wallhack", "fivem cheat no ban", "hack", "ai", "0x32",
-        "sleezy spoofer", "aura spoofer", "escape service hack", "hazar",
-        "fivemock", "loey", "duk_3", "ad movement", "filter key", "scod",
-        "cr-fastrun", "loader.cfg", "loader", "loader.prod", "loader.global",
-        "launcher", "injector", "lua injector", "lua executor", "gh injector",
-        "gh enjector", "extreme injector", "winject", "asi plugin bypass",
-        "cheat engine", "cheatengine", "cheat .rar", "ali_unban_method.pdf",
-        "unknowncheats", "dumper", "decrypter", "bypass", "resource blocker",
-        "memeproj.global", "loading.global", "rxexv3", "cff", "hjaldrgo",
-        "ice breaker", "popstar", "lovex", "zc-firerate", "zc-firerate (alt version)",
-        "zc-mp_f_freemode", "zc-explosiveammo", "zc-pedlight", "zc-electricammo",
-        "zc-pedabilities", "zc-pedabilities v3", "zc-increasedrange",
-        "zc-weaponmodifier", "zc-infiniteammo", "zc-damageboost",
-        "zc-bulletpenetration", "no_recoil.rpf", "no_recoil", "ladders.meta",
-        "remove_roll.rpf", "aml.lua", "fast_playboi_mods", "pedaccuracy.meta",
-        "weaponcomponents.meta", "weaponanimation.meta", "bsk_skills",
-        "bsk_skills.rpf", "quickenter", "quickenter.rpf"
-    )))
+    # Keep only distinctive cheat/tool identifiers. Generic words such as
+    # hack, loader, launcher, injector, bypass and phantom create false positives.
+    return (
+        "eulen", "redengine", "red engine", "lynx", "lambda menu",
+        "menyo", "tiago modz", "taigomodz", "falloutmenu", "cobramenu",
+        "dopamine menu", "monstermenu", "fivesense_v2", "swoopiexyz",
+        "kekhack", "nove store", "sleezy spoofer", "aura spoofer",
+        "fivem mod menu", "fivem esp", "fivem wallhack",
+        "extreme injector", "winject", "cheat engine", "cheatengine",
+        "unknowncheats", "resource blocker", "rxexv3", "hjaldrgo",
+        "zc-firerate", "zc-mp_f_freemode", "zc-explosiveammo",
+        "zc-pedlight", "zc-electricammo", "zc-pedabilities",
+        "zc-increasedrange", "zc-weaponmodifier", "zc-infiniteammo",
+        "zc-damageboost", "zc-bulletpenetration", "no_recoil",
+        "remove_roll.rpf", "fast_playboi_mods", "bsk_skills",
+        "quickenter.rpf", "cr-fastrun", "fivemock",
+    )
 
 
 INDICATOR_TERMS = build_indicator_terms()
 
 
+def is_windows_system_path(path):
+    """Return True for Windows OS, component-store, driver and protected app paths."""
+    value = os.path.abspath(str(path or "")).replace("/", "\\").casefold()
+    markers = (
+        "\\windows\\", "\\programdata\\microsoft\\",
+        "\\system volume information\\", "\\$recycle.bin\\",
+        "\\windowsapps\\", "\\driverstore\\", "\\winsxs\\", "\\servicing\\",
+    )
+    return any(marker in value for marker in markers)
+
+
 def find_indicator_matches(name, path, indicators=None):
     indicators = indicators or INDICATOR_TERMS
-    name_text = str(name or "").casefold()
-    path_text = str(path or "").casefold()
-    combined = name_text + " " + path_text
+    if is_windows_system_path(path):
+        return []
+    combined = (str(name or "") + " " + str(path or "")).casefold()
     matches = []
-    basename = os.path.basename(str(path or name or "")).casefold()
-    stem = os.path.splitext(basename)[0]
-    exact_token_terms = {"lux", "hack", "ai", "loader", "launcher", "injector", "cff", "scod", "hazar", "loey"}
     for term in indicators:
-        if term in exact_token_terms:
-            if term == "ai":
-                supplied_name = str(name or "").strip().casefold()
-                matched = stem == "ai" or os.path.splitext(supplied_name)[0] == "ai"
-            else:
-                matched = bool(re.search(r"(?<![a-z0-9])" + re.escape(term) + r"(?![a-z0-9])", combined))
-            if matched:
-                matches.append(term)
-        elif term in combined:
+        # Distinctive names must be complete tokens, not incidental substrings.
+        pattern = r"(?<![a-z0-9])" + re.escape(term.casefold()) + r"(?![a-z0-9])"
+        if re.search(pattern, combined):
             matches.append(term)
     return list(dict.fromkeys(matches))
 
@@ -1063,7 +1057,8 @@ def collect_processes(progress):
             info = proc.info
             name = str(info.get("name") or "Unknown")[:180]
             exe = str(info.get("exe") or "")[:1000]
-            matches = find_indicator_matches(name, exe)
+            # Windows components are never classified as cheat evidence.
+            matches = [] if is_windows_system_path(exe) else find_indicator_matches(name, exe)
             exists = bool(exe and os.path.isfile(exe))
             digest = sha256_file(exe) if exists and matches else None
             file_created = file_modified = None
