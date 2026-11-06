@@ -161,6 +161,7 @@ def collect_files(progress, max_files=5000, max_scan_seconds=25):
         "config.msi", "softwaredistribution", "windowsapps", "windows defender",
         "defender", "driverstore", "drivers", "installer", "package cache",
         "common files", "crashdumps", "cache", "caches", "code cache",
+        "microsoft", "windows", "packages", "start menu", "application data",
         "gpuCache".casefold(), "temp", "tmp", "node_modules", ".git",
         "__pycache__", "cef", "browser",
     }
@@ -1010,9 +1011,9 @@ class InspectorApp(tk.Tk):
 
         heading = tk.Frame(body, bg=BG)
         heading.pack(fill="x", pady=(0, 14))
-        tk.Label(heading, text="فحص أمان الجهاز", bg=BG, fg=WHITE,
+        tk.Label(heading, text="3EN  /  فحص FiveM وGTA V", bg=BG, fg=WHITE,
                  font=("Segoe UI", 23, "bold")).pack(anchor="w")
-        tk.Label(heading, text="موافقة واحدة للفحص، ثم يبدأ مباشرة — ستظهر حالة التقدم هنا.",
+        tk.Label(heading, text="فحص موجّه ومنظّم لمجلدات اللعبة والموارد والسجلات، مع استبعاد مجلدات Windows وملفات النظام.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(4, 0))
 
         # Keep metric variables for report processing without displaying extra cards.
@@ -1028,7 +1029,7 @@ class InspectorApp(tk.Tk):
         self.consent_scan = tk.BooleanVar(value=False)
         self.consent_screenshot = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على إجراء فحص الجهاز: مراجعة العمليات والتطبيقات المستخدمة خلال آخر 24 ساعة، وفحص بيانات الملفات في C: وD: ومواقع FiveM/GTA V وCitizenFX، والتحقق من التوقيعات الرقمية، وتحليل سجلات وملفات الإعدادات بحثًا عن مؤشرات معروفة. يُرسل إلى لوحة الفحص تقرير البيانات الوصفية والمؤشرات ومواقع/أرقام الأسطر فقط؛ لا تُرفع محتويات الملفات أو نصوص السجلات ولا تُنفّذ الملفات.",
+            text="أوافق على فحص العمليات ومجلدات البرامج المحددة وملفات FiveM/GTA V وCitizenFX والسجلات والموارد، والتحقق من التوقيعات الرقمية. لا يجري فحصًا شاملًا لمجلدات Windows أو ملفات النظام. تُفحص آثار سلة المحذوفات على C: وD: كبيانات وصفية فقط. يُرسل التقرير مع أسماء المؤشرات والمسارات وأرقام الأسطر؛ لا تُرفع محتويات الملفات أو نصوص السجلات ولا تُنفّذ الملفات.",
             variable=self.consent_scan, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
@@ -1060,6 +1061,20 @@ class InspectorApp(tk.Tk):
         tk.Label(scanbox, text="LIVE SCAN PROGRESS  /  3EN SECURITY ENGINE",
                  bg=PANEL, fg="#69758c", font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(8, 0))
 
+        # Visible, ordered inspection stages make the scan easier to follow.
+        stages = tk.Frame(scanbox, bg=PANEL)
+        stages.pack(fill="x", pady=(12, 0))
+        self.stage_labels = []
+        stage_names = ("العمليات", "ملفات البرامج", "FiveM / GTA V", "السجلات والموارد", "التحقق والتقرير")
+        for stage_name in stage_names:
+            cell = tk.Frame(stages, bg=PANEL_ALT, padx=8, pady=8,
+                            highlightbackground=LINE, highlightthickness=1)
+            cell.pack(side="left", fill="x", expand=True, padx=(0, 6))
+            label = tk.Label(cell, text="○  " + stage_name, bg=PANEL_ALT, fg=MUTED,
+                             font=("Segoe UI", 8, "bold"), anchor="center")
+            label.pack(fill="x")
+            self.stage_labels.append(label)
+
         controls = tk.Frame(body, bg=BG)
         controls.pack(fill="x", pady=(0, 12))
         self.start_button = ttk.Button(controls, text="▶   بدء الفحص", command=self.start)
@@ -1075,6 +1090,16 @@ class InspectorApp(tk.Tk):
             self.progress.configure(value=value)
             self.progress_percent.configure(text=f"{value}%")
             self.status.set(text)
+            names = ("العمليات", "ملفات البرامج", "FiveM / GTA V", "السجلات والموارد", "التحقق والتقرير")
+            thresholds = (25, 45, 65, 82, 100)
+            active = next((i for i, edge in enumerate(thresholds) if value < edge), 4)
+            for index, label in enumerate(self.stage_labels):
+                if index < active:
+                    label.configure(text="✓  " + names[index], fg="#62e0b0", bg="#142b28")
+                elif index == active:
+                    label.configure(text="●  " + names[index], fg="#ffbd69", bg="#332616")
+                else:
+                    label.configure(text="○  " + names[index], fg="#98a3b8", bg=PANEL_ALT)
         self.after(0, paint)
 
     def _close_then_offer_folder(self):
