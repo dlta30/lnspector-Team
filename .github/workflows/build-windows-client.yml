@@ -55,34 +55,38 @@ jobs:
           "@ | Set-Content -Encoding utf8 session_config.py
       - name: Generate 3EN application icon
         run: python make_icon.py
-      - name: Build standalone EXE
+      - name: Build standard Windows app bundle
         shell: pwsh
         env:
           SESSION_CODE: ${{ inputs.session_code }}
         run: |
           $name = "3eN-Inspect"
           if ($env:SESSION_CODE) { $name = "$name-$($env:SESSION_CODE.ToUpper())" }
-          # Build a single portable EXE; no UPX, packer, or obfuscation is used.
+          # Use onedir instead of onefile: avoids the self-extracting single-file bootloader.
+          # No UPX, packer, obfuscation, or security-tool exclusions are used.
           if (Test-Path "session_config.py") {
-            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --hidden-import session_config inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --hidden-import session_config inspector_client.py
           } else {
-            python -m PyInstaller --noconfirm --clean --noupx --onefile --windowed --name $name --icon 3en.ico --add-data "3en.ico;." inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --icon 3en.ico --add-data "3en.ico;." inspector_client.py
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $exe = Get-ChildItem "dist" -Filter "$name.exe" -File -Recurse | Select-Object -First 1
-          if (-not $exe) { throw "EXE was not created for: $name" }
-      - name: Verify and record EXE hash
+          $exe = Join-Path (Join-Path "dist" $name) "$name.exe"
+          if (-not (Test-Path $exe)) { throw "EXE was not created for: $name" }
+          Compress-Archive -Path (Join-Path "dist" $name "*") -DestinationPath (Join-Path "dist" "$name.zip") -Force
+      - name: Verify EXE and record SHA-256
         shell: pwsh
         run: |
-          $exe = Get-ChildItem "dist" -Filter "*.exe" -File | Select-Object -First 1
-          if (-not $exe) { throw "Single-file EXE was not created." }
+          $exe = Get-ChildItem "dist" -Filter "*.exe" -File -Recurse | Select-Object -First 1
+          if (-not $exe) { throw "Application EXE was not created." }
           if ($exe.Length -lt 1000000) { throw "EXE is unexpectedly small; refusing to publish." }
           $hash = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLower()
-          Write-Host "Single EXE SHA-256: $hash"
-      - name: Upload only the session EXE
+          Write-Host "Application EXE SHA-256: $hash"
+          $zip = Get-ChildItem "dist" -Filter "*.zip" -File | Select-Object -First 1
+          if (-not $zip) { throw "Application bundle ZIP was not created." }
+      - name: Upload the application bundle
         uses: actions/upload-artifact@v4
         with:
           name: 3eN-Inspect-${{ inputs.session_code || 'Generic' }}
-          path: dist/*.exe
+          path: dist/*.zip
           if-no-files-found: error
           retention-days: 14
