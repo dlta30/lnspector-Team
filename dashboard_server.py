@@ -1159,24 +1159,35 @@ def download_session_build(code):
         import zipfile
         from flask import send_file
         expected_exe = "3eN-Inspect-" + code + ".exe"
+        expected_bundle = "3eN-Inspect-" + code + ".zip"
+        # The Windows workflow now builds an onedir application. Keep its
+        # complete bundle intact; extracting only the EXE drops _internal DLLs.
         with zipfile.ZipFile(BytesIO(data)) as artifact_zip:
-            exe_name = next((name for name in artifact_zip.namelist()
+            bundle_name = next((name for name in artifact_zip.namelist()
+                                if name.rsplit("/", 1)[-1].lower() == expected_bundle.lower()), None)
+            if not bundle_name:
+                raise RuntimeError("The session application bundle is missing from the GitHub artifact")
+            bundle_data = artifact_zip.read(bundle_name)
+        if not bundle_data or not bundle_data.startswith(b"PK"):
+            raise RuntimeError("The downloaded session bundle is not a valid ZIP archive")
+        with zipfile.ZipFile(BytesIO(bundle_data)) as app_bundle:
+            names = app_bundle.namelist()
+            exe_name = next((name for name in names
                              if name.rsplit("/", 1)[-1].lower() == expected_exe.lower()), None)
             if not exe_name:
-                raise RuntimeError("The single session EXE is missing from the GitHub artifact")
-            exe_data = artifact_zip.read(exe_name)
+                raise RuntimeError("The session application EXE is missing from its bundle")
+            # PyInstaller onedir builds require the bundled runtime files.
+            if not any("/_internal/" in ("/" + name.replace("\\\\", "/")) for name in names):
+                raise RuntimeError("The session application runtime folder is missing")
+            exe_data = app_bundle.read(exe_name)
         if not exe_data or not exe_data.startswith(b"MZ"):
             raise RuntimeError("The downloaded session file is not a valid Windows executable")
         with db() as con:
             con.execute("UPDATE inspection_sessions SET downloaded_at=? WHERE display_code=?", (now(), code))
-        log_action("session-download", "downloaded single-file inspection EXE for session " + code)
-        # Package exactly one EXE in the user-facing ZIP; no sidecar or extra files.
-        zip_buffer = BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w", compression=zipfile.ZIP_DEFLATED) as download_zip:
-            download_zip.writestr(expected_exe, exe_data)
-        zip_buffer.seek(0)
-        return send_file(zip_buffer, mimetype="application/zip",
-                         as_attachment=True, download_name="3eN-Inspect-" + code + ".zip")
+        log_action("session-download", "downloaded complete application bundle for session " + code)
+        bundle_buffer = BytesIO(bundle_data)
+        return send_file(bundle_buffer, mimetype="application/zip",
+                         as_attachment=True, download_name=expected_bundle)
     except Exception as exc:
         if getattr(exc, "code", None) in (503, 404):
             raise
