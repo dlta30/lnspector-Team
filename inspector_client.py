@@ -1642,9 +1642,16 @@ class InspectorApp(tk.Tk):
             self.status.set(self._t("جارٍ تجهيز صورة الشاشة وإرسال التقرير…", "Preparing the screenshot and sending the report…"))
             self.report["desktop_screenshot_base64"] = capture_desktop_screenshot_base64()
             self.report["desktop_screenshot_captured_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            summary_text = (
+                f"{self.report['review_label_ar']} — {self.report['indicator_match_count']} مؤشرات عمليات "
+                f"و{self.report.get('file_indicator_match_count', 0)} مؤشرات ملفات للمراجعة"
+            ) if self.lang == "ar" else (
+                f"Awaiting inspector review — {self.report['indicator_match_count']} process indicators "
+                f"and {self.report.get('file_indicator_match_count', 0)} file indicators"
+            )
             payload = {"session_code": self.active_session_code,
                        "computer_label": self.report["device_label"],
-                       "summary": f"{self.report['review_label_ar']} — {self.report['indicator_match_count']} مؤشرات عمليات و{self.report.get('file_indicator_match_count', 0)} مؤشرات ملفات للمراجعة",
+                       "summary": summary_text,
                        "report": self.report}
             req = urllib.request.Request(endpoint, data=json.dumps(payload).encode("utf-8"),
                 headers={"Content-Type": "application/json"}, method="POST")
