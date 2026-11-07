@@ -39,7 +39,7 @@ jobs:
       - name: Install client dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install psutil pillow reportlab pyinstaller
+          python -m pip install psutil pillow reportlab pyinstaller arabic-reshaper python-bidi
       - name: Configure one-time session (optional)
         if: ${{ inputs.session_code != '' }}
         shell: pwsh
