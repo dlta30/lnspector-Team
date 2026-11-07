@@ -1233,12 +1233,15 @@ class InspectorApp(tk.Tk):
         self.title("3EN Inspect Team")
         self.geometry("1120x820")
         try:
-            icon_path = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))), "3en.ico")
-            self.iconbitmap(icon_path)
+            resource_root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+            icon_path = os.path.join(resource_root, "3en.ico")
+            logo_path = os.path.join(resource_root, "3en.png")
+            # Use the same 3EN artwork for the native Windows icon, taskbar and in-app branding.
+            self.iconbitmap(default=icon_path)
+            self.wm_iconbitmap(icon_path)
             from PIL import Image, ImageTk
-            logo_path = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))), "3en.png")
-            logo_image = Image.open(logo_path).convert("RGBA").resize((72, 72), Image.Resampling.LANCZOS)
-            self._window_logo = ImageTk.PhotoImage(logo_image)
+            logo_image = Image.open(logo_path).convert("RGBA")
+            self._window_logo = ImageTk.PhotoImage(logo_image.resize((96, 96), Image.Resampling.LANCZOS))
             self.iconphoto(True, self._window_logo)
         except Exception:
             pass
