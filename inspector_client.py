@@ -1057,7 +1057,7 @@ def collect_recent_apps(processes, progress):
 
 
 
-def collect_recent_files(progress, max_entries=500):
+def collect_recent_files(progress, deleted_file_findings=None, max_entries=500):
     """Collect Windows Recent-folder shortcut metadata and resolved targets, without opening targets."""
     import subprocess
 
@@ -1111,21 +1111,45 @@ ConvertTo-Json -InputObject @($out) -Compress
         except Exception:
             targets = {}
     results = []
+    deleted_by_name = {
+        str(row.get("file_name", "")).casefold(): row
+        for row in (deleted_file_findings or [])
+        if row.get("file_name")
+    }
     for shortcut, st in entries:
         target = targets.get(os.path.normcase(os.path.abspath(str(shortcut))), "")
+        target_is_system = bool(target and is_windows_system_path(target))
+        target_exists = bool(target and not target_is_system and os.path.exists(target))
+        file_name = (os.path.basename(target) if target else shortcut.stem)[:240]
+        recycle_match = deleted_by_name.get(file_name.casefold())
+        if target_is_system:
+            continue
+        if target_exists:
+            target_status = "available"
+            target_status_ar = "الملف موجود"
+        elif recycle_match:
+            target_status = "deleted_recycle_bin"
+            target_status_ar = "يوجد سجل مطابق في سلة المحذوفات"
+        else:
+            target_status = "missing_or_moved"
+            target_status_ar = "الملف غير موجود في مساره؛ قد يكون محذوفًا أو منقولًا"
         try:
             display = datetime.fromtimestamp(st.st_mtime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
         except (ValueError, OSError, OverflowError):
             display = utc_timestamp(st.st_mtime)
         results.append({
-            "file_name": (os.path.basename(target) if target else shortcut.stem)[:240],
+            "file_name": file_name,
             "shortcut_name": shortcut.name[:240],
-            "target_path": (target[:1200] if target and not is_windows_system_path(target) else None),
-            "recent_shortcut_path": "Windows Recent shortcut metadata (system path hidden)",
+            "target_path": (target[:1200] if target else None),
+            "recent_shortcut_path": "Recent",
             "last_accessed_at": utc_timestamp(st.st_mtime),
             "last_accessed_display": display,
             "evidence_source": "Windows Recent folder (.lnk shortcut metadata)",
-            "time_accuracy": "shortcut_timestamp_not_proof_of_open"
+            "time_accuracy": "shortcut_timestamp_not_proof_of_open",
+            "target_status": target_status,
+            "target_status_ar": target_status_ar,
+            "deleted_at": recycle_match.get("deleted_at") if recycle_match else None,
+            "confirmed_recycle_bin_record": bool(recycle_match),
         })
     progress(92, "اكتمل جمع عناصر Windows Recent: " + str(len(results)))
     return results
@@ -1557,8 +1581,10 @@ class InspectorApp(tk.Tk):
             files.sort(key=lambda item: group_order.get(item.get("scan_group"), 9))
             verify_authenticode_signatures(processes, files, self.update_progress)
             recent_apps = collect_recent_apps(processes, self.update_progress)
-            # Windows Recent shortcuts are OS metadata and are omitted from the report.
-            recent_files = []
+            # Include Windows Recent shortcut records: targets may be deleted or moved.
+            recent_files = collect_recent_files(
+                self.update_progress, deleted_file_findings=deleted_file_findings
+            )
             evidence_quality = finalize_evidence_quality(processes, files, recent_apps, recent_files)
             matches = [p for p in processes if p["indicator_matches"]]
             file_matches = [item for item in files if item["indicator_matches"]]
