@@ -146,6 +146,10 @@ class PgCursor:
             self.lastrowid = row["id"] if row else None
         return self
 
+    @property
+    def rowcount(self):
+        return self._cursor.rowcount
+
     def fetchone(self):
         return self._as_dict(self._cursor.fetchone())
 
@@ -418,6 +422,10 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
     except Exception as exc:
         print('Discord metadata lookup failed:', type(exc).__name__)
     verdict = verdict if verdict in ('hack', 'clean') else 'review'
+    # Clean is a reviewer decision, not permission to publish evidence. Keep all
+    # raw findings in the dashboard, but exclude them from the Discord embed/PDF.
+    if verdict == 'clean':
+        all_findings = []
     verdict_title = {'hack': '🚨 هاك / مشتبه — قرار المراجع', 'clean': '✅ كلين — قرار المراجع', 'review': '🟡 قيد المراجعة'}[verdict]
     verdict_color = {'hack': 0xE74C3C, 'clean': 0x2ECC71, 'review': 0xF1C40F}[verdict]
     reason = safe(reason.strip(), 900) if isinstance(reason, str) and reason.strip() else 'لم يُذكر سبب.'
@@ -430,9 +438,11 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         {'name': '🎫 الجلسة', 'value': safe(session_code, 100), 'inline': True},
         {'name': '💻 الجهاز', 'value': safe(computer, 100), 'inline': True},
         {'name': '📦 العمليات المفحوصة', 'value': safe(report.get('process_count', len(processes)), 80), 'inline': True},
-        {'name': '🔎 مؤشرات العمليات والملفات', 'value': safe(len(all_findings), 80), 'inline': True},
-        {'name': '🎮 ملفات FiveM/GTA V', 'value': safe(report.get('fivem_artifact_count', 0), 80), 'inline': True},
-        {'name': '🚩 مؤشرات FiveM', 'value': safe(report.get('fivem_indicator_match_count', 0), 80), 'inline': True},
+        ({'name': '📋 تفاصيل الأدلة', 'value': 'لا تُرفق المؤشرات مع تصنيف Clean؛ تبقى محفوظة للمفتش في لوحة التحكم.', 'inline': False} if verdict == 'clean' else {'name': '🔎 مؤشرات العمليات والملفات', 'value': safe(len(all_findings), 80), 'inline': True}),
+        *([] if verdict == 'clean' else [
+            {'name': '🎮 ملفات FiveM/GTA V', 'value': safe(report.get('fivem_artifact_count', 0), 80), 'inline': True},
+            {'name': '🚩 مؤشرات FiveM', 'value': safe(report.get('fivem_indicator_match_count', 0), 80), 'inline': True},
+        ]),
     ]
 
     # Include a few matched items directly in the Discord embed. A name match is
@@ -467,7 +477,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
 
     embed = {
         'title': verdict_title + ' • تقرير الفحص #' + safe(report_id, 50),
-        'description': (('اعتمد المراجع تصنيف «كلين». هذا قرار مراجعة يدوي ولا يضمن خلو الجهاز من كل المخاطر.\n\n' if verdict == 'clean' else 'اعتمد المراجع تصنيف «هاك / مشتبه». المؤشرات تحتاج تحققًا يدويًا ولا تُعد وحدها إثباتًا قاطعًا.\n\n' if verdict == 'hack' else 'التقرير بانتظار قرار المراجع.\n\n') + safe(summary or 'تم استلام التقرير وحفظه في لوحة التحكم.', 700)),
+        'description': ('اعتمد المراجع تصنيف «كلين». لا تُرسل تفاصيل المؤشرات أو أعدادها إلى Discord؛ تبقى في لوحة المفتش. هذا القرار اليدوي لا يثبت خلو الجهاز من كل المخاطر.' if verdict == 'clean' else ('اعتمد المراجع تصنيف «هاك / مشتبه». المؤشرات تحتاج تحققًا يدويًا ولا تُعد وحدها إثباتًا قاطعًا.\n\n' if verdict == 'hack' else 'التقرير بانتظار قرار المراجع.\n\n') + safe(summary or 'تم استلام التقرير وحفظه في لوحة التحكم.', 700)),
         'color': verdict_color,
         'fields': fields[:25],
         'footer': {'text': '3eN INSPECTOR TEAM • مؤشرات الأسماء تحتاج مراجعة يدوية ولا تثبت وحدها وجود هاك.'}
@@ -495,6 +505,14 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         styles.add(ParagraphStyle(name='DiscordPayload', parent=styles['BodyText'], fontName='Courier', fontSize=6.5, leading=8, wordWrap='CJK'))
         pdf_report = dict(report)
         screenshot_b64 = pdf_report.pop('desktop_screenshot_base64', None)
+        if verdict == 'clean':
+            # The internal dashboard retains the full evidence. The Clean Discord
+            # attachment contains metadata/reason only, never finding names or paths.
+            screenshot_b64 = None
+            for key in list(pdf_report):
+                if 'indicator' in key.casefold() or key in ('processes', 'file_artifacts', 'recent_apps_24h', 'recent_files'):
+                    pdf_report.pop(key, None)
+            pdf_report['discord_export_scope'] = 'Clean review: detailed inspection evidence intentionally omitted from Discord.'
         screenshot_note = 'Desktop screenshot attached separately to this Discord message.' if screenshot_b64 else 'No desktop screenshot was included.'
         raw = json.dumps(pdf_report, ensure_ascii=False, indent=2, default=str)[:90000]
         story = [Paragraph('3eN INSPECT — INSPECTION REPORT', styles['Title']),
@@ -507,7 +525,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
             Paragraph('<b>Time (UTC):</b> ' + escape(str(report_time)), styles['DiscordMeta']),
             Paragraph('<b>Source:</b> ' + escape(str(report_source)), styles['DiscordMeta']),
             Paragraph('<b>Processes reviewed:</b> ' + escape(str(report.get('process_count', len(processes)))), styles['DiscordMeta']),
-            Paragraph('<b>Review leads:</b> ' + escape(str(len(findings))), styles['DiscordMeta']),
+            *([] if verdict == 'clean' else [Paragraph('<b>Review leads:</b> ' + escape(str(len(findings))), styles['DiscordMeta'])]),
             Paragraph('<b>Desktop screenshot:</b> ' + escape(screenshot_note), styles['DiscordMeta']),
             Spacer(1, 3*mm), Paragraph('Collected report data (JSON)', styles['Heading2']),
             Preformatted(raw, styles['DiscordPayload'], maxLineLength=110)]
@@ -1011,6 +1029,12 @@ def sessions_page():
         if not target_nickname or not target_username:
             flash("أدخل Server Nickname وDiscord Username.")
             return redirect(url_for("sessions_page"))
+        with db() as con:
+            already_reported = con.execute("SELECT r.id FROM reports r JOIN inspection_sessions s ON s.display_code=r.session_id WHERE s.target_discord_id=? LIMIT 1", (target_discord_id,)).fetchone()
+            active_session = con.execute("SELECT id FROM inspection_sessions WHERE target_discord_id=? AND status='scanning' AND expires_at>? LIMIT 1", (target_discord_id, now())).fetchone()
+        if already_reported or active_session:
+            flash("هذا العضو تم فحصه مسبقًا أو أن فحصه جارٍ. لا يمكن إنشاء جلسة ثانية.")
+            return redirect(url_for("sessions_page"))
         target_label = target_nickname
         code = secrets.token_urlsafe(6).replace("-", "").replace("_", "")[:8].upper()
         code_hash = hashlib.sha256(code.encode()).hexdigest()
@@ -1194,6 +1218,36 @@ def download_session_build(code):
         print("Artifact download failed:", type(exc).__name__, str(exc)[:240])
         abort(502, "تعذر تنزيل ملف الفحص من GitHub. تحقق من صلاحيات التوكن وسجل Render.")
 
+@app.post("/api/v1/session-start")
+def start_inspection_session():
+    """Atomically reserve a session before any local inspection begins."""
+    if not request.is_json:
+        abort(415)
+    data = request.get_json(silent=True) or {}
+    code = str(data.get("session_code", "")).strip().upper()
+    if len(code) < 6 or len(code) > 20:
+        abort(401, "رمز الجلسة غير صالح.")
+    code_hash = hashlib.sha256(code.encode()).hexdigest()
+    with db() as con:
+        row = con.execute("SELECT id,display_code,target_discord_id,status,expires_at FROM inspection_sessions WHERE code_hash=?", (code_hash,)).fetchone()
+        if not row:
+            abort(401, "جلسة الفحص غير موجودة.")
+        if datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00")) < datetime.now(timezone.utc):
+            con.execute("UPDATE inspection_sessions SET status='expired' WHERE id=? AND status='open'", (row["id"],))
+            abort(410, "انتهت صلاحية جلسة الفحص.")
+        if row["status"] != "open":
+            abort(409, "تم فحصك مسبقًا أو أن الفحص جارٍ بالفعل.")
+        previous = con.execute("SELECT r.id FROM reports r JOIN inspection_sessions s ON s.display_code=r.session_id WHERE s.target_discord_id=? LIMIT 1", (row["target_discord_id"],)).fetchone()
+        if previous:
+            con.execute("UPDATE inspection_sessions SET status='used',used_at=? WHERE id=? AND status='open'", (now(), row["id"]))
+            abort(409, "تم فحصك مسبقًا. لا يمكن استخدام رابط فحص جديد.")
+        cur = con.execute("UPDATE inspection_sessions SET status='scanning' WHERE id=? AND status='open'", (row["id"],))
+        if cur.rowcount != 1:
+            abort(409, "تم فحصك مسبقًا أو أن الفحص جارٍ بالفعل.")
+    log_action("session:" + row["display_code"], "inspection started")
+    return {"ok": True, "status": "scanning"}, 200
+
+
 @app.post("/api/v1/session-report")
 def ingest_session_report():
     if not request.is_json:
@@ -1210,8 +1264,8 @@ def ingest_session_report():
     code_hash = hashlib.sha256(code.encode()).hexdigest()
     with db() as con:
         session_row = con.execute("SELECT * FROM inspection_sessions WHERE code_hash=?", (code_hash,)).fetchone()
-        if not session_row or session_row["status"] != "open":
-            abort(401, "Invalid or already-used session code.")
+        if not session_row or session_row["status"] != "scanning":
+            abort(401, "تم فحصك مسبقًا أو أن الجلسة غير صالحة.")
         if datetime.fromisoformat(session_row["expires_at"]) < datetime.now(timezone.utc):
             con.execute("UPDATE inspection_sessions SET status='expired' WHERE id=?", (session_row["id"],))
             abort(410, "Session code expired.")
