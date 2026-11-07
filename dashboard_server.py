@@ -1883,6 +1883,8 @@ def report_pdf(report_id):
         for item in recent_apps[:120]:
             if not isinstance(item,dict): continue
             seen_time=format_saudi_time(item.get("last_seen_at"),language) if item.get("last_seen_at") else item.get("last_seen_display")
+            if item.get("currently_running") and item.get("process_started_at"):
+                seen_time = str(seen_time or "") + T(" · بدأ: ", " · Started: ") + format_saudi_time(item.get("process_started_at"), language)
             state=T("يعمل الآن","Currently running") if item.get("currently_running") else T("سجل Prefetch تقريبي","Approximate Prefetch record")
             if item.get("deleted_file_name_match"): state+=T(" · اسم مطابق لسجل محذوف (المسار غير مؤكد)"," · deleted filename match (path not confirmed)")
             deleted_time=format_saudi_time(item.get("deleted_at"),language) if item.get("deleted_at") else "—"
