@@ -1880,7 +1880,7 @@ def report_pdf(report_id):
     if recent_apps:
         story.append(p(T("البرامج التي لها سجل خلال آخر 24 ساعة","Applications with activity evidence in the last 24 hours"),"Head3EN"))
         rows=[[c(T("البرنامج","Application")),c(T("آخر وقت — السعودية","Last seen — Saudi Arabia")),c(T("الحالة","Status")),c(T("مصدر الدليل","Evidence source")),c(T("وقت الحذف","Deletion time"))]]
-        for item in recent_apps[:120]:
+        for item in recent_apps:
             if not isinstance(item,dict): continue
             seen_time=format_saudi_time(item.get("last_seen_at"),language) if item.get("last_seen_at") else item.get("last_seen_display")
             if item.get("currently_running") and item.get("process_started_at"):
@@ -1896,7 +1896,7 @@ def report_pdf(report_id):
     if recent_files:
         story.append(p(T("Recent — اختصارات الملفات الحديثة وآثار الحذف","Recent — recent file shortcuts and deleted-file traces"),"Head3EN"))
         rows=[[c(T("الملف","File")),c(T("وقت الظهور — السعودية","Recent time — Saudi Arabia")),c(T("حالة الهدف","Target status")),c(T("وقت الحذف في السلة","Recycle Bin deletion time"))]]
-        for item in recent_files[:120]:
+        for item in recent_files:
             if not isinstance(item,dict): continue
             state=T("اسم مطابق في سلة المحذوفات — المسار غير مؤكد","Recycle Bin filename match — path not confirmed") if item.get("recycle_bin_name_match") else T("مفقود أو منقول — ليس حذفًا مؤكدًا","Missing or moved — not confirmed deleted") if item.get("target_status")=="missing_or_moved" else T("الملف موجود","Target exists") if item.get("target_status")=="available" else T("الهدف غير متاح","Target unavailable")
             seen_time=format_saudi_time(item.get("last_accessed_at"),language) if item.get("last_accessed_at") else item.get("last_accessed_display")
@@ -1907,7 +1907,7 @@ def report_pdf(report_id):
     if deleted_files:
         story.append(p(T("سجلات الملفات المحذوفة — سلة المحذوفات","Deleted-file records — Recycle Bin"),"Head3EN"))
         rows=[[c(T("الملف","File")),c(T("الامتداد","Extension")),c(T("وقت الحذف — السعودية","Deletion time — Saudi Arabia")),c(T("المحتوى ما زال بالسلة","Payload still in bin"))]]
-        for item in deleted_files[:120]:
+        for item in deleted_files:
             rows.append([c(item.get("file_name"),100),c(item.get("extension"),30),c(format_saudi_time(item.get("deleted_at"),language),110),c(T("نعم","Yes") if item.get("recycle_payload_present") else T("لا","No"))])
         story.append(table(rows,[48*mm,25*mm,60*mm,58*mm]))
 
