@@ -131,6 +131,26 @@ def add_localized_indicator_fields(report, language="ar"):
             row["indicator_matches_display"] = localized_indicator_labels(
                 row.get("indicator_matches", []), language
             )
+            if row.get("binary_indicator_type"):
+                if language == "en":
+                    row["indicator_category"] = "Binary-file indicators — review required"
+                    row["evidence_reason"] = (
+                        "Several strings associated with process memory access or remote thread creation "
+                        "were found in the binary. Legitimate software may use these APIs; this alone "
+                        "does not prove cheating or malicious behavior."
+                    ) if row.get("binary_indicator_type") == "multiple_process_memory_api_strings" else (
+                        "A string associated with a known tool name was found in the binary. "
+                        "It may be an embedded reference and does not prove execution or cheating."
+                    )
+                else:
+                    row["indicator_category"] = "مؤشرات داخل ملف ثنائي — تحتاج مراجعة"
+                    row["evidence_reason"] = (
+                        "عُثر على عدة سلاسل API مرتبطة بقراءة/كتابة ذاكرة العمليات أو إنشاء خيوط؛ "
+                        "قد تستخدمها برامج مشروعة أيضًا."
+                    ) if row.get("binary_indicator_type") == "multiple_process_memory_api_strings" else (
+                        "عُثر على اسم/سلسلة مرتبطة بأداة معروفة داخل الملف الثنائي؛ "
+                        "قد تكون سلسلة مضمّنة أو مرجعًا ولا تثبت التشغيل أو الغش."
+                    )
     report["interface_language"] = language
     return report
 
@@ -1674,8 +1694,8 @@ class InspectorApp(tk.Tk):
             styles.add(ParagraphStyle(name="MutedNote", parent=styles["BodyText"], textColor=colors.HexColor("#555555"), fontSize=8, leading=11))
             doc = SimpleDocTemplate(path, pagesize=A4, rightMargin=13*mm, leftMargin=13*mm, topMargin=15*mm, bottomMargin=15*mm)
             story = [
-                Paragraph("3EN INSPECT TEAM", styles["BrandTitle"]),
-                Paragraph("FiveM & Grand Theft Auto V | Security Inspection Report", styles["Heading2"]),
+                Paragraph("3EN INSPECT", styles["BrandTitle"]),
+                Paragraph(self._t("تقرير فحص أمني", "Security Inspection Report"), styles["Heading2"]),
                 Paragraph("Generated: " + escape(str(report.get("created_at", ""))) + " UTC", styles["MutedNote"]),
                 Spacer(1, 5*mm)
             ]
