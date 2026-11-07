@@ -182,9 +182,13 @@ def create_pdf_report(report, destination):
     pdf.setFillColor(colors.HexColor('#ff4057')); pdf.setFont('Helvetica-Bold', 17); pdf.drawString(38, h-42, '3EN INSPECT TEAM')
     pdf.setFillColor(colors.white); pdf.setFont('Helvetica', 9); pdf.drawString(38, h-62, 'PLAYER INSPECTION REPORT')
     pdf.setFillColor(colors.black)
+    def draw_footer():
+        pdf.setFillColor(colors.HexColor('#777777')); pdf.setFont('Helvetica', 8)
+        pdf.drawCentredString(w / 2, 22, 'BY:ROITH')
     def write(text, bold=False):
         nonlocal y
-        if y < 45: pdf.showPage(); y = h-45
+        if y < 45:
+            draw_footer(); pdf.showPage(); y = h-45
         pdf.setFont('Helvetica-Bold' if bold else 'Helvetica', 8)
         text = str(text).encode('ascii', 'replace').decode('ascii')
         pdf.drawString(38, y, text[:130]); y -= 12
@@ -203,12 +207,13 @@ def create_pdf_report(report, destination):
         if item.get('details'): write('Details: ' + str(item['details']))
         if item.get('sha256'): write('SHA256: ' + str(item['sha256']))
     write('Note: indicators are leads for human review, not proof of cheating or malware.')
+    draw_footer()
     pdf.save()
 
 class InspectorApp:
     def __init__(self, root):
         self.root = root
-        self.root.title(f"{APP_NAME} | {BYLINE}")
+        self.root.title(APP_NAME)
         self.root.geometry("1380x860")
         self.root.minsize(1050, 700)
         self.root.configure(bg=BG)
@@ -352,6 +357,7 @@ class InspectorApp:
         tk.Button(footer, text="إرسال التقرير إلى Discord", command=self.send_discord, bg="#5865F2", fg="white", relief="flat", padx=12, pady=7).pack(side="left", padx=(0, 8))
         tk.Button(footer, text="فتح مجلد التقارير", command=self.open_reports, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="left")
         tk.Label(footer, text="الاشتباه ليس إثباتًا • افحص المصدر والتوقيع قبل اتخاذ قرار", bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(side="left", padx=12)
+        tk.Label(footer, text="BY:ROITH", bg=BG, fg=MUTED, font=("Segoe UI", 8, "bold")).pack(side="right", padx=8)
 
         # Additional real pages for saved reports, session history, and settings.
         self.sessions_page = tk.Frame(self.pages, bg=BG)
@@ -688,7 +694,7 @@ class InspectorApp:
         try:
             boundary = "----3EN" + secrets.token_hex(12)
             summary = json.dumps({"content": (
-                "**3EN INSPECT TEAM • BY:ROITH**\n"
+                "**3EN INSPECT TEAM**\n"
                 f"Player: {report.get('player', 'Unknown')}\n"
                 f"Device: {report.get('device', 'Unknown')}\n"
                 f"Results: {report.get('result_count', 0)} | Review leads: {report.get('review_count', 0)}\n"
