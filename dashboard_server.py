@@ -1897,7 +1897,7 @@ def report_pdf(report_id):
     verified = sum(1 for x in list(processes)+list(artifacts) if isinstance(x,dict) and x.get("signature_status")=="verified")
     unverified = sum(1 for x in list(processes)+list(artifacts) if isinstance(x,dict) and x.get("signature_status")=="unverified")
     story = [
-        p("3EN INSPECT TEAM","Title"), p(T("تقرير الفحص رقم ","Inspection report #")+str(report_id),"Heading1"), p("by:ROITH"),
+        p("3EN INSPECT TEAM","Title"), p(T("تقرير الفحص رقم ","Inspection report #")+str(report_id),"Heading1"),
         p(T("الشخص: ","Person: ")+str(target_label or T("غير محدد","Not specified"))),
         p(T("الجهاز: ","Device: ")+str(r["computer_label"])),
         p(T("الجلسة: ","Session: ")+str(r["session_id"])),
