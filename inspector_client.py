@@ -1389,7 +1389,7 @@ def collect_processes(progress):
 class InspectorApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("3EN INSPECT")
+        self.title("3EN INSPECT • BY:ROITH")
         self.geometry("1120x820")
         # PyInstaller --onedir stores bundled assets under sys._MEIPASS (usually _internal).
         # Keep the PNG PhotoImage alive for the lifetime of the Tk window.
@@ -1475,7 +1475,7 @@ class InspectorApp(tk.Tk):
                      font=("Segoe UI", 25, "bold"), padx=18, pady=15).pack()
         brand = tk.Frame(hero, bg=PANEL)
         brand.pack(side="left", fill="x", expand=True)
-        tk.Label(brand, text="3EN INSPECT", bg=PANEL, fg=WHITE,
+        tk.Label(brand, text="3EN INSPECT  •  BY:ROITH", bg=PANEL, fg=WHITE,
                  font=("Segoe UI", 21, "bold")).pack(anchor="w")
         tk.Label(brand, text=self._t("فحص أمني منظّم • واضح وبموافقتك",
                                      "SECURITY INSPECTION  •  CONSENT-BASED"),
@@ -1495,7 +1495,7 @@ class InspectorApp(tk.Tk):
 
         heading = tk.Frame(body, bg=BG)
         heading.pack(fill="x", pady=(0, 14))
-        tk.Label(heading, text="3EN INSPECT", bg=BG, fg=WHITE,
+        tk.Label(heading, text="3EN INSPECT  •  BY:ROITH", bg=BG, fg=WHITE,
                  font=("Segoe UI", 23, "bold")).pack(anchor="w")
         tk.Label(heading, text=self._t("فحص أمني منظّم للجهاز.",
                                        "Structured device security inspection."),
@@ -1902,7 +1902,7 @@ class InspectorApp(tk.Tk):
             styles["Title"].fontName = pdf_font
             doc = SimpleDocTemplate(path, pagesize=A4, rightMargin=13*mm, leftMargin=13*mm, topMargin=15*mm, bottomMargin=15*mm)
             story = [
-                Paragraph("3EN INSPECT", styles["BrandTitle"]),
+                Paragraph("3EN INSPECT", styles["BrandTitle"]),\n                Paragraph("BY:ROITH", styles["MutedNote"]),
                 Paragraph(pdf_text(T("تقرير فحص أمني", "Security Inspection Report")), styles["Heading2"]),
                 Paragraph(pdf_text(T("وقت إنشاء التقرير — توقيت السعودية: ", "Report generated — Saudi Arabia time: ") + format_saudi_time(report.get("created_at"), language)), styles["MutedNote"]),
                 Spacer(1, 5*mm)
