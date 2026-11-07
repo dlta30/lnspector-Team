@@ -1639,7 +1639,7 @@ def report_detail(report_id):
             <div class="field"><b>المسار / سجل التشغيل</b><span dir="ltr">{{ item.get('path') or 'غير متاح' }}</span></div>
             <div class="field"><b>وقت آخر ظهور / تشغيل</b><span dir="ltr">{{ item.get('last_seen_display') or item.get('last_seen_at') or 'غير متاح' }}</span></div>
             {% if item.get('process_started_display') %}<div class="field"><b>وقت بدء العملية الحالية</b><span dir="ltr">{{ item.get('process_started_display') }}</span></div>{% endif %}
-            {% if item.get('deleted_file_name_match') %}<div class="field"><b>سجل حذف محتمل — تطابق اسم فقط</b><span>{{ item.get('file_name') }} · {{ item.get('deleted_at_display') or format_saudi_time(item.get('deleted_at')) }} · المسار الأصلي غير مؤكد</span></div>{% endif %}
+            {% if item.get('deleted_file_name_match') %}<div class="field"><b>سجل حذف محتمل — تطابق اسم فقط</b><span>{{ item.get('file_name') }} · {{ item.get('deleted_at_display') or item.get('deleted_at') or 'غير متاح' }} · المسار الأصلي غير مؤكد</span></div>{% endif %}
             <div class="field"><b>حالة التوثيق</b><span>{{ item.get('signature_label') or 'لم يتم التحقق' }}</span></div>
             {% if item.get('indicator_matches') %}<div class="field"><b>المؤشرات</b><span>{% for indicator in (item.get('indicator_matches_display') or item.get('indicator_matches', [])) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
           </article>
