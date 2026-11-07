@@ -1324,18 +1324,11 @@ class InspectorApp(tk.Tk):
         tk.Label(consent_box, text="01  /  الموافقة والصلاحية", bg=PANEL, fg="#ff8ca0",
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent_scan = tk.BooleanVar(value=False)
-        self.consent_screenshot = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على جميع خطوات الفحص الموضحة: العمليات، ملفات البرامج المحددة، FiveM/GTA V وCitizenFX، السجلات والموارد، والتحقق من التوقيعات. لا يشمل الفحص مجلدات Windows أو ملفات النظام. تُقرأ بيانات سلة المحذوفات الوصفية فقط. تُرسل أسماء المؤشرات والمسارات وأرقام الأسطر للمفتش؛ لا تُرفع محتويات الملفات ولا تُنفّذ. لا يبدأ الفحص إلا بعد تحديد هذه الموافقة.",
+            text="أوافق على فحص هذا الجهاز والتقاط صورة كاملة للشاشة وإرسال تقرير الفحص والصورة إلى المفتش عبر لوحة التحكم وديسكورد. قد تتضمن الصورة نوافذ أو رسائل أو معلومات ظاهرة على الشاشة.",
             variable=self.consent_scan, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
-        tk.Checkbutton(consent_box,
-            text="اختياري — أوافق صراحةً على التقاط صورة كاملة لكل شاشات سطح المكتب عند إرسال التقرير، وإرفاقها بلوحة التحكم ثم برسالة الديسكورد مع التقرير. لن تظهر معاينة، وستُحفظ الصورة ضمن التقرير حتى يرسلها المراجع. قد تتضمن الصورة نوافذ أو رسائل أو معلومات ظاهرة على الشاشة.",
-            variable=self.consent_screenshot, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
-            activebackground=PANEL, activeforeground=WHITE, wraplength=900,
-            font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
-
 
 
         # Progress and controls
@@ -1378,8 +1371,7 @@ class InspectorApp(tk.Tk):
         # Close the UI without launching a second process or changing user files.
         self.destroy()
     def start(self):
-        # A single explicit consent covers the stated inspection scope. Screenshot
-        # consent remains optional and is never required to start the scan.
+        # One explicit consent covers inspection, full-screen capture, and report delivery.
         if not self.consent_scan.get():
             messagebox.showwarning(APP, "وافق على فحص الجهاز مرة واحدة قبل البدء.")
             return
@@ -1541,13 +1533,9 @@ class InspectorApp(tk.Tk):
         try:
             import urllib.request
             endpoint = self.active_dashboard_url.rstrip("/") + "/api/v1/session-report"
-            if self.consent_screenshot.get():
-                self.status.set("جارٍ التقاط سطح المكتب بالكامل بعد موافقتك…")
-                self.report["desktop_screenshot_base64"] = capture_desktop_screenshot_base64()
-                self.report["desktop_screenshot_captured_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-            else:
-                self.report.pop("desktop_screenshot_base64", None)
-                self.report.pop("desktop_screenshot_captured_at", None)
+            self.status.set("جارٍ تجهيز صورة الشاشة وإرسال التقرير…")
+            self.report["desktop_screenshot_base64"] = capture_desktop_screenshot_base64()
+            self.report["desktop_screenshot_captured_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
             payload = {"session_code": self.active_session_code,
                        "computer_label": self.report["device_label"],
                        "summary": f"{self.report['review_label_ar']} — {self.report['indicator_match_count']} مؤشرات عمليات و{self.report.get('file_indicator_match_count', 0)} مؤشرات ملفات للمراجعة",
