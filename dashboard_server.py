@@ -518,7 +518,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
 
     mention_ids = []
     for discord_id in (target_discord_id, str(reviewer_discord_id or '').strip()):
-        if discord_id.isdigit() and 17 d= len(discord_id) <= 20 and discord_id not in mention_ids:
+        if discord_id.isdigit() and 17 <= len(discord_id) <= 20 and discord_id not in mention_ids:
             mention_ids.append(discord_id)
     mention_lines = []
     if target_discord_id in mention_ids:
