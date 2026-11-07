@@ -1316,19 +1316,31 @@ class InspectorApp(tk.Tk):
         super().__init__()
         self.title("3EN INSPECT")
         self.geometry("1120x820")
+        # PyInstaller --onedir stores bundled assets under sys._MEIPASS (usually _internal).
+        # Keep the PNG PhotoImage alive for the lifetime of the Tk window.
+        resource_root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+        icon_path = os.path.join(resource_root, "3en.ico")
+        logo_path = os.path.join(resource_root, "3en.png")
         try:
-            resource_root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-            icon_path = os.path.join(resource_root, "3en.ico")
-            logo_path = os.path.join(resource_root, "3en.png")
-            # Use the same 3EN artwork for the native Windows icon, taskbar and in-app branding.
-            self.iconbitmap(default=icon_path)
-            self.wm_iconbitmap(icon_path)
-            from PIL import Image, ImageTk
-            logo_image = Image.open(logo_path).convert("RGBA")
-            self._window_logo = ImageTk.PhotoImage(logo_image.resize((96, 96), Image.Resampling.LANCZOS))
-            self.iconphoto(True, self._window_logo)
-        except Exception:
+            if os.path.isfile(icon_path):
+                self.iconbitmap(icon_path)
+        except tk.TclError:
             pass
+        try:
+            from PIL import Image, ImageTk
+            if os.path.isfile(logo_path):
+                with Image.open(logo_path) as source_logo:
+                    logo_image = source_logo.convert("RGBA")
+                self._window_logo = ImageTk.PhotoImage(
+                    logo_image.resize((128, 128), Image.Resampling.LANCZOS)
+                )
+                self.iconphoto(True, self._window_logo)
+        except Exception as exc:
+            # Do not silently hide a missing/broken bundled logo during testing.
+            try:
+                print("3EN branding asset could not be loaded:", type(exc).__name__, str(exc))
+            except Exception:
+                pass
         self.minsize(940, 700)
         self.configure(bg="#090a10")
         self.report = None
