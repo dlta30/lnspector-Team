@@ -1044,7 +1044,7 @@ def collect_recent_apps(processes, progress, deleted_file_findings=None):
         if filename.casefold().endswith(".exe"):
             deleted_by_exe.setdefault(filename.casefold(), row)
 
-    prefetch_root = Path(os.environ.get("WINDIR", r"C:\\Windows")) / "Prefetch"
+    prefetch_root = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Prefetch"
     excluded_os_apps = {
         "svchost", "services", "lsass", "wininit", "winlogon", "smss", "csrss",
         "dwm", "fontdrvhost", "sihost", "searchhost", "runtimebroker", "taskhostw",
@@ -1061,12 +1061,13 @@ def collect_recent_apps(processes, progress, deleted_file_findings=None):
                     st = entry.stat(follow_symlinks=False)
                     if st.st_mtime < cutoff:
                         continue
-                    app_name = entry.name.split("-", 1)[0].removesuffix(".pf")
+                    prefetch_executable = entry.name.split("-", 1)[0]
+                    app_name = Path(prefetch_executable).stem
                     if app_name.casefold() in excluded_os_apps:
                         continue
                     if any(row.get("prefetch_key") == entry.name.casefold() for row in recent):
                         continue
-                    deleted_row = deleted_by_exe.get((app_name + ".exe").casefold())
+                    deleted_row = deleted_by_exe.get(prefetch_executable.casefold())
                     prefetch_time = utc_timestamp(st.st_mtime)
                     prefetch_matches = find_indicator_matches(app_name, entry.name)
                     deleted_at = deleted_row.get("deleted_at") if deleted_row else None
@@ -1782,8 +1783,8 @@ class InspectorApp(tk.Tk):
                 from reportlab.pdfbase import pdfmetrics
                 from reportlab.pdfbase.ttfonts import TTFont
                 font_candidates = [
-                    os.path.join(os.environ.get("WINDIR", r"C:\\Windows"), "Fonts", "arial.ttf"),
-                    os.path.join(os.environ.get("WINDIR", r"C:\\Windows"), "Fonts", "tahoma.ttf"),
+                    os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", "arial.ttf"),
+                    os.path.join(os.environ.get("WINDIR", r"C:\Windows"), "Fonts", "tahoma.ttf"),
                     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                     "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
                 ]
@@ -1806,6 +1807,9 @@ class InspectorApp(tk.Tk):
             styles.add(ParagraphStyle(name="SectionTitle", parent=styles["Heading2"], textColor=colors.HexColor("#8f1830"), spaceBefore=10, spaceAfter=5, fontName=pdf_font, alignment=2 if language == "ar" else 0))
             styles.add(ParagraphStyle(name="SmallCell", parent=styles["BodyText"], fontSize=7, leading=9, wordWrap="CJK", fontName=pdf_font, alignment=2 if language == "ar" else 0))
             styles.add(ParagraphStyle(name="MutedNote", parent=styles["BodyText"], textColor=colors.HexColor("#555555"), fontSize=8, leading=11, fontName=pdf_font, alignment=2 if language == "ar" else 0))
+            styles["Heading2"].fontName = pdf_font
+            styles["Heading2"].alignment = 2 if language == "ar" else 0
+            styles["Title"].fontName = pdf_font
             doc = SimpleDocTemplate(path, pagesize=A4, rightMargin=13*mm, leftMargin=13*mm, topMargin=15*mm, bottomMargin=15*mm)
             story = [
                 Paragraph("3EN INSPECT", styles["BrandTitle"]),
@@ -1826,21 +1830,21 @@ class InspectorApp(tk.Tk):
             flagged_files = [x for x in artifacts if x.get("indicator_matches")]
 
             summary = [
-                ["Device", str(report.get("device_label", "Unknown"))],
-                ["Operating system", str(report.get("platform", "Unknown"))[:150]],
-                ["Running processes", str(len(processes))],
-                ["Process indicators", str(len(flagged_processes))],
-                ["Unique indicator files", str(report.get("unique_indicator_file_count", len(flagged_files)))],
-                ["High-confidence corroborated findings", str(report.get("high_confidence_finding_count", 0))],
-                ["Medium-confidence findings", str(report.get("medium_confidence_finding_count", 0))],
-                ["Low-confidence leads (manual review)", str(report.get("low_confidence_finding_count", 0))],
-                ["FiveM / GTA V artifacts", str(len(game_evidence))],
-                ["Game binaries hashed", str((report.get("binary_analysis") or {}).get("binary_files_hashed", 0))],
-                ["Binary static indicator hits", str((report.get("binary_analysis") or {}).get("binary_indicator_files", 0))],
-                ["Files with indicators", str(len(flagged_files))],
-                ["Deleted-file records (Recycle Bin)", str(len(deleted))],
-                ["Recent apps / execution evidence", str(len(recent_apps))],
-                ["Windows Recent shortcuts", str(len(recent_files))]
+                [T("الجهاز", "Device"), str(report.get("device_label", "Unknown"))],
+                [T("نظام التشغيل", "Operating system"), str(report.get("platform", "Unknown"))[:150]],
+                [T("العمليات الجارية", "Running processes"), str(len(processes))],
+                [T("مؤشرات العمليات", "Process indicators"), str(len(flagged_processes))],
+                [T("ملفات ذات مؤشرات فريدة", "Unique indicator files"), str(report.get("unique_indicator_file_count", len(flagged_files)))],
+                [T("قرائن عالية الثقة ومتوافقة", "High-confidence corroborated findings"), str(report.get("high_confidence_finding_count", 0))],
+                [T("قرائن متوسطة الثقة", "Medium-confidence findings"), str(report.get("medium_confidence_finding_count", 0))],
+                [T("قرائن منخفضة الثقة (مراجعة يدوية)", "Low-confidence leads (manual review)"), str(report.get("low_confidence_finding_count", 0))],
+                [T("عناصر FiveM / GTA V", "FiveM / GTA V artifacts"), str(len(game_evidence))],
+                [T("ملفات لعبة تم حساب بصمتها", "Game binaries hashed"), str((report.get("binary_analysis") or {}).get("binary_files_hashed", 0))],
+                [T("مؤشرات ثابتة داخل الملفات الثنائية", "Binary static indicator hits"), str((report.get("binary_analysis") or {}).get("binary_indicator_files", 0))],
+                [T("ملفات بها مؤشرات", "Files with indicators"), str(len(flagged_files))],
+                [T("سجلات ملفات محذوفة (سلة المحذوفات)", "Deleted-file records (Recycle Bin)"), str(len(deleted))],
+                [T("برامج لها سجل تشغيل خلال 24 ساعة", "Apps with execution evidence in last 24 hours"), str(len(recent_apps))],
+                [T("اختصارات Windows الحديثة", "Windows Recent shortcuts"), str(len(recent_files))]
             ]
             summary = [[pdf_text(a), pdf_text(b)] for a, b in summary]
             table = Table(summary, colWidths=[62*mm, 112*mm], hAlign="RIGHT" if language == "ar" else "LEFT")
@@ -1905,8 +1909,8 @@ class InspectorApp(tk.Tk):
             T("لم تتطابق أسماء الملفات مع المؤشرات المحددة.","No configured file-name indicators matched."))
 
             add_section(T("أدلة الملفات المحذوفة — سلة المحذوفات فقط","Deleted-file evidence — Recycle Bin only"), [
-                (x.get("file_name"), x.get("extension"), x.get("deleted_at_display") or format_saudi_time(x.get("deleted_at"), language),
-                 "Yes" if x.get("recycle_payload_present") else "No",
+                (x.get("file_name"), x.get("extension"), format_saudi_time(x.get("deleted_at"), language),
+                 T("نعم", "Yes") if x.get("recycle_payload_present") else T("لا", "No"),
                  x.get("evidence_reason", ""))
                 for x in deleted
             ], [T("الملف المحذوف","Deleted file"), T("النوع","Type"), T("وقت الحذف — السعودية","Deletion time — Saudi Arabia"), T("المحتوى ما زال بالسلة","Payload in bin"), T("التفسير","Interpretation")],
@@ -1914,8 +1918,8 @@ class InspectorApp(tk.Tk):
             T("لم يتم العثور على سجلات حذف مطابقة في المواقع التي فُحصت.","No matching deleted-file metadata was found in the scanned Recycle Bin locations."))
 
             add_section(T("البرامج النشطة / سجلات التشغيل — آخر 24 ساعة","Apps active / execution evidence — last 24 hours"), [
-                (x.get("app_name"), x.get("last_seen_display"), x.get("evidence_source"),
-                 "Yes" if x.get("started_within_24h") else "No / approximate",
+                (x.get("app_name"), (x.get("last_seen_display") or "") + ((" · " + T("وقت بدء العملية: ", "Process start: ") + str(x.get("process_started_display"))) if x.get("currently_running") and x.get("process_started_display") else "") + ((" · " + T("وقت الحذف المسجل: ", "Recycle Bin deletion time: ") + format_saudi_time(x.get("deleted_at"), language)) if x.get("deleted_file_name_match") and x.get("deleted_at") else ""), x.get("evidence_source"),
+                 T("يعمل الآن", "Currently running") if x.get("currently_running") else T("سجل تشغيل تقريبي", "Approximate execution record"),
                  ", ".join(x.get("indicator_matches", [])))
                 for x in recent_apps
             ], [T("البرنامج","Application"), T("الوقت — السعودية","Time — Saudi Arabia"), T("مصدر الدليل","Evidence source"), T("بدأ خلال 24 ساعة","Started within 24h"), T("المؤشرات","Indicators")],
