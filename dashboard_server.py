@@ -1747,6 +1747,7 @@ def report_pdf(report_id):
     processes = report_data.get("processes", []) if isinstance(report_data.get("processes", []), list) else []
     artifacts = report_data.get("file_artifacts", []) if isinstance(report_data.get("file_artifacts", []), list) else []
     recent_apps = report_data.get("recent_apps_24h", []) if isinstance(report_data.get("recent_apps_24h", []), list) else []
+    recent_files = report_data.get("recent_files", []) if isinstance(report_data.get("recent_files", []), list) else []
     process_findings = [x for x in processes if isinstance(x, dict) and x.get("indicator_matches")]
     file_findings = [x for x in artifacts if isinstance(x, dict) and x.get("indicator_matches")]
 
@@ -1806,9 +1807,9 @@ def report_pdf(report_id):
         Paragraph("<b>Summary:</b> " + escape(str(r["summary"] or "No summary")), styles["SmallMeta"]),
         Paragraph("Overview", styles["SectionTitle"]),
         make_table([
-            [cell("Processes"), cell("Name indicators"), cell("Files/folders"), cell("Apps in last 24h")],
-            [cell(report_data.get("process_count", len(processes))), cell(len(process_findings) + len(file_findings)), cell(report_data.get("file_artifact_count", len(artifacts))), cell(len(recent_apps))]
-        ], [43.5*mm, 43.5*mm, 43.5*mm, 43.5*mm]),
+            [cell("Processes"), cell("Name indicators"), cell("Files/folders"), cell("Apps in last 24h"), cell("Recent files")],
+            [cell(report_data.get("process_count", len(processes))), cell(len(process_findings) + len(file_findings)), cell(report_data.get("file_artifact_count", len(artifacts))), cell(len(recent_apps)), cell(len(recent_files))]
+        ], [34.8*mm, 34.8*mm, 34.8*mm, 34.8*mm, 34.8*mm]),
         Paragraph("Digital signature summary", styles["SectionTitle"]),
         Paragraph("Verified signatures: " + str(verified_count) + " · Unverified EXE/DLL: " + str(unverified_count) + ". A valid signature identifies a publisher and file integrity at signing time; it does not prove the program is safe or cheat-free. Unsupported file types are not treated as unsigned EXE/DLL files.", styles["SmallMeta"]),
     ]
@@ -1827,6 +1828,26 @@ def report_pdf(report_id):
             ])
         if len(rows) > 1:
             story.append(make_table(rows, [37*mm, 35*mm, 53*mm, 49*mm]))
+
+    if recent_files:
+        story.append(Paragraph("Recent — recent file shortcuts and deleted-file traces", styles["SectionTitle"]))
+        rows = [[cell("File"), cell("Recent timestamp"), cell("Target status"), cell("Recycle Bin deletion time")]]
+        for item in recent_files[:100]:
+            if not isinstance(item, dict):
+                continue
+            status = (
+                "Confirmed Recycle Bin record" if item.get("confirmed_recycle_bin_record") else
+                "Missing or moved — not confirmed deleted" if item.get("target_status") == "missing_or_moved" else
+                "Target exists" if item.get("target_status") == "available" else "Target unavailable"
+            )
+            rows.append([
+                cell(item.get("file_name") or item.get("shortcut_name"), 100),
+                cell(item.get("last_accessed_display") or item.get("last_accessed_at"), 90),
+                cell(status, 100),
+                cell(item.get("deleted_at"), 80)
+            ])
+        if len(rows) > 1:
+            story.append(make_table(rows, [43*mm, 45*mm, 55*mm, 45*mm]))
 
     if process_findings:
         story.append(Paragraph("Process name indicators — manual review", styles["SectionTitle"]))
