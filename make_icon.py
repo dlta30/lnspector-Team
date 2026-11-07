@@ -3,19 +3,20 @@ from PIL import Image, ImageDraw, ImageFont
 # 3EN INSPECT app icon — intentionally matches static/favicon.svg on the website.
 SIZE = 512
 SCALE = 4
-N = SIZE * SCALE
+# Draw in a 64px design grid, then upscale to the full 512px icon.
+N = 64 * SCALE
 im = Image.new("RGBA", (N, N), "#08090d")
 draw = ImageDraw.Draw(im)
 
 def p(value):
     return int(value * SCALE)
 
-# Website-matched rounded square and thin burgundy outline.
+# Full-size website-matched rounded square and clear burgundy outline.
 draw.rounded_rectangle(
     (p(2), p(2), p(62), p(62)),
     radius=p(12),
-    outline="#8f1835",
-    width=p(2),
+    outline="#ff365c",
+    width=p(2.5),
 )
 
 # Red gradient strokes matching the website favicon.
@@ -31,8 +32,8 @@ def gradient_line(x1, y, x2, color_left="#ff536d", color_right="#b50932", width=
         draw.line((x, p(y), x, p(y)), fill=color, width=p(width))
     draw.line((p(x1), p(y), p(x2), p(y)), fill=color_right, width=p(width), joint="curve")
 
-gradient_line(9, 18, 55, width=3)
-gradient_line(17, 52, 47, width=2.5)
+gradient_line(8, 17, 56, width=3.5)
+gradient_line(15, 51, 49, width=2.5)
 
 # Strong centered 3EN wordmark, same proportions and clean white treatment as the site.
 font = None
@@ -43,7 +44,7 @@ font_candidates = [
 ]
 for candidate in font_candidates:
     try:
-        font = ImageFont.truetype(candidate, p(24))
+        font = ImageFont.truetype(candidate, p(27))
         break
     except OSError:
         continue
@@ -55,7 +56,7 @@ bbox = draw.textbbox((0, 0), text, font=font, stroke_width=0)
 tw = bbox[2] - bbox[0]
 th = bbox[3] - bbox[1]
 x = (N - tw) // 2 - bbox[0]
-y = p(32) - (th // 2) - bbox[1] + p(1)
+y = p(32) - (th // 2) - bbox[1]
 draw.text((x, y), text, font=font, fill="#ffffff")
 
 im = im.resize((SIZE, SIZE), Image.Resampling.LANCZOS)
@@ -65,4 +66,4 @@ im.save(
     format="ICO",
     sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
 )
-print("Generated website-matched 3EN INSPECT icons: 3en.png, 3en.ico")
+print(f"Generated full-size 3EN INSPECT icons: {im.size}; PNG and multi-resolution ICO created.")
