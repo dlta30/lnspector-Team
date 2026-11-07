@@ -1,7 +1,7 @@
 """
 3eN Inspect Team — transparent local inspection client.
 Collects process metadata, 24-hour app activity, file metadata, and Windows Authenticode status.
-A full-desktop screenshot is captured only after separate explicit user consent.
+A full-desktop screenshot is captured only after the single explicit inspection consent.
 Run: python inspector_client.py
 """
 import hashlib
@@ -1231,13 +1231,18 @@ class InspectorApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("3EN Inspect Team")
-        self.geometry("1080x790")
+        self.geometry("1120x820")
         try:
             icon_path = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))), "3en.ico")
             self.iconbitmap(icon_path)
+            from PIL import Image, ImageTk
+            logo_path = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))), "3en.png")
+            logo_image = Image.open(logo_path).convert("RGBA").resize((72, 72), Image.Resampling.LANCZOS)
+            self._window_logo = ImageTk.PhotoImage(logo_image)
+            self.iconphoto(True, self._window_logo)
         except Exception:
             pass
-        self.minsize(900, 680)
+        self.minsize(940, 700)
         self.configure(bg="#090a10")
         self.report = None
         style = ttk.Style(self)
@@ -1274,30 +1279,24 @@ class InspectorApp(tk.Tk):
         header.pack(fill="x", padx=16, pady=(16, 0))
         hero = tk.Frame(header, bg=PANEL)
         hero.pack(fill="x")
-        logo = tk.Frame(hero, bg="#250812", padx=15, pady=10,
-                        highlightbackground=RED, highlightthickness=2)
-        logo.pack(side="left", padx=(0, 16))
-        emblem = tk.Canvas(logo, width=112, height=54, bg="#250812",
-                           highlightthickness=0, bd=0)
-        emblem.pack()
-        emblem.create_arc(7, 2, 48, 42, start=200, extent=140,
-                          style="arc", outline="#ff4968", width=3)
-        emblem.create_arc(7, 2, 48, 42, start=20, extent=140,
-                          style="arc", outline="#ff4968", width=3)
-        emblem.create_oval(20, 9, 35, 34, outline="#ff4968", width=2)
-        emblem.create_oval(25, 12, 31, 31, fill="#ff365c", outline="")
-        emblem.create_oval(27, 15, 29, 27, fill="#090a10", outline="")
-        emblem.create_text(78, 25, text="3EN", fill="#ffffff",
-                           font=("Segoe UI", 22, "bold"))
-        tk.Label(logo, text="INSPECT TEAM", bg="#250812", fg="#ff4968",
-                 font=("Segoe UI", 8, "bold")).pack()
+        logo = tk.Frame(hero, bg=PANEL, padx=4, pady=4)
+        logo.pack(side="left", padx=(0, 18))
+        try:
+            from PIL import Image, ImageTk
+            logo_path = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))), "3en.png")
+            logo_image = Image.open(logo_path).convert("RGBA").resize((76, 76), Image.Resampling.LANCZOS)
+            self._brand_logo = ImageTk.PhotoImage(logo_image)
+            tk.Label(logo, image=self._brand_logo, bg=PANEL, bd=0).pack()
+        except Exception:
+            tk.Label(logo, text="3EN", bg="#08090d", fg=WHITE,
+                     font=("Segoe UI", 25, "bold"), padx=18, pady=15).pack()
         brand = tk.Frame(hero, bg=PANEL)
         brand.pack(side="left", fill="x", expand=True)
-        tk.Label(brand, text="3EN  /  INSPECT TEAM", bg=PANEL, fg=WHITE,
+        tk.Label(brand, text="3EN INSPECT TEAM", bg=PANEL, fg=WHITE,
                  font=("Segoe UI", 21, "bold")).pack(anchor="w")
         tk.Label(brand, text="CYBERSECURITY  •  DEVICE INSPECTION", bg=PANEL,
                  fg=RED, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(3, 0))
-        tk.Label(brand, text="فحص واضح للعمليات والملفات التنفيذية — بموافقتك فقط",
+        tk.Label(brand, text="فحص أمني منظّم • واضح وبموافقتك",
                  bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", pady=(5, 0))
         self.session_badge = tk.Label(hero, text="●  جاهز للفحص", bg="#142b28", fg=GREEN,
                                       font=("Segoe UI", 9, "bold"), padx=14, pady=9)
@@ -1325,7 +1324,7 @@ class InspectorApp(tk.Tk):
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent_scan = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على فحص الجهاز والتقاط صورة كاملة للشاشة وإرسالها مع التقرير إلى المفتش.",
+            text="أوافق على فحص الجهاز و تصوير صورة كاملة وإرسالها مع التقرير إلى المفتش",
             variable=self.consent_scan, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
@@ -1353,10 +1352,10 @@ class InspectorApp(tk.Tk):
         controls.pack(fill="x", pady=(0, 12))
         self.start_button = ttk.Button(controls, text="▶   بدء الفحص", command=self.start)
         self.start_button.pack(side="left", padx=(0, 9))
-        tk.Label(controls, text="يُرسل التقرير تلقائيًا بعد الفحص؛ التصنيف النهائي من لوحة التحكم.",
+        tk.Label(controls, text="يُرسل التقرير تلقائيًا بعد اكتمال الفحص؛ والتصنيف النهائي يحدده المفتش.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left", padx=5)
 
-        tk.Label(self, text="3eN INSPECT TEAM    •    by ROITH    •    فحص ظاهر وبموافقة المستخدم",
+        tk.Label(self, text="3EN INSPECT TEAM    •    فحص واضح وبموافقة المستخدم",
                  bg="#0d1018", fg="#7e899f", font=("Segoe UI", 8, "bold"), pady=9).pack(fill="x")
     def update_progress(self, value, text):
         def paint():
