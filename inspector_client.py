@@ -22,15 +22,17 @@ APP = "3EN INSPECT"
 SAUDI_TZ = timezone(timedelta(hours=3), "AST")
 
 
-def format_saudi_time(value):
-    """Display ISO/UTC report timestamps in Saudi Arabia time (UTC+3)."""
+def format_saudi_time(value, language="ar"):
+    """Display ISO/UTC timestamps in Saudi Arabia time (UTC+3), independent of PC locale."""
     if not value:
-        return "غير متاح"
+        return "Unavailable" if language == "en" else "غير متاح"
     try:
         parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
-        return parsed.astimezone(SAUDI_TZ).strftime("%d/%m/%Y %I:%M:%S %p") + " (توقيت السعودية UTC+3)"
+        stamp = parsed.astimezone(SAUDI_TZ).strftime("%d/%m/%Y %I:%M:%S %p")
+        suffix = "(Saudi Arabia time, UTC+3)" if language == "en" else "(توقيت السعودية UTC+3)"
+        return stamp + " " + suffix
     except (TypeError, ValueError, OverflowError):
         return str(value)
 try:
@@ -972,6 +974,7 @@ def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=1
                         "scan_group": "آثار ملفات محذوفة",
                         "kind": "deleted_file_metadata",
                         "deleted_at": deleted_at_iso,
+                        "deleted_at_display": format_saudi_time(deleted_at_iso),
                         "original_size": int(original_size),
                         "extension": extension,
                         "recycle_payload_present": payload_present,
@@ -992,85 +995,108 @@ def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=1
     return findings
 
 
-def collect_recent_apps(processes, progress):
-    """Show apps started in the last 24h plus recent Windows Prefetch metadata."""
+def collect_recent_apps(processes, progress, deleted_file_findings=None):
+    """Collect live processes and last-24h Prefetch execution records, including records for deleted apps."""
     import time
 
     cutoff = time.time() - 24 * 60 * 60
+    observed_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
     recent = []
-    seen = set()
-    for proc in processes:
-        try:
-            started = datetime.fromisoformat(str(proc.get("process_started_at") or "").replace("Z", "+00:00"))
-            started_recently = started.timestamp() >= cutoff
-        except (ValueError, TypeError, OSError):
-            started_recently = False
-        # Include every process still running now; mark whether it started in the last 24 hours.
-        key = (proc.get("pid"), proc.get("executable_path"))
-        if key in seen:
+    seen_processes = set()
+
+    # A currently visible process is active now even if it started more than 24h ago.
+    for proc in processes or []:
+        name = proc.get("process_name") or proc.get("file_name") or "Unknown"
+        path = proc.get("executable_path") or ""
+        key = (str(name).casefold(), os.path.normcase(str(path)))
+        if key in seen_processes:
             continue
-        seen.add(key)
+        seen_processes.add(key)
+        started_at = proc.get("process_started_at")
+        try:
+            started = datetime.fromisoformat(str(started_at or "").replace("Z", "+00:00"))
+            if started.tzinfo is None:
+                started = started.replace(tzinfo=timezone.utc)
+            started_recently = started.timestamp() >= cutoff
+            started_display = format_saudi_time(started_at)
+        except (ValueError, TypeError, OSError, OverflowError):
+            started_recently = False
+            started_display = "Unavailable"
         recent.append({
-            "app_name": proc.get("process_name") or proc.get("file_name") or "Unknown",
-            "file_name": proc.get("file_name") or "Unknown",
-            "path": proc.get("executable_path") or "غير متاح",
-            "last_seen_at": proc.get("process_started_at"),
-            "last_seen_display": proc.get("process_started_at"),
-            "evidence_source": "عملية تعمل حاليًا — وقت بدء العملية",
-            "time_accuracy": "exact_process_start",
+            "app_name": name, "file_name": proc.get("file_name") or name,
+            "path": path or "Unavailable",
+            "last_seen_at": observed_at, "last_seen_display": format_saudi_time(observed_at),
+            "process_started_at": started_at, "process_started_display": started_display,
+            "evidence_source": "Currently running process — observed during inspection",
+            "time_accuracy": "live_process_observation", "currently_running": True,
             "started_within_24h": started_recently,
-            "activity_window": "آخر 24 ساعة" if started_recently else "تعمل الآن — بدأت قبل آخر 24 ساعة",
+            "activity_window": "Currently running" if started_recently else "Currently running; started over 24 hours ago",
             "indicator_matches": proc.get("indicator_matches", []),
-            "indicator_category": proc.get("indicator_category", "لا توجد مطابقة اسمية"),
+            "indicator_category": proc.get("indicator_category", "No name match"),
             "signature_status": proc.get("signature_status", "not_checked"),
-            "signature_label": proc.get("signature_label", "لم يتم التحقق")
+            "signature_label": proc.get("signature_label", "Not checked")
         })
 
-    # Windows Prefetch is OS metadata and is omitted from the user-facing report.
-    recent.sort(key=lambda row: row.get("last_seen_at") or "", reverse=True)
-    progress(90, f"اكتمل تجميع التطبيقات الحالية: {len(recent)}")
-    return recent
+    # Exact executable-name correlation only; it does not confirm the original full path.
+    deleted_by_exe = {}
+    for row in deleted_file_findings or []:
+        filename = str(row.get("file_name") or "")
+        if filename.casefold().endswith(".exe"):
+            deleted_by_exe.setdefault(filename.casefold(), row)
 
-    prefetch_roots = [r"C:\Windows\Prefetch"]
-    for root in prefetch_roots:
-        if not os.path.isdir(root):
-            continue
-        try:
-            with os.scandir(root) as entries:
-                for entry in entries:
-                    if not entry.is_file(follow_symlinks=False) or not entry.name.casefold().endswith(".pf"):
+    prefetch_root = Path(os.environ.get("WINDIR", r"C:\\Windows")) / "Prefetch"
+    excluded_os_apps = {
+        "svchost", "services", "lsass", "wininit", "winlogon", "smss", "csrss",
+        "dwm", "fontdrvhost", "sihost", "searchhost", "runtimebroker", "taskhostw",
+        "conhost", "dllhost", "spoolsv", "registry", "system", "idle", "audiodg",
+        "securityhealthservice", "msmpeng", "startmenuexperiencehost",
+        "shellexperiencehost", "textinputhost"
+    }
+    try:
+        with os.scandir(str(prefetch_root)) as entries:
+            for entry in entries:
+                if not entry.is_file(follow_symlinks=False) or not entry.name.casefold().endswith(".pf"):
+                    continue
+                try:
+                    st = entry.stat(follow_symlinks=False)
+                    if st.st_mtime < cutoff:
                         continue
-                    try:
-                        st = entry.stat(follow_symlinks=False)
-                        if st.st_mtime < cutoff:
-                            continue
-                        app_name = entry.name.split("-", 1)[0].removesuffix(".pf")
-                        key = ("prefetch", entry.name.casefold())
-                        if key in seen:
-                            continue
-                        seen.add(key)
-                        local = datetime.fromtimestamp(st.st_mtime).astimezone()
-                        prefetch_matches = find_indicator_matches(app_name, entry.name)
-                        prefetch_category = "مؤشرات حركة" if any(term in prefetch_matches for term in ("ad movement", "filter key", "scod", "cr-fastrun")) else ("مؤشرات هاك/غش" if prefetch_matches else "لا توجد مطابقة اسمية")
-                        recent.append({
-                            "app_name": app_name, "file_name": entry.name,
-                            "path": "Windows Prefetch metadata (system path hidden)", "last_seen_at": utc_timestamp(st.st_mtime),
-                            "last_seen_display": local.strftime("%B %d, %Y %I:%M:%S %p"),
-                            "evidence_source": "Windows Prefetch (.pf) — قرينة تشغيل تقريبية",
-                            "time_accuracy": "approximate_prefetch_timestamp",
-                            "indicator_matches": prefetch_matches,
-                            "indicator_category": prefetch_category,
-                            "signature_status": "not_checked",
-                            "signature_label": "بيانات سجل تشغيل، لا ينطبق عليها توقيع ملف التطبيق"
-                        })
-                    except OSError:
+                    app_name = entry.name.split("-", 1)[0].removesuffix(".pf")
+                    if app_name.casefold() in excluded_os_apps:
                         continue
-        except OSError:
-            pass
-    recent.sort(key=lambda row: row.get("last_seen_at") or "", reverse=True)
-    progress(90, f"اكتمل تجميع التطبيقات الحالية وسجل آخر 24 ساعة: {len(recent)}")
-    return recent
+                    if any(row.get("prefetch_key") == entry.name.casefold() for row in recent):
+                        continue
+                    deleted_row = deleted_by_exe.get((app_name + ".exe").casefold())
+                    prefetch_time = utc_timestamp(st.st_mtime)
+                    prefetch_matches = find_indicator_matches(app_name, entry.name)
+                    deleted_at = deleted_row.get("deleted_at") if deleted_row else None
+                    recent.append({
+                        "app_name": app_name, "file_name": entry.name,
+                        "path": "Windows Prefetch metadata (system path hidden)",
+                        "last_seen_at": prefetch_time,
+                        "last_seen_display": format_saudi_time(prefetch_time),
+                        "evidence_source": "Windows Prefetch (.pf) — approximate execution record",
+                        "time_accuracy": "approximate_prefetch_timestamp",
+                        "prefetch_key": entry.name.casefold(), "currently_running": False,
+                        "started_within_24h": True,
+                        "activity_window": "Last 24 hours — approximate Prefetch timestamp",
+                        "deleted_file_name_match": bool(deleted_row),
+                        "deleted_at": deleted_at,
+                        "deleted_at_display": format_saudi_time(deleted_at) if deleted_at else None,
+                        "indicator_matches": prefetch_matches,
+                        "indicator_category": "Name indicators" if prefetch_matches else "No name match",
+                        "signature_status": "not_checked",
+                        "signature_label": "Execution-history metadata; application signature not checked"
+                    })
+                except OSError:
+                    continue
+    except OSError:
+        # Prefetch can be disabled or inaccessible; no execution record can be inferred then.
+        pass
 
+    recent.sort(key=lambda row: row.get("last_seen_at") or "", reverse=True)
+    progress(90, f"Collected current processes and last-24h execution records: {len(recent)}")
+    return recent
 
 
 def collect_recent_files(progress, deleted_file_findings=None, max_entries=500):
@@ -1608,7 +1634,7 @@ class InspectorApp(tk.Tk):
             files.sort(key=lambda item: 0 if item.get("indicator_matches") else 1)
             files.sort(key=lambda item: group_order.get(item.get("scan_group"), 9))
             verify_authenticode_signatures(processes, files, self.update_progress)
-            recent_apps = collect_recent_apps(processes, self.update_progress)
+            recent_apps = collect_recent_apps(processes, self.update_progress, deleted_file_findings)
             # Include Windows Recent shortcut records: targets may be deleted or moved.
             recent_files = collect_recent_files(
                 self.update_progress, deleted_file_findings=deleted_file_findings
@@ -1748,16 +1774,43 @@ class InspectorApp(tk.Tk):
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak, KeepTogether
 
             report = self.report
+            language = self.lang
+            T = lambda ar, en: ar if language == "ar" else en
+            pdf_font = "Helvetica"
+            reshape_arabic = None
+            if language == "ar":
+                from reportlab.pdfbase import pdfmetrics
+                from reportlab.pdfbase.ttfonts import TTFont
+                font_candidates = [
+                    os.path.join(os.environ.get("WINDIR", r"C:\\Windows"), "Fonts", "arial.ttf"),
+                    os.path.join(os.environ.get("WINDIR", r"C:\\Windows"), "Fonts", "tahoma.ttf"),
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                    "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf",
+                ]
+                font_path = next((p for p in font_candidates if os.path.isfile(p)), None)
+                if not font_path:
+                    raise RuntimeError("Arabic PDF font not found. Install Arial, Tahoma, or DejaVu Sans.")
+                pdfmetrics.registerFont(TTFont("3ENArabic", font_path))
+                pdf_font = "3ENArabic"
+                try:
+                    import arabic_reshaper
+                    from bidi.algorithm import get_display
+                    reshape_arabic = lambda value: get_display(arabic_reshaper.reshape(str(value)))
+                except ImportError:
+                    raise RuntimeError("Arabic PDF support is missing. Install arabic-reshaper and python-bidi.")
+            def pdf_text(value):
+                value = str(value if value not in (None, "") else "—")
+                return reshape_arabic(value) if reshape_arabic else value
             styles = getSampleStyleSheet()
-            styles.add(ParagraphStyle(name="BrandTitle", parent=styles["Title"], textColor=colors.HexColor("#b51f3b"), fontSize=22, leading=27, spaceAfter=4))
-            styles.add(ParagraphStyle(name="SectionTitle", parent=styles["Heading2"], textColor=colors.HexColor("#8f1830"), spaceBefore=10, spaceAfter=5))
-            styles.add(ParagraphStyle(name="SmallCell", parent=styles["BodyText"], fontSize=7, leading=9, wordWrap="CJK"))
-            styles.add(ParagraphStyle(name="MutedNote", parent=styles["BodyText"], textColor=colors.HexColor("#555555"), fontSize=8, leading=11))
+            styles.add(ParagraphStyle(name="BrandTitle", parent=styles["Title"], textColor=colors.HexColor("#b51f3b"), fontSize=22, leading=27, spaceAfter=4, fontName=pdf_font, alignment=2 if language == "ar" else 0))
+            styles.add(ParagraphStyle(name="SectionTitle", parent=styles["Heading2"], textColor=colors.HexColor("#8f1830"), spaceBefore=10, spaceAfter=5, fontName=pdf_font, alignment=2 if language == "ar" else 0))
+            styles.add(ParagraphStyle(name="SmallCell", parent=styles["BodyText"], fontSize=7, leading=9, wordWrap="CJK", fontName=pdf_font, alignment=2 if language == "ar" else 0))
+            styles.add(ParagraphStyle(name="MutedNote", parent=styles["BodyText"], textColor=colors.HexColor("#555555"), fontSize=8, leading=11, fontName=pdf_font, alignment=2 if language == "ar" else 0))
             doc = SimpleDocTemplate(path, pagesize=A4, rightMargin=13*mm, leftMargin=13*mm, topMargin=15*mm, bottomMargin=15*mm)
             story = [
                 Paragraph("3EN INSPECT", styles["BrandTitle"]),
-                Paragraph(self._t("تقرير فحص أمني", "Security Inspection Report"), styles["Heading2"]),
-                Paragraph(self._t("وقت إنشاء التقرير — السعودية: ", "Report generated — Saudi Arabia: ") + escape(format_saudi_time(report.get("created_at"))), styles["MutedNote"]),
+                Paragraph(pdf_text(T("تقرير فحص أمني", "Security Inspection Report")), styles["Heading2"]),
+                Paragraph(pdf_text(T("وقت إنشاء التقرير — توقيت السعودية: ", "Report generated — Saudi Arabia time: ") + format_saudi_time(report.get("created_at"), language)), styles["MutedNote"]),
                 Spacer(1, 5*mm)
             ]
 
@@ -1789,7 +1842,8 @@ class InspectorApp(tk.Tk):
                 ["Recent apps / execution evidence", str(len(recent_apps))],
                 ["Windows Recent shortcuts", str(len(recent_files))]
             ]
-            table = Table(summary, colWidths=[62*mm, 112*mm])
+            summary = [[pdf_text(a), pdf_text(b)] for a, b in summary]
+            table = Table(summary, colWidths=[62*mm, 112*mm], hAlign="RIGHT" if language == "ar" else "LEFT")
             table.setStyle(TableStyle([
                 ("BACKGROUND",(0,0),(0,-1),colors.HexColor("#f8e6ea")),
                 ("TEXTCOLOR",(0,0),(0,-1),colors.HexColor("#86152b")),
@@ -1797,15 +1851,15 @@ class InspectorApp(tk.Tk):
                 ("VALIGN",(0,0),(-1,-1),"TOP"),("PADDING",(0,0),(-1,-1),6),
                 ("FONTSIZE",(0,0),(-1,-1),8)
             ]))
-            story.extend([Paragraph("Executive summary", styles["SectionTitle"]), table])
+            story.extend([Paragraph(pdf_text(T("الملخص التنفيذي", "Executive summary")), styles["SectionTitle"]), table])
 
             def cell(value, limit=500):
-                return Paragraph(escape(str(value if value not in (None, "") else "—"))[:limit], styles["SmallCell"])
+                return Paragraph(escape(pdf_text(str(value if value not in (None, "") else "—"))[:limit]), styles["SmallCell"])
 
             def add_section(title, rows, headers, widths, empty_note, cap=80):
-                story.append(Paragraph(title, styles["SectionTitle"]))
+                story.append(Paragraph(pdf_text(title), styles["SectionTitle"]))
                 if not rows:
-                    story.append(Paragraph(empty_note, styles["MutedNote"]))
+                    story.append(Paragraph(pdf_text(empty_note), styles["MutedNote"]))
                     return
                 data = [[cell(h, 80) for h in headers]]
                 for row in rows[:cap]:
@@ -1823,66 +1877,66 @@ class InspectorApp(tk.Tk):
                 ]))
                 story.append(t)
                 if len(rows) > cap:
-                    story.append(Paragraph("Showing first " + str(cap) + " of " + str(len(rows)) + " entries in this PDF section. Full structured evidence remains in the dashboard report.", styles["MutedNote"]))
+                    story.append(Paragraph(pdf_text(T("يعرض هذا القسم أول ", "Showing first ") + str(cap) + T(" من أصل ", " of ") + str(len(rows)) + T(" عنصرًا في هذا القسم. بقية البيانات محفوظة في التقرير الكامل بلوحة التحكم.", " entries in this section. Full structured evidence remains in the dashboard report.")), styles["MutedNote"]))
 
-            story.append(Paragraph("FiveM / GTA V findings", styles["SectionTitle"]))
-            add_section("Game files, logs and resource scripts", [
+            story.append(Paragraph(pdf_text(T("نتائج FiveM / GTA V","FiveM / GTA V findings")), styles["SectionTitle"]))
+            add_section(T("ملفات اللعبة والسجلات والموارد","Game files, logs and resource scripts"), [
                 (x.get("scan_group"), x.get("file_name"), x.get("indicator_category"),
                  ", ".join(x.get("indicator_matches", [])), x.get("evidence_reason", x.get("path", "")))
                 for x in game_evidence
-            ], ["Evidence group", "File", "Assessment", "Matched indicators", "Context / path"],
+            ], [T("مجموعة الدليل","Evidence group"), T("الملف","File"), T("التقييم","Assessment"), T("المؤشرات المطابقة","Matched indicators"), T("السياق / المسار","Context / path")],
             [30*mm, 34*mm, 30*mm, 35*mm, 45*mm],
-            "No FiveM/GTA V evidence rows were collected in the scanned locations.")
+            T("لم يتم جمع أدلة FiveM/GTA V من المواقع التي شملها الفحص.","No FiveM/GTA V evidence rows were collected in the scanned locations."))
 
-            add_section("Suspicious process leads", [
+            add_section(T("مؤشرات العمليات التي تحتاج مراجعة","Suspicious process leads"), [
                 (x.get("process_name"), x.get("pid"), x.get("indicator_category"),
                  ", ".join(x.get("indicator_matches", [])), x.get("executable_path", ""))
                 for x in flagged_processes
-            ], ["Process", "PID", "Category", "Indicators", "Executable path"],
+            ], [T("العملية","Process"), "PID", T("الفئة","Category"), T("المؤشرات","Indicators"), T("مسار التشغيل","Executable path")],
             [30*mm, 12*mm, 28*mm, 42*mm, 62*mm],
-            "No configured process-name indicators matched. This is not proof that no cheat is present.")
+            T("لم تتطابق أسماء العمليات مع المؤشرات المحددة؛ وهذا لا يثبت خلو الجهاز من الغش.","No configured process-name indicators matched. This is not proof that no cheat is present."))
 
-            add_section("Files with name-based indicators", [
+            add_section(T("ملفات ذات مؤشرات اسمية","Files with name-based indicators"), [
                 (x.get("scan_group"), x.get("file_name"), ", ".join(x.get("indicator_matches", [])),
                  x.get("signature_label", ""), x.get("path", x.get("file_path", "")))
                 for x in flagged_files
-            ], ["Group", "File", "Indicators", "Signature", "Path / source"],
+            ], [T("المجموعة","Group"), T("الملف","File"), T("المؤشرات","Indicators"), T("التوقيع","Signature"), T("المسار / المصدر","Path / source")],
             [27*mm, 32*mm, 38*mm, 30*mm, 47*mm],
-            "No configured file-name indicators matched.")
+            T("لم تتطابق أسماء الملفات مع المؤشرات المحددة.","No configured file-name indicators matched."))
 
-            add_section("Deleted-file evidence — Recycle Bin only", [
-                (x.get("file_name"), x.get("extension"), x.get("deleted_at"),
+            add_section(T("أدلة الملفات المحذوفة — سلة المحذوفات فقط","Deleted-file evidence — Recycle Bin only"), [
+                (x.get("file_name"), x.get("extension"), x.get("deleted_at_display") or format_saudi_time(x.get("deleted_at"), language),
                  "Yes" if x.get("recycle_payload_present") else "No",
                  x.get("evidence_reason", ""))
                 for x in deleted
-            ], ["Deleted file", "Type", "Deletion time (UTC)", "Payload in bin", "Interpretation"],
+            ], [T("الملف المحذوف","Deleted file"), T("النوع","Type"), T("وقت الحذف — السعودية","Deletion time — Saudi Arabia"), T("المحتوى ما زال بالسلة","Payload in bin"), T("التفسير","Interpretation")],
             [32*mm, 18*mm, 35*mm, 22*mm, 67*mm],
-            "No matching deleted-file metadata was found in the scanned Recycle Bin locations.")
+            T("لم يتم العثور على سجلات حذف مطابقة في المواقع التي فُحصت.","No matching deleted-file metadata was found in the scanned Recycle Bin locations."))
 
-            add_section("Apps active / execution evidence — last 24 hours", [
+            add_section(T("البرامج النشطة / سجلات التشغيل — آخر 24 ساعة","Apps active / execution evidence — last 24 hours"), [
                 (x.get("app_name"), x.get("last_seen_display"), x.get("evidence_source"),
                  "Yes" if x.get("started_within_24h") else "No / approximate",
                  ", ".join(x.get("indicator_matches", [])))
                 for x in recent_apps
-            ], ["Application", "Time", "Evidence source", "Started within 24h", "Indicators"],
+            ], [T("البرنامج","Application"), T("الوقت — السعودية","Time — Saudi Arabia"), T("مصدر الدليل","Evidence source"), T("بدأ خلال 24 ساعة","Started within 24h"), T("المؤشرات","Indicators")],
             [32*mm, 32*mm, 43*mm, 30*mm, 37*mm],
-            "No current process or Prefetch entries were available.")
+            T("لم تتوفر عمليات جارية أو سجلات Prefetch ضمن آخر 24 ساعة.","No current process or Prefetch entries were available."))
 
-            add_section("Windows Recent folder — recent shortcuts", [
+            add_section(T("مجلد Windows Recent — الاختصارات الحديثة","Windows Recent folder — recent shortcuts"), [
                 (x.get("file_name"), x.get("last_accessed_display"),
                  x.get("target_path") or x.get("recent_shortcut_path"),
                  x.get("evidence_source", ""))
                 for x in recent_files
-            ], ["File / target", "Shortcut timestamp", "Resolved target or shortcut", "Evidence source"],
+            ], [T("الملف / الهدف","File / target"), T("وقت الاختصار — السعودية","Shortcut time — Saudi Arabia"), T("الهدف أو الاختصار","Resolved target or shortcut"), T("مصدر الدليل","Evidence source")],
             [35*mm, 34*mm, 70*mm, 35*mm],
-            "No shortcut entries were available in the Windows Recent folder.")
+            T("لا توجد اختصارات متاحة في مجلد Windows Recent.","No shortcut entries were available in the Windows Recent folder."))
 
             story.extend([
                 Spacer(1, 5*mm),
-                Paragraph("Scope and limitations", styles["SectionTitle"]),
+                Paragraph(pdf_text(T("نطاق الفحص والقيود","Scope and limitations")), styles["SectionTitle"]),
                 Paragraph("This is a targeted, bounded inspection of common FiveM, CitizenFX and GTA V locations, selected user/application folders, running processes, selected text logs and resource files, Windows Prefetch metadata, the Windows Recent shortcut folder, and Windows Recycle Bin metadata. It does not inspect every location or every possible cheat, and it cannot guarantee detection of all cheats.", styles["MutedNote"]),
                 Paragraph("A Recent shortcut timestamp is not definitive proof that a file was opened. Prefetch timestamps are approximate execution evidence and may be unavailable. Recycle Bin records cover items still represented by Windows Recycle Bin metadata only; permanently deleted files are not recovered. Files are not executed, deleted, modified, or uploaded as content. Log/resource text is analyzed locally; only matched indicator names and line numbers are retained. Indicators are leads for human review, not proof of cheating. A valid digital signature does not guarantee software is safe.", styles["MutedNote"]),
-                Paragraph("Report generated by 3EN Inspect Team.", styles["MutedNote"])
+                Paragraph(pdf_text(T("تم إنشاء التقرير بواسطة 3EN Inspect Team.","Report generated by 3EN Inspect Team.")), styles["MutedNote"])
             ])
             doc.build(story)
             messagebox.showinfo(APP, self._t("تم تصدير تقرير الفحص الكامل PDF بنجاح.", "The full inspection PDF report was exported successfully."))
