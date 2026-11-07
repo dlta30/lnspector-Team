@@ -1128,8 +1128,8 @@ ConvertTo-Json -InputObject @($out) -Compress
             target_status = "available"
             target_status_ar = "الملف موجود"
         elif recycle_match:
-            target_status = "deleted_recycle_bin"
-            target_status_ar = "يوجد سجل مطابق في سلة المحذوفات"
+            target_status = "recycle_bin_name_match"
+            target_status_ar = "يوجد اسم مطابق في سجل سلة المحذوفات؛ يلزم مطابقة المسار"
         else:
             target_status = "missing_or_moved"
             target_status_ar = "الملف غير موجود في مساره؛ قد يكون محذوفًا أو منقولًا"
@@ -1149,7 +1149,7 @@ ConvertTo-Json -InputObject @($out) -Compress
             "target_status": target_status,
             "target_status_ar": target_status_ar,
             "deleted_at": recycle_match.get("deleted_at") if recycle_match else None,
-            "confirmed_recycle_bin_record": bool(recycle_match),
+            "recycle_bin_name_match": bool(recycle_match),
         })
     progress(92, "اكتمل جمع عناصر Windows Recent: " + str(len(results)))
     return results
