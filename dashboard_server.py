@@ -533,7 +533,6 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         'description': ('اعتمد المراجع تصنيف «كلين». لا تُرسل تفاصيل المؤشرات أو أعدادها إلى Discord؛ تبقى في لوحة المفتش. هذا القرار اليدوي لا يثبت خلو الجهاز من كل المخاطر.' if verdict == 'clean' else ('اعتمد المراجع تصنيف «هاك / مشتبه». المؤشرات تحتاج تحققًا يدويًا ولا تُعد وحدها إثباتًا قاطعًا.\n\n' if verdict == 'hack' else 'التقرير بانتظار قرار المراجع.\n\n') + safe(summary or 'تم استلام التقرير وحفظه في لوحة التحكم.', 700)),
         'color': verdict_color,
         'fields': fields[:25],
-        'timestamp': timestamp_utc_iso(report_time),
         'footer': {'text': '3eN INSPECTOR TEAM • الوقت المعروض بتوقيت السعودية (UTC+3) • المؤشرات تحتاج مراجعة يدوية.'}
     }
     message = {
@@ -1696,7 +1695,7 @@ def report_detail(report_id):
               {% else %}<span class="tag">موجود</span>{% endif %}
             </div>
             <div class="field"><b>المسار الهدف</b><span dir="ltr">{{ item.get('target_path') or 'غير متاح' }}</span></div>
-            <div class="field"><b>وقت ظهور الاختصار</b><span dir="ltr">{{ item.get('last_accessed_display') or item.get('last_accessed_at') or 'غير متاح' }}</span></div>
+            <div class="field"><b>وقت ظهور الاختصار — السعودية (UTC+3)</b><span dir="ltr">{{ item.get('last_accessed_display') or 'غير متاح' }}</span></div>
             <div class="field"><b>مصدر الدليل</b><span>{{ item.get('evidence_source') or 'Windows Recent' }}</span></div>
             {% if item.get('deleted_at') %}<div class="field"><b>وقت الحذف المسجل — السعودية (UTC+3)</b><span dir="ltr">{{ item.get('deleted_at_display') or 'غير متاح' }}</span></div>{% endif %}
           </article>
@@ -1824,6 +1823,7 @@ def report_pdf(report_id):
     language = request.args.get("lang", "").strip().lower()
     if language not in ("ar", "en"): language = data.get("interface_language", "en")
     if language not in ("ar", "en"): language = "en"
+    payload = json.dumps(localize_timestamp_fields(envelope, language), indent=2, ensure_ascii=False) if isinstance(envelope, (dict, list)) else str(envelope)
     T = lambda ar, en: ar if language == "ar" else en
     processes = data.get("processes", []) if isinstance(data.get("processes", []), list) else []
     artifacts = data.get("file_artifacts", []) if isinstance(data.get("file_artifacts", []), list) else []
@@ -1908,7 +1908,7 @@ def report_pdf(report_id):
         p(T("الشخص: ","Person: ")+str(target_label or T("غير محدد","Not specified"))),
         p(T("الجهاز: ","Device: ")+str(r["computer_label"])),
         p(T("الجلسة: ","Session: ")+str(r["session_id"])),
-        p(T("وقت الاستلام — السعودية: ","Received — Saudi Arabia time: ")+format_saudi_time(r["created_at"],language)),
+        p(T("وقت الاستلام — السعودية (UTC+3): ","Received — Saudi Arabia (UTC+3): ")+format_saudi_time(r["created_at"],language)),
         p(T("أرسل بواسطة: ","Submitted by: ")+str(source_label)),
         p(T("الملخص: ","Summary: ")+str(r["summary"] or T("لا يوجد ملخص","No summary"))),
         p(T("نظرة عامة","Overview"),"Head3EN"),
