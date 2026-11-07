@@ -16,7 +16,7 @@ from tkinter import filedialog, messagebox, ttk
 from datetime import datetime, timezone
 from pathlib import Path
 
-APP = "3eN Inspect Team"
+APP = "3EN INSPECT"
 try:
     from session_config import SESSION_CODE, DASHBOARD_URL
 except ImportError:
