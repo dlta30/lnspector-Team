@@ -1612,7 +1612,7 @@ def report_detail(report_id):
         {% for item in visible_recent_files %}
           <article class="process-embed">
             <div class="process-embed-head"><span>🕘</span><span class="process-embed-title">{{ item.get('file_name') or item.get('shortcut_name') or 'ملف غير معروف' }}</span>
-              {% if item.get('confirmed_recycle_bin_record') %}<span class="tag" style="background:#48221e;color:#ffc078">سجل حذف مؤكد في سلة المحذوفات</span>
+              {% if item.get('recycle_bin_name_match') %}<span class="tag" style="background:#48221e;color:#ffc078">اسم مطابق في سلة المحذوفات — يحتاج مطابقة المسار</span>
               {% elif item.get('target_status') == 'missing_or_moved' %}<span class="tag">الملف غير موجود — قد يكون محذوفًا أو منقولًا</span>
               {% else %}<span class="tag">موجود</span>{% endif %}
             </div>
@@ -1836,7 +1836,7 @@ def report_pdf(report_id):
             if not isinstance(item, dict):
                 continue
             status = (
-                "Confirmed Recycle Bin record" if item.get("confirmed_recycle_bin_record") else
+                "Recycle Bin filename match — path not confirmed" if item.get("recycle_bin_name_match") else
                 "Missing or moved — not confirmed deleted" if item.get("target_status") == "missing_or_moved" else
                 "Target exists" if item.get("target_status") == "available" else "Target unavailable"
             )
