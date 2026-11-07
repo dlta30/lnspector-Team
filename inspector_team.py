@@ -276,7 +276,7 @@ class InspectorApp:
                  font=("Segoe UI", 20, "bold")).pack()
         tk.Label(self.sidebar, text="INSPECT TEAM", bg="#0d0f16", fg=RED,
                  font=("Segoe UI", 10, "bold")).pack()
-                self.pages = ttk.Notebook(shell)
+        self.pages = ttk.Notebook(shell)
         self.pages.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         self.main_page = tk.Frame(self.pages, bg=BG)
         self.pages.add(self.main_page, text="⌂  الرئيسية")
@@ -286,7 +286,7 @@ class InspectorApp:
         mark.pack(side="left", padx=(0, 14))
         brand = tk.Frame(header, bg=BG); brand.pack(side="left", fill="y")
         tk.Label(brand, text="3eN Inspect Team", bg=BG, fg=TEXT, font=("Segoe UI", 22, "bold")).pack(anchor="w")
-                tk.Label(header, text="●  النظام جاهز للفحص", bg=BG, fg=RED, font=("Segoe UI", 10, "bold")).pack(side="right", anchor="n", pady=8)
+        tk.Label(header, text="●  النظام جاهز للفحص", bg=BG, fg=RED, font=("Segoe UI", 10, "bold")).pack(side="right", anchor="n", pady=8)
 
         control = tk.Frame(self.main_page, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         control.pack(fill="x", padx=22, pady=(0, 12))
