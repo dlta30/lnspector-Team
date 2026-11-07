@@ -1419,7 +1419,10 @@ class InspectorApp(tk.Tk):
         self.minsize(940, 700)
         self.configure(bg="#090a10")
         self.report = None
-        self.lang = "ar"
+        self.lang = "en"  # English is the default interface language.
+        self.scan_running = False
+        self._progress_value = 0
+        self._progress_message = "Ready — accept the consent and start."
         style = ttk.Style(self)
         style.theme_use("clam")
         style.configure("TProgressbar", troughcolor="#20212c", background="#ff304f", bordercolor="#20212c")
@@ -1547,8 +1550,40 @@ class InspectorApp(tk.Tk):
         tk.Label(self, text="3EN INSPECT",
                  bg="#0d1018", fg="#7e899f", font=("Segoe UI", 8, "bold"), pady=9).pack(fill="x")
     def _change_language(self, _event=None):
+        # Rebuild translated widgets without losing an active scan or its UI state.
+        consent_accepted = bool(getattr(self, "consent_scan", None) and self.consent_scan.get())
+        progress_value = int(getattr(self, "_progress_value", 0))
+        progress_message = getattr(self, "_progress_message", "")
+        current_state = self.metric_state.get() if hasattr(self, "metric_state") else ("SCANNING" if self.scan_running else "READY")
+        process_metric = self.metric_processes.get() if hasattr(self, "metric_processes") else "—"
+        flag_metric = self.metric_flags.get() if hasattr(self, "metric_flags") else "—"
         self.lang = "en" if self.language_choice.get() == "English" else "ar"
         self._build()
+        self.consent_scan.set(consent_accepted)
+        self.metric_state.set(current_state)
+        self.metric_processes.set(process_metric)
+        self.metric_flags.set(flag_metric)
+        self.progress.configure(value=progress_value)
+        self.progress_percent.configure(text=f"{progress_value}%")
+        self.status.set(self._progress_text(progress_message))
+        if self.scan_running:
+            self.start_button.configure(state="disabled")
+            self.session_badge.configure(
+                text=self._t("●  الفحص جارٍ", "●  INSPECTION RUNNING"),
+                bg="#332616", fg="#ffbd69"
+            )
+        elif current_state in ("COMPLETE", "SENT", "REVIEW"):
+            self.start_button.configure(state="normal")
+            if current_state == "SENT":
+                badge_text = self._t("●  اكتمل وأُرسل", "●  COMPLETE & SENT")
+                badge_bg, badge_fg = "#142b28", "#62e0b0"
+            elif current_state == "REVIEW":
+                badge_text = self._t("●  تعذر الإرسال", "●  DELIVERY FAILED")
+                badge_bg, badge_fg = "#351521", "#ff8093"
+            else:
+                badge_text = self._t("●  بانتظار الإرسال", "●  SENDING REPORT")
+                badge_bg, badge_fg = "#332616", "#ffbd69"
+            self.session_badge.configure(text=badge_text, bg=badge_bg, fg=badge_fg)
 
     def _progress_text(self, value):
         if self.lang == "ar":
@@ -1574,6 +1609,8 @@ class InspectorApp(tk.Tk):
         return result
 
     def update_progress(self, value, text):
+        self._progress_value = max(0, min(100, int(value)))
+        self._progress_message = str(text)
         def paint():
             value = max(0, min(100, int(value)))
             self.progress.configure(value=value)
@@ -1629,6 +1666,7 @@ class InspectorApp(tk.Tk):
             messagebox.showerror(APP, self._t("تعذر التحقق من صلاحية الجلسة. لم يبدأ الفحص حفاظًا على منع التكرار. ", "Could not validate the session. Inspection did not start to prevent reuse. ") + type(exc).__name__)
             return
 
+        self.scan_running = True
         self.metric_state.set("SCANNING")
         self.session_badge.configure(text=self._t("●  الفحص جارٍ", "●  INSPECTION RUNNING"), bg="#332616", fg="#ffbd69")
         self.start_button.configure(state="disabled")
@@ -1716,9 +1754,11 @@ class InspectorApp(tk.Tk):
             }
             add_localized_indicator_fields(self.report, self.lang)
             self.update_progress(100, "اكتمل الفحص وتجهيز التقرير.")
+            self.scan_running = False
             self.delivery_status = "pending"
             self.after(0, self._show_report)
         except Exception as exc:
+            self.scan_running = False
             self.after(0, lambda: (messagebox.showerror(APP, str(exc)), self.start_button.configure(state="normal"), self.session_badge.configure(text=self._t("●  تعذر إكمال الفحص", "●  INSPECTION FAILED"), bg="#351521", fg="#ff8093")))
             self.update_progress(0, "Scan failed. Check dependencies and permissions.")
 
