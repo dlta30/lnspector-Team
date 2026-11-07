@@ -2031,7 +2031,14 @@ class InspectorApp(tk.Tk):
                 Paragraph(pdf_text(T("وقت اختصار Recent لا يثبت وحده أن الملف فُتح. أوقات Prefetch قرائن تشغيل تقريبية وقد لا تتوفر. سجلات سلة المحذوفات تشمل العناصر التي ما زالت بياناتها موجودة فقط؛ لا تتم استعادة الملفات المحذوفة نهائيًا. لا يتم تشغيل الملفات أو تعديلها أو رفع محتواها. تُحلل ملفات السجلات والموارد محليًا، وتُحفظ أسماء المؤشرات وأرقام الأسطر فقط. المؤشرات تستلزم مراجعة بشرية ولا تثبت الغش، والتوقيع الرقمي الصحيح لا يضمن سلامة البرنامج.", "A Recent shortcut timestamp is not definitive proof that a file was opened. Prefetch timestamps are approximate execution evidence and may be unavailable. Recycle Bin records cover items still represented by Windows Recycle Bin metadata only; permanently deleted files are not recovered. Files are not executed, deleted, modified, or uploaded as content. Log/resource text is analyzed locally; only matched indicator names and line numbers are retained. Indicators are leads for human review, not proof of cheating. A valid digital signature does not guarantee software is safe.")), styles["MutedNote"]),
                 Paragraph(pdf_text(T("3EN Inspect Team — الحقوق محفوظة","3EN Inspect Team — All rights reserved")), styles["MutedNote"])
             ])
-            doc.build(story)
+            def draw_client_pdf_footer(canvas_obj, doc_obj):
+                canvas_obj.saveState()
+                canvas_obj.setFont(pdf_font, 8)
+                canvas_obj.setFillColor(colors.HexColor("#777777"))
+                canvas_obj.drawCentredString(A4[0] / 2, 8 * mm, "BY:ROITH")
+                canvas_obj.restoreState()
+
+            doc.build(story, onFirstPage=draw_client_pdf_footer, onLaterPages=draw_client_pdf_footer)
             messagebox.showinfo(APP, self._t("تم تصدير تقرير الفحص الكامل PDF بنجاح.", "The full inspection PDF report was exported successfully."))
         except Exception as exc:
             messagebox.showerror(APP, "PDF export failed: " + str(exc))
