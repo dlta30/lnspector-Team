@@ -1230,7 +1230,7 @@ def collect_processes(progress):
 class InspectorApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("3EN Inspect Team")
+        self.title("3EN INSPECT")
         self.geometry("1120x820")
         try:
             resource_root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
@@ -1295,7 +1295,7 @@ class InspectorApp(tk.Tk):
                      font=("Segoe UI", 25, "bold"), padx=18, pady=15).pack()
         brand = tk.Frame(hero, bg=PANEL)
         brand.pack(side="left", fill="x", expand=True)
-        tk.Label(brand, text="3EN INSPECT TEAM", bg=PANEL, fg=WHITE,
+        tk.Label(brand, text="3EN INSPECT", bg=PANEL, fg=WHITE,
                  font=("Segoe UI", 21, "bold")).pack(anchor="w")
         tk.Label(brand, text="CYBERSECURITY  •  DEVICE INSPECTION", bg=PANEL,
                  fg=RED, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(3, 0))
@@ -1310,9 +1310,9 @@ class InspectorApp(tk.Tk):
 
         heading = tk.Frame(body, bg=BG)
         heading.pack(fill="x", pady=(0, 14))
-        tk.Label(heading, text="3EN  /  فحص FiveM وGTA V", bg=BG, fg=WHITE,
+        tk.Label(heading, text="3EN INSPECT", bg=BG, fg=WHITE,
                  font=("Segoe UI", 23, "bold")).pack(anchor="w")
-        tk.Label(heading, text="فحص موجّه ومنظّم لمجلدات اللعبة والموارد والسجلات، مع استبعاد مجلدات Windows وملفات النظام.",
+        tk.Label(heading, text="فحص أمني منظّم للجهاز.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(4, 0))
 
         # Keep metric variables for report processing without displaying extra cards.
@@ -1358,7 +1358,7 @@ class InspectorApp(tk.Tk):
         tk.Label(controls, text="يُرسل التقرير تلقائيًا بعد اكتمال الفحص؛ والتصنيف النهائي يحدده المفتش.",
                  bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left", padx=5)
 
-        tk.Label(self, text="3EN INSPECT TEAM    •    فحص واضح وبموافقة المستخدم",
+        tk.Label(self, text="3EN INSPECT",
                  bg="#0d1018", fg="#7e899f", font=("Segoe UI", 8, "bold"), pady=9).pack(fill="x")
     def update_progress(self, value, text):
         def paint():
