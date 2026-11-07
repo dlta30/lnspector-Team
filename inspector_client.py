@@ -913,7 +913,7 @@ def analyze_fivem_binaries(artifacts, progress, max_files=500,
     }
 
 
-def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=12):
+def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=12, language="ar"):
     """Read bounded Windows Recycle Bin metadata for deleted executable/script/config artifacts only."""
     import struct
     import time
@@ -1004,7 +1004,7 @@ def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=1
                         "scan_group": "آثار ملفات محذوفة",
                         "kind": "deleted_file_metadata",
                         "deleted_at": deleted_at_iso,
-                        "deleted_at_display": format_saudi_time(deleted_at_iso),
+                        "deleted_at_display": format_saudi_time(deleted_at_iso, language),
                         "original_size": int(original_size),
                         "extension": extension,
                         "recycle_payload_present": payload_present,
@@ -1643,7 +1643,7 @@ class InspectorApp(tk.Tk):
             fivem_log_findings = collect_fivem_log_evidence(self.update_progress)
             fivem_script_findings = collect_fivem_script_evidence(self.update_progress)
             binary_analysis = analyze_fivem_binaries(fivem_files, self.update_progress)
-            deleted_file_findings = collect_deleted_file_evidence(self.update_progress)
+            deleted_file_findings = collect_deleted_file_evidence(self.update_progress, language=self.lang)
             # Keep targeted game evidence, log indicators, and deleted-file metadata in the unified inventory.
             for item in fivem_files:
                 item.setdefault("source", "FiveM/GTA V targeted locations")
