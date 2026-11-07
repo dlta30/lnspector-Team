@@ -1389,7 +1389,7 @@ def collect_processes(progress):
 class InspectorApp(tk.Tk):
     def __init__(self):
         super().__init__()
-        self.title("3EN INSPECT • BY:ROITH")
+        self.title("3EN INSPECT")
         self.geometry("1120x820")
         # PyInstaller --onedir stores bundled assets under sys._MEIPASS (usually _internal).
         # Keep the PNG PhotoImage alive for the lifetime of the Tk window.
@@ -1475,7 +1475,7 @@ class InspectorApp(tk.Tk):
                      font=("Segoe UI", 25, "bold"), padx=18, pady=15).pack()
         brand = tk.Frame(hero, bg=PANEL)
         brand.pack(side="left", fill="x", expand=True)
-        tk.Label(brand, text="3EN INSPECT  •  BY:ROITH", bg=PANEL, fg=WHITE,
+        tk.Label(brand, text="3EN INSPECT", bg=PANEL, fg=WHITE,
                  font=("Segoe UI", 21, "bold")).pack(anchor="w")
         tk.Label(brand, text=self._t("فحص أمني منظّم • واضح وبموافقتك",
                                      "SECURITY INSPECTION  •  CONSENT-BASED"),
@@ -1495,7 +1495,7 @@ class InspectorApp(tk.Tk):
 
         heading = tk.Frame(body, bg=BG)
         heading.pack(fill="x", pady=(0, 14))
-        tk.Label(heading, text="3EN INSPECT  •  BY:ROITH", bg=BG, fg=WHITE,
+        tk.Label(heading, text="3EN INSPECT", bg=BG, fg=WHITE,
                  font=("Segoe UI", 23, "bold")).pack(anchor="w")
         tk.Label(heading, text=self._t("فحص أمني منظّم للجهاز.",
                                        "Structured device security inspection."),
@@ -1547,7 +1547,7 @@ class InspectorApp(tk.Tk):
                                         "The report is sent automatically when complete; the inspector makes the final classification."),
                  bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left", padx=5)
 
-        tk.Label(self, text="3EN INSPECT  •  BY:ROITH",
+        tk.Label(self, text="3EN INSPECT",
                  bg="#0d1018", fg="#7e899f", font=("Segoe UI", 8, "bold"), pady=9).pack(fill="x")
     def _change_language(self, _event=None):
         # Rebuild translated widgets without losing an active scan or its UI state.
@@ -1902,8 +1902,7 @@ class InspectorApp(tk.Tk):
             styles["Title"].fontName = pdf_font
             doc = SimpleDocTemplate(path, pagesize=A4, rightMargin=13*mm, leftMargin=13*mm, topMargin=15*mm, bottomMargin=15*mm)
             story = [
-                Paragraph("3EN INSPECT", styles["BrandTitle"]),\n                Paragraph("BY:ROITH", styles["MutedNote"]),
-                Paragraph(pdf_text(T("تقرير فحص أمني", "Security Inspection Report")), styles["Heading2"]),
+                Paragraph("3EN INSPECT", styles["BrandTitle"]),\n                Paragraph(pdf_text(T("تقرير فحص أمني", "Security Inspection Report")), styles["Heading2"]),
                 Paragraph(pdf_text(T("وقت إنشاء التقرير — توقيت السعودية: ", "Report generated — Saudi Arabia time: ") + format_saudi_time(report.get("created_at"), language)), styles["MutedNote"]),
                 Spacer(1, 5*mm)
             ]
@@ -2030,7 +2029,7 @@ class InspectorApp(tk.Tk):
                 Paragraph(pdf_text(T("نطاق الفحص والقيود","Scope and limitations")), styles["SectionTitle"]),
                 Paragraph(pdf_text(T("هذا فحص موجّه ومحدود لمواقع FiveM وCitizenFX وGTA V الشائعة، ومجلدات مستخدم وبرامج محددة، والعمليات الجارية، وسجلات وملفات موارد مختارة، وبيانات Windows Prefetch وRecent وسلة المحذوفات. لا يفحص كل المواقع أو كل أنواع الغش ولا يضمن اكتشافها جميعًا.", "This is a targeted, bounded inspection of common FiveM, CitizenFX and GTA V locations, selected user/application folders, running processes, selected text logs and resource files, Windows Prefetch metadata, the Windows Recent shortcut folder, and Windows Recycle Bin metadata. It does not inspect every location or every possible cheat, and it cannot guarantee detection of all cheats.")), styles["MutedNote"]),
                 Paragraph(pdf_text(T("وقت اختصار Recent لا يثبت وحده أن الملف فُتح. أوقات Prefetch قرائن تشغيل تقريبية وقد لا تتوفر. سجلات سلة المحذوفات تشمل العناصر التي ما زالت بياناتها موجودة فقط؛ لا تتم استعادة الملفات المحذوفة نهائيًا. لا يتم تشغيل الملفات أو تعديلها أو رفع محتواها. تُحلل ملفات السجلات والموارد محليًا، وتُحفظ أسماء المؤشرات وأرقام الأسطر فقط. المؤشرات تستلزم مراجعة بشرية ولا تثبت الغش، والتوقيع الرقمي الصحيح لا يضمن سلامة البرنامج.", "A Recent shortcut timestamp is not definitive proof that a file was opened. Prefetch timestamps are approximate execution evidence and may be unavailable. Recycle Bin records cover items still represented by Windows Recycle Bin metadata only; permanently deleted files are not recovered. Files are not executed, deleted, modified, or uploaded as content. Log/resource text is analyzed locally; only matched indicator names and line numbers are retained. Indicators are leads for human review, not proof of cheating. A valid digital signature does not guarantee software is safe.")), styles["MutedNote"]),
-                Paragraph(pdf_text(T("3EN Inspect Team — الحقوق محفوظة BY:ROITH","3EN Inspect Team — All rights reserved BY:ROITH")), styles["MutedNote"])
+                Paragraph(pdf_text(T("3EN Inspect Team — الحقوق محفوظة","3EN Inspect Team — All rights reserved")), styles["MutedNote"])
             ])
             doc.build(story)
             messagebox.showinfo(APP, self._t("تم تصدير تقرير الفحص الكامل PDF بنجاح.", "The full inspection PDF report was exported successfully."))
