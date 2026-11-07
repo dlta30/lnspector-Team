@@ -506,9 +506,8 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         pdf_report = dict(report)
         screenshot_b64 = pdf_report.pop('desktop_screenshot_base64', None)
         if verdict == 'clean':
-            # The internal dashboard retains the full evidence. The Clean Discord
-            # attachment contains metadata/reason only, never finding names or paths.
-            screenshot_b64 = None
+            # Keep the separately consented screenshot attachment for Discord;
+            # omit only detailed inspection findings from the Clean export.
             for key in list(pdf_report):
                 if 'indicator' in key.casefold() or key in ('processes', 'file_artifacts', 'recent_apps_24h', 'recent_files'):
                     pdf_report.pop(key, None)
