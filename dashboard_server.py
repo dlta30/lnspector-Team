@@ -1561,6 +1561,7 @@ def report_detail(report_id):
         if isinstance(item, dict):
             item["modified_display"] = format_saudi_time(item.get("modified_at")) if item.get("modified_at") else "غير متاح"
             item["created_display"] = format_saudi_time(item.get("created_at")) if item.get("created_at") else "غير متاح"
+            item["deleted_at_display"] = format_saudi_time(item.get("deleted_at")) if item.get("deleted_at") else "غير متاح"
     artifact_findings = [item for item in artifacts if isinstance(item, dict) and item.get("indicator_matches")]
     recent_apps = report_data.get("recent_apps_24h", []) if isinstance(report_data.get("recent_apps_24h", []), list) else []
     recent_apps.sort(key=lambda item: str(item.get("last_seen_at") or "") if isinstance(item, dict) else "", reverse=True)
