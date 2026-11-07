@@ -1972,7 +1972,7 @@ class InspectorApp(tk.Tk):
                  T("يعمل الآن", "Currently running") if x.get("currently_running") else T("سجل تشغيل تقريبي", "Approximate execution record"),
                  ", ".join(x.get("indicator_matches", [])))
                 for x in recent_apps
-            ], [T("البرنامج","Application"), T("الوقت — السعودية","Time — Saudi Arabia"), T("مصدر الدليل","Evidence source"), T("بدأ خلال 24 ساعة","Started within 24h"), T("المؤشرات","Indicators")],
+            ], [T("البرنامج","Application"), T("الوقت — السعودية","Time — Saudi Arabia"), T("مصدر الدليل","Evidence source"), T("الحالة","Status"), T("المؤشرات","Indicators")],
             [32*mm, 32*mm, 43*mm, 30*mm, 37*mm],
             T("لم تتوفر عمليات جارية أو سجلات Prefetch ضمن آخر 24 ساعة.","No current process or Prefetch entries were available."), cap=max(80, len(recent_apps)))
 
