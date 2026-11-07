@@ -1325,7 +1325,7 @@ class InspectorApp(tk.Tk):
                  font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent_scan = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على فحص هذا الجهاز والتقاط صورة كاملة للشاشة وإرسال تقرير الفحص والصورة إلى المفتش عبر لوحة التحكم وديسكورد. قد تتضمن الصورة نوافذ أو رسائل أو معلومات ظاهرة على الشاشة.",
+            text="أوافق على فحص الجهاز والتقاط صورة كاملة للشاشة وإرسالها مع التقرير إلى المفتش.",
             variable=self.consent_scan, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
