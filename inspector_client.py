@@ -1457,7 +1457,7 @@ class InspectorApp(tk.Tk):
     def start(self):
         # One explicit consent covers inspection, full-screen capture, and report delivery.
         if not self.consent_scan.get():
-            messagebox.showwarning(APP, "وافق على فحص الجهاز مرة واحدة قبل البدء.")
+            messagebox.showwarning(APP, self._t("وافق على فحص الجهاز مرة واحدة قبل البدء.", "Please accept the inspection consent before starting."))
             return
 
         # Session-specific builds contain the session code and dashboard URL.
@@ -1465,7 +1465,7 @@ class InspectorApp(tk.Tk):
         self.active_session_code = str(SESSION_CODE or "").strip().upper()
         self.active_dashboard_url = str(DASHBOARD_URL or "").strip().rstrip("/")
         if not self.active_session_code or not self.active_dashboard_url.startswith("https://"):
-            messagebox.showerror(APP, "هذا الملف غير مرتبط بجلسة فحص. اطلب من المسؤول إنشاء جلسة وتنزيل ملفها المخصص.")
+            messagebox.showerror(APP, self._t("هذا الملف غير مرتبط بجلسة فحص. اطلب من المسؤول إنشاء جلسة وتنزيل ملفها المخصص.", "This file is not linked to an inspection session. Ask the administrator for a session-specific build."))
             return
         # Reserve the session on the server before reading any local evidence.
         # This prevents a second launch or a second device from reusing the link.
@@ -1478,7 +1478,7 @@ class InspectorApp(tk.Tk):
             with urllib.request.urlopen(start_req, timeout=15) as response:
                 start_result = json.loads(response.read().decode("utf-8"))
             if not start_result.get("ok"):
-                messagebox.showwarning(APP, "تعذر حجز جلسة الفحص. لم يبدأ الفحص.")
+                messagebox.showwarning(APP, self._t("تعذر حجز جلسة الفحص. لم يبدأ الفحص.", "Could not reserve the inspection session. Inspection did not start."))
                 return
         except urllib.error.HTTPError as exc:
             try:
@@ -1487,23 +1487,23 @@ class InspectorApp(tk.Tk):
                 detail = ""
             if exc.code == 409:
                 self.metric_state.set("USED")
-                self.session_badge.configure(text="●  تم الفحص مسبقًا", bg="#351521", fg="#ff8093")
-                self.status.set("تم فحص هذا العضو مسبقًا أو أن الفحص جارٍ بالفعل.")
+                self.session_badge.configure(text=self._t("●  تم الفحص مسبقًا", "●  ALREADY INSPECTED"), bg="#351521", fg="#ff8093")
+                self.status.set(self._t("تم فحص هذا العضو مسبقًا أو أن الفحص جارٍ بالفعل.", "This member has already been inspected or an inspection is already running."))
                 self.start_button.configure(state="disabled")
-                messagebox.showinfo(APP, "تم فحصك مسبقًا. لا يمكن استخدام رابط الفحص مرة أخرى.")
+                messagebox.showinfo(APP, self._t("تم فحصك مسبقًا. لا يمكن استخدام رابط الفحص مرة أخرى.", "You have already been inspected. This inspection link cannot be reused."))
             else:
-                messagebox.showerror(APP, "رفض الخادم بدء الفحص (HTTP " + str(exc.code) + "). لم يبدأ الفحص. " + detail[:180])
+                messagebox.showerror(APP, self._t("رفض الخادم بدء الفحص (HTTP ", "The server rejected the inspection start (HTTP ") + str(exc.code) + "). " + detail[:180])
             return
         except Exception as exc:
-            messagebox.showerror(APP, "تعذر التحقق من صلاحية الجلسة. لم يبدأ الفحص حفاظًا على منع التكرار. " + type(exc).__name__)
+            messagebox.showerror(APP, self._t("تعذر التحقق من صلاحية الجلسة. لم يبدأ الفحص حفاظًا على منع التكرار. ", "Could not validate the session. Inspection did not start to prevent reuse. ") + type(exc).__name__)
             return
 
         self.metric_state.set("SCANNING")
-        self.session_badge.configure(text="●  الفحص جارٍ", bg="#332616", fg="#ffbd69")
+        self.session_badge.configure(text=self._t("●  الفحص جارٍ", "●  INSPECTION RUNNING"), bg="#332616", fg="#ffbd69")
         self.start_button.configure(state="disabled")
         self.metric_processes.set("…")
         self.metric_flags.set("…")
-        self.status.set("Inspection running…")
+        self.status.set(self._t("الفحص جارٍ…", "Inspection running…"))
         threading.Thread(target=self._scan_worker, daemon=True).start()
 
     def _scan_worker(self):
@@ -1586,7 +1586,7 @@ class InspectorApp(tk.Tk):
             self.delivery_status = "pending"
             self.after(0, self._show_report)
         except Exception as exc:
-            self.after(0, lambda: (messagebox.showerror(APP, str(exc)), self.start_button.configure(state="normal"), self.session_badge.configure(text="●  تعذر إكمال الفحص", bg="#351521", fg="#ff8093")))
+            self.after(0, lambda: (messagebox.showerror(APP, str(exc)), self.start_button.configure(state="normal"), self.session_badge.configure(text=self._t("●  تعذر إكمال الفحص", "●  INSPECTION FAILED"), bg="#351521", fg="#ff8093")))
             self.update_progress(0, "Scan failed. Check dependencies and permissions.")
 
     def _show_report(self):
@@ -1596,30 +1596,30 @@ class InspectorApp(tk.Tk):
         self.start_button.configure(state="normal")
         if delivery == "sent":
             self.metric_state.set("SENT")
-            self.session_badge.configure(text="●  اكتمل وأُرسل", bg="#142b28", fg="#62e0b0")
-            self.status.set("اكتمل الفحص وتم إرسال التقرير إلى لوحة التحكم.")
+            self.session_badge.configure(text=self._t("●  اكتمل وأُرسل", "●  COMPLETE & SENT"), bg="#142b28", fg="#62e0b0")
+            self.status.set(self._t("اكتمل الفحص وتم إرسال التقرير إلى لوحة التحكم.", "Inspection completed and the report was sent to the dashboard."))
         elif delivery.startswith("failed:"):
             self.metric_state.set("REVIEW")
-            self.session_badge.configure(text="●  تعذر الإرسال", bg="#351521", fg="#ff8093")
-            self.status.set("اكتمل الفحص، لكن تعذر إرسال التقرير. تحقق من الاتصال والجلسة.")
+            self.session_badge.configure(text=self._t("●  تعذر الإرسال", "●  DELIVERY FAILED"), bg="#351521", fg="#ff8093")
+            self.status.set(self._t("اكتمل الفحص، لكن تعذر إرسال التقرير. تحقق من الاتصال والجلسة.", "Inspection completed, but the report could not be sent. Check the connection and session."))
         else:
             self.metric_state.set("COMPLETE")
-            self.session_badge.configure(text="●  بانتظار الإرسال", bg="#332616", fg="#ffbd69")
-            self.status.set("اكتمل الفحص. جارٍ إرسال التقرير تلقائيًا إلى لوحة التحكم…")
+            self.session_badge.configure(text=self._t("●  بانتظار الإرسال", "●  SENDING REPORT"), bg="#332616", fg="#ffbd69")
+            self.status.set(self._t("اكتمل الفحص. جارٍ إرسال التقرير تلقائيًا إلى لوحة التحكم…", "Inspection complete. Sending the report to the dashboard…"))
             self.after(150, lambda: self.send_report(auto=True))
 
     def send_report(self, auto=False):
         if not self.report:
-            messagebox.showwarning(APP, "ابدأ الفحص أولًا.")
+            messagebox.showwarning(APP, self._t("ابدأ الفحص أولًا.", "Start the inspection first."))
             return
         # Keep the initial status as review; the reviewer makes the final decision in the dashboard.
         self.report["review_label"] = "review"
         self.report["review_label_ar"] = "بانتظار تصنيف المراجع في لوحة التحكم"
-        self.status.set("جارٍ إرسال التقرير بعد موافقتك…")
+        self.status.set(self._t("جارٍ إرسال التقرير بعد موافقتك…", "Sending the report with your consent…"))
         try:
             import urllib.request
             endpoint = self.active_dashboard_url.rstrip("/") + "/api/v1/session-report"
-            self.status.set("جارٍ تجهيز صورة الشاشة وإرسال التقرير…")
+            self.status.set(self._t("جارٍ تجهيز صورة الشاشة وإرسال التقرير…", "Preparing the screenshot and sending the report…"))
             self.report["desktop_screenshot_base64"] = capture_desktop_screenshot_base64()
             self.report["desktop_screenshot_captured_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
             payload = {"session_code": self.active_session_code,
@@ -1633,8 +1633,8 @@ class InspectorApp(tk.Tk):
             self.report["dashboard_report_id"] = result.get("report_id")
             self.delivery_status = "sent"
             self.metric_state.set("SENT")
-            self.session_badge.configure(text="●  تم الإرسال", bg="#142b28", fg="#62e0b0")
-            self.status.set("تم إرسال التقرير تلقائيًا إلى لوحة التحكم.")
+            self.session_badge.configure(text=self._t("●  تم الإرسال", "●  SENT"), bg="#142b28", fg="#62e0b0")
+            self.status.set(self._t("تم إرسال التقرير تلقائيًا إلى لوحة التحكم.", "The report was sent automatically to the dashboard."))
             self.start_button.configure(state="disabled")
             self.after(1200, self._close_then_offer_folder)
         except urllib.error.HTTPError as exc:
@@ -1804,7 +1804,7 @@ class InspectorApp(tk.Tk):
                 Paragraph("Report generated by 3EN Inspect Team.", styles["MutedNote"])
             ])
             doc.build(story)
-            messagebox.showinfo(APP, "تم تصدير تقرير الفحص الكامل PDF بنجاح.")
+            messagebox.showinfo(APP, self._t("تم تصدير تقرير الفحص الكامل PDF بنجاح.", "The full inspection PDF report was exported successfully."))
         except Exception as exc:
             messagebox.showerror(APP, "PDF export failed: " + str(exc))
 
