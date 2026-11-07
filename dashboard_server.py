@@ -732,6 +732,8 @@ document.addEventListener('DOMContentLoaded', function(){
    document.querySelectorAll('[placeholder],[aria-label],[title]').forEach(el=>{['placeholder','aria-label','title'].forEach(attr=>{if(el.hasAttribute(attr)){const key='data-original-'+attr;if(!el.hasAttribute(key))el.setAttribute(key,el.getAttribute(attr));el.setAttribute(attr,english?translateValue(el.getAttribute(key)):el.getAttribute(key));}});});
    document.querySelectorAll('a[href*="/pdf"]').forEach(a=>{try{const u=new URL(a.href,window.location.origin);u.searchParams.set('lang',lang);a.href=u.toString();}catch(e){}});
 
+   document.querySelectorAll('a[href*="/pdf"]').forEach(a=>{try{const u=new URL(a.href,window.location.origin);u.searchParams.set('lang',lang);a.href=u.toString();}catch(e){}});
+
  }
  const btn=document.getElementById('language-toggle');
  if(btn)btn.addEventListener('click',function(){
@@ -1765,32 +1767,26 @@ def report_pdf(report_id):
         abort(403)
     with db() as con:
         r = con.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
-    if not r:
-        abort(404)
-    if actor["role"] == "inspector" and r["submitted_by"] != "session:" + actor["username"]:
-        abort(403)
+    if not r: abort(404)
+    if actor["role"] == "inspector" and r["submitted_by"] != "session:" + actor["username"]: abort(403)
     source_label = report_source_label(r["submitted_by"])
     target_label = inspection_target_label(r["session_id"])
     try:
         envelope = json.loads(r["payload"])
         payload = json.dumps(envelope, indent=2, ensure_ascii=False)
-        report_data = envelope.get("report") if isinstance(envelope, dict) and isinstance(envelope.get("report"), dict) else envelope
-        if not isinstance(report_data, dict):
-            report_data = {}
+        data = envelope.get("report") if isinstance(envelope, dict) and isinstance(envelope.get("report"), dict) else envelope
+        if not isinstance(data, dict): data = {}
     except Exception:
-        payload, report_data = str(r["payload"]), {}
+        payload, data = str(r["payload"]), {}
 
     language = request.args.get("lang", "").strip().lower()
-    if language not in ("ar", "en"):
-        language = report_data.get("interface_language", "en")
-    if language not in ("ar", "en"):
-        language = "en"
+    if language not in ("ar", "en"): language = data.get("interface_language", "en")
+    if language not in ("ar", "en"): language = "en"
     T = lambda ar, en: ar if language == "ar" else en
-
-    processes = report_data.get("processes", []) if isinstance(report_data.get("processes", []), list) else []
-    artifacts = report_data.get("file_artifacts", []) if isinstance(report_data.get("file_artifacts", []), list) else []
-    recent_apps = report_data.get("recent_apps_24h", []) if isinstance(report_data.get("recent_apps_24h", []), list) else []
-    recent_files = report_data.get("recent_files", []) if isinstance(report_data.get("recent_files", []), list) else []
+    processes = data.get("processes", []) if isinstance(data.get("processes", []), list) else []
+    artifacts = data.get("file_artifacts", []) if isinstance(data.get("file_artifacts", []), list) else []
+    recent_apps = data.get("recent_apps_24h", []) if isinstance(data.get("recent_apps_24h", []), list) else []
+    recent_files = data.get("recent_files", []) if isinstance(data.get("recent_files", []), list) else []
     process_findings = [x for x in processes if isinstance(x, dict) and x.get("indicator_matches")]
     file_findings = [x for x in artifacts if isinstance(x, dict) and x.get("indicator_matches")]
     deleted_files = [x for x in artifacts if isinstance(x, dict) and x.get("kind") == "deleted_file_metadata"]
@@ -1803,157 +1799,129 @@ def report_pdf(report_id):
     from reportlab.lib.units import mm
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Preformatted, Table, TableStyle, PageBreak
 
-    pdf_font, reshape_arabic = "Helvetica", None
+    font_name, reshape = "Helvetica", None
     if language == "ar":
         from reportlab.pdfbase import pdfmetrics
         from reportlab.pdfbase.ttfonts import TTFont
-        font_candidates = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf", "/usr/share/fonts/dejavu/DejaVuSans.ttf", str(APP_DIR / "fonts" / "DejaVuSans.ttf")]
-        font_path = next((p for p in font_candidates if Path(p).is_file()), None)
-        if not font_path:
-            abort(503, "Arabic PDF font is unavailable. Install DejaVu Sans or Noto Sans Arabic on the dashboard host.")
+        candidates = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf", str(APP_DIR / "fonts" / "DejaVuSans.ttf")]
+        font_path = next((p for p in candidates if Path(p).is_file()), None)
+        if not font_path: abort(503, "Arabic PDF font missing on server (DejaVu Sans / Noto Sans Arabic).")
         pdfmetrics.registerFont(TTFont("3ENArabicPDF", font_path))
-        pdf_font = "3ENArabicPDF"
+        font_name = "3ENArabicPDF"
         try:
             import arabic_reshaper
             from bidi.algorithm import get_display
-            reshape_arabic = lambda value: get_display(arabic_reshaper.reshape(str(value)))
+            reshape = lambda value: get_display(arabic_reshaper.reshape(str(value)))
         except ImportError:
-            abort(503, "Arabic PDF shaping dependencies are missing.")
+            abort(503, "Arabic PDF dependencies missing: arabic-reshaper and python-bidi.")
 
-    translations = {
-        "ملفات FiveM وGTA V": "FiveM / GTA V files", "سجلات FiveM وCitizenFX": "FiveM / CitizenFX logs",
-        "سكربتات وإعدادات FiveM": "FiveM scripts and settings", "آثار ملفات محذوفة": "Deleted-file traces",
-        "ملفات برامج المستخدم": "User application files", "مؤشرات هاك/غش": "Cheat indicators",
+    ar_to_en = {
+        "ملفات FiveM وGTA V": "FiveM / GTA V files",
+        "سجلات FiveM وCitizenFX": "FiveM / CitizenFX logs",
+        "سكربتات وإعدادات FiveM": "FiveM scripts and settings",
+        "آثار ملفات محذوفة": "Deleted-file traces",
+        "ملفات برامج المستخدم": "User application files",
+        "مؤشرات هاك/غش": "Cheat indicators",
         "مؤشرات اسمية تحتاج مراجعة": "Name-based indicators — review required",
         "ملف محذوف — بيانات وصفية فقط": "Deleted file — metadata only",
-        "لا توجد مطابقة اسمية": "No name match", "غير متاح": "Unavailable", "لم يتم التحقق": "Not checked"
+        "لا توجد مطابقة اسمية": "No name match",
+        "غير متاح": "Unavailable",
+        "لم يتم التحقق": "Not checked"
     }
-    def pdf_text(value):
+    def txt(value):
         value = str(value if value not in (None, "") else "—")
         if language == "en":
-            for ar, en in translations.items():
-                value = value.replace(ar, en)
+            for ar, en in ar_to_en.items(): value = value.replace(ar, en)
             return value
-        return reshape_arabic(value) if reshape_arabic else value
+        return reshape(value) if reshape else value
 
     output = BytesIO()
     doc = SimpleDocTemplate(output, pagesize=A4, rightMargin=13*mm, leftMargin=13*mm, topMargin=15*mm, bottomMargin=15*mm, title="3EN Inspect report #" + str(report_id), author="3EN Inspect Team")
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="SmallMeta", parent=styles["BodyText"], fontSize=8, leading=11, textColor=colors.HexColor("#454b59"), spaceAfter=4, fontName=pdf_font, alignment=2 if language == "ar" else 0))
-    styles.add(ParagraphStyle(name="SectionTitle", parent=styles["Heading2"], textColor=colors.HexColor("#b51f42"), spaceBefore=10, spaceAfter=6, fontName=pdf_font, alignment=2 if language == "ar" else 0))
-    styles.add(ParagraphStyle(name="TinyCell", parent=styles["BodyText"], fontSize=6.5, leading=8, wordWrap="CJK", fontName=pdf_font, alignment=2 if language == "ar" else 0))
-    styles.add(ParagraphStyle(name="Payload", parent=styles["BodyText"], fontName="Courier", fontSize=5.5, leading=6.5, wordWrap="CJK"))
-    styles["Title"].fontName = pdf_font
-    styles["Heading1"].fontName = pdf_font
-    styles["Heading2"].fontName = pdf_font
+    styles.add(ParagraphStyle(name="Meta3EN", parent=styles["BodyText"], fontName=font_name, fontSize=8, leading=11, textColor=colors.HexColor("#454b59"), spaceAfter=4, alignment=2 if language == "ar" else 0))
+    styles.add(ParagraphStyle(name="Head3EN", parent=styles["Heading2"], fontName=font_name, textColor=colors.HexColor("#b51f42"), spaceBefore=10, spaceAfter=6, alignment=2 if language == "ar" else 0))
+    styles.add(ParagraphStyle(name="Cell3EN", parent=styles["BodyText"], fontName=font_name, fontSize=6.5, leading=8, wordWrap="CJK", alignment=2 if language == "ar" else 0))
+    styles.add(ParagraphStyle(name="Raw3EN", parent=styles["BodyText"], fontName="Courier", fontSize=5.5, leading=6.5, wordWrap="CJK"))
+    styles["Title"].fontName = font_name
+    styles["Heading1"].fontName = font_name
+    def p(value, style="Meta3EN"): return Paragraph(txt(value), styles[style])
+    def c(value, limit=500): return Paragraph(escape(txt(str(value or "—"))[:limit]), styles["Cell3EN"])
+    def table(rows, widths):
+        obj = Table(rows, colWidths=widths, repeatRows=1, hAlign="RIGHT" if language == "ar" else "LEFT")
+        obj.setStyle(TableStyle([("BACKGROUND",(0,0),(-1,0),colors.HexColor("#191d28")),("TEXTCOLOR",(0,0),(-1,0),colors.white),("GRID",(0,0),(-1,-1),0.35,colors.HexColor("#d8dbe2")),("VALIGN",(0,0),(-1,-1),"TOP"),("ROWBACKGROUNDS",(0,1),(-1,-1),[colors.white,colors.HexColor("#f7f7f9")]),("LEFTPADDING",(0,0),(-1,-1),4),("RIGHTPADDING",(0,0),(-1,-1),4),("TOPPADDING",(0,0),(-1,-1),5),("BOTTOMPADDING",(0,0),(-1,-1),5)]))
+        return obj
 
-    def para(value, style="SmallMeta"):
-        return Paragraph(pdf_text(value), styles[style])
-    def cell(value, limit=500):
-        return Paragraph(escape(pdf_text(str(value or "—"))[:limit]), styles["TinyCell"])
-    def make_table(data, widths):
-        table = Table(data, colWidths=widths, repeatRows=1, hAlign="RIGHT" if language == "ar" else "LEFT")
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#191d28")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#d8dbe2")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7f7f9")]),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5)
-        ]))
-        return table
-
-    verified_count = sum(1 for x in list(processes) + list(artifacts) if isinstance(x, dict) and x.get("signature_status") == "verified")
-    unverified_count = sum(1 for x in list(processes) + list(artifacts) if isinstance(x, dict) and x.get("signature_status") == "unverified")
+    verified = sum(1 for x in list(processes)+list(artifacts) if isinstance(x,dict) and x.get("signature_status")=="verified")
+    unverified = sum(1 for x in list(processes)+list(artifacts) if isinstance(x,dict) and x.get("signature_status")=="unverified")
     story = [
-        para("3EN INSPECT TEAM", "Title"),
-        para(T("تقرير الفحص رقم ", "Inspection report #") + str(report_id), "Heading1"),
-        para("by:ROITH"), Spacer(1, 3*mm),
-        para(T("الشخص: ", "Person: ") + str(target_label or T("غير محدد", "Not specified"))),
-        para(T("الجهاز: ", "Device: ") + str(r["computer_label"])),
-        para(T("الجلسة: ", "Session: ") + str(r["session_id"])),
-        para(T("وقت الاستلام — السعودية: ", "Received — Saudi Arabia time: ") + format_saudi_time(r["created_at"], language)),
-        para(T("أرسل بواسطة: ", "Submitted by: ") + str(source_label)),
-        para(T("الملخص: ", "Summary: ") + str(r["summary"] or T("لا يوجد ملخص", "No summary"))),
-        para(T("نظرة عامة", "Overview"), "SectionTitle"),
-        make_table([
-            [cell(T("العمليات", "Processes")), cell(T("مؤشرات الأسماء", "Name indicators")), cell(T("الملفات", "Files")), cell(T("برامج آخر 24 ساعة", "Apps in last 24h")), cell(T("الملفات الحديثة", "Recent files"))],
-            [cell(report_data.get("process_count", len(processes))), cell(len(process_findings) + len(file_findings)), cell(report_data.get("file_artifact_count", len(artifacts))), cell(len(recent_apps)), cell(len(recent_files))]
-        ], [34.8*mm, 34.8*mm, 34.8*mm, 34.8*mm, 34.8*mm]),
-        para(T("ملخص التوقيعات الرقمية", "Digital signature summary"), "SectionTitle"),
-        para(T("التوقيعات الموثقة: ", "Verified signatures: ") + str(verified_count) + T(" · ملفات EXE/DLL غير الموثقة: ", " · Unverified EXE/DLL: ") + str(unverified_count) + T(". التوقيع الصحيح يحدد الناشر وسلامة الملف وقت التوقيع، لكنه لا يثبت أن البرنامج آمن أو خالٍ من الغش.", ". A valid signature identifies a publisher and file integrity at signing time, but does not prove the program is safe or cheat-free."))
+        p("3EN INSPECT TEAM","Title"), p(T("تقرير الفحص رقم ","Inspection report #")+str(report_id),"Heading1"), p("by:ROITH"),
+        p(T("الشخص: ","Person: ")+str(target_label or T("غير محدد","Not specified"))),
+        p(T("الجهاز: ","Device: ")+str(r["computer_label"])),
+        p(T("الجلسة: ","Session: ")+str(r["session_id"])),
+        p(T("وقت الاستلام — السعودية: ","Received — Saudi Arabia time: ")+format_saudi_time(r["created_at"],language)),
+        p(T("أرسل بواسطة: ","Submitted by: ")+str(source_label)),
+        p(T("الملخص: ","Summary: ")+str(r["summary"] or T("لا يوجد ملخص","No summary"))),
+        p(T("نظرة عامة","Overview"),"Head3EN"),
+        table([[c(T("العمليات","Processes")),c(T("مؤشرات الأسماء","Name indicators")),c(T("الملفات","Files")),c(T("برامج آخر 24 ساعة","Apps in last 24h")),c(T("الملفات الحديثة","Recent files"))],[c(data.get("process_count",len(processes))),c(len(process_findings)+len(file_findings)),c(data.get("file_artifact_count",len(artifacts))),c(len(recent_apps)),c(len(recent_files))]],[34.8*mm]*5),
+        p(T("ملخص التوقيعات الرقمية","Digital signature summary"),"Head3EN"),
+        p(T("التوقيعات الموثقة: ","Verified signatures: ")+str(verified)+T(" · ملفات EXE/DLL غير الموثقة: "," · Unverified EXE/DLL: ")+str(unverified)+T(". التوقيع الصحيح لا يثبت أن البرنامج آمن أو خالٍ من الغش.",". A valid signature does not prove the program is safe or cheat-free."))
     ]
 
     if recent_apps:
-        story.append(para(T("البرامج التي لها سجل خلال آخر 24 ساعة", "Applications with activity evidence in the last 24 hours"), "SectionTitle"))
-        rows = [[cell(T("البرنامج", "Application")), cell(T("آخر وقت — السعودية", "Last seen — Saudi Arabia")), cell(T("الحالة", "Status")), cell(T("مصدر الدليل", "Evidence source")), cell(T("وقت الحذف", "Deletion time"))]]
+        story.append(p(T("البرامج التي لها سجل خلال آخر 24 ساعة","Applications with activity evidence in the last 24 hours"),"Head3EN"))
+        rows=[[c(T("البرنامج","Application")),c(T("آخر وقت — السعودية","Last seen — Saudi Arabia")),c(T("الحالة","Status")),c(T("مصدر الدليل","Evidence source")),c(T("وقت الحذف","Deletion time"))]]
         for item in recent_apps[:120]:
-            if not isinstance(item, dict):
-                continue
-            last_time = format_saudi_time(item.get("last_seen_at"), language) if item.get("last_seen_at") else item.get("last_seen_display")
-            status = T("يعمل الآن", "Currently running") if item.get("currently_running") else T("سجل Prefetch تقريبي", "Approximate Prefetch record")
-            if item.get("deleted_file_name_match"):
-                status += T(" · اسم مطابق لسجل محذوف (المسار غير مؤكد)", " · deleted filename match (path not confirmed)")
-            deleted_time = format_saudi_time(item.get("deleted_at"), language) if item.get("deleted_at") else "—"
-            rows.append([cell(item.get("app_name") or item.get("file_name"), 100), cell(last_time, 110), cell(status, 130), cell(item.get("evidence_source"), 120), cell(deleted_time, 110)])
-        story.append(make_table(rows, [29*mm, 40*mm, 42*mm, 40*mm, 20*mm]))
+            if not isinstance(item,dict): continue
+            seen_time=format_saudi_time(item.get("last_seen_at"),language) if item.get("last_seen_at") else item.get("last_seen_display")
+            state=T("يعمل الآن","Currently running") if item.get("currently_running") else T("سجل Prefetch تقريبي","Approximate Prefetch record")
+            if item.get("deleted_file_name_match"): state+=T(" · اسم مطابق لسجل محذوف (المسار غير مؤكد)"," · deleted filename match (path not confirmed)")
+            deleted_time=format_saudi_time(item.get("deleted_at"),language) if item.get("deleted_at") else "—"
+            rows.append([c(item.get("app_name") or item.get("file_name"),100),c(seen_time,100),c(state,130),c(item.get("evidence_source"),120),c(deleted_time,100)])
+        story.append(table(rows,[29*mm,40*mm,42*mm,40*mm,20*mm]))
     else:
-        story.append(para(T("لم تتوفر عمليات جارية أو سجلات Prefetch ضمن آخر 24 ساعة.", "No current processes or Prefetch execution records were available.")))
+        story.append(p(T("لم تتوفر عمليات جارية أو سجلات Prefetch ضمن آخر 24 ساعة.","No current processes or Prefetch execution records were available.")))
 
     if recent_files:
-        story.append(para(T("Recent — اختصارات الملفات الحديثة وآثار الحذف", "Recent — recent file shortcuts and deleted-file traces"), "SectionTitle"))
-        rows = [[cell(T("الملف", "File")), cell(T("وقت الظهور — السعودية", "Recent time — Saudi Arabia")), cell(T("حالة الهدف", "Target status")), cell(T("وقت الحذف في السلة", "Recycle Bin deletion time"))]]
+        story.append(p(T("Recent — اختصارات الملفات الحديثة وآثار الحذف","Recent — recent file shortcuts and deleted-file traces"),"Head3EN"))
+        rows=[[c(T("الملف","File")),c(T("وقت الظهور — السعودية","Recent time — Saudi Arabia")),c(T("حالة الهدف","Target status")),c(T("وقت الحذف في السلة","Recycle Bin deletion time"))]]
         for item in recent_files[:120]:
-            if not isinstance(item, dict):
-                continue
-            status = T("اسم مطابق في سلة المحذوفات — المسار غير مؤكد", "Recycle Bin filename match — path not confirmed") if item.get("recycle_bin_name_match") else T("مفقود أو منقول — ليس حذفًا مؤكدًا", "Missing or moved — not confirmed deleted") if item.get("target_status") == "missing_or_moved" else T("الملف موجود", "Target exists") if item.get("target_status") == "available" else T("الهدف غير متاح", "Target unavailable")
-            recent_time = format_saudi_time(item.get("last_accessed_at"), language) if item.get("last_accessed_at") else item.get("last_accessed_display")
-            deleted_time = format_saudi_time(item.get("deleted_at"), language) if item.get("deleted_at") else "—"
-            rows.append([cell(item.get("file_name") or item.get("shortcut_name"), 100), cell(recent_time, 110), cell(status, 140), cell(deleted_time, 110)])
-        story.append(make_table(rows, [42*mm, 48*mm, 55*mm, 26*mm]))
+            if not isinstance(item,dict): continue
+            state=T("اسم مطابق في سلة المحذوفات — المسار غير مؤكد","Recycle Bin filename match — path not confirmed") if item.get("recycle_bin_name_match") else T("مفقود أو منقول — ليس حذفًا مؤكدًا","Missing or moved — not confirmed deleted") if item.get("target_status")=="missing_or_moved" else T("الملف موجود","Target exists") if item.get("target_status")=="available" else T("الهدف غير متاح","Target unavailable")
+            seen_time=format_saudi_time(item.get("last_accessed_at"),language) if item.get("last_accessed_at") else item.get("last_accessed_display")
+            deleted_time=format_saudi_time(item.get("deleted_at"),language) if item.get("deleted_at") else "—"
+            rows.append([c(item.get("file_name") or item.get("shortcut_name"),100),c(seen_time,110),c(state,130),c(deleted_time,100)])
+        story.append(table(rows,[42*mm,48*mm,55*mm,26*mm]))
 
     if deleted_files:
-        story.append(para(T("سجلات الملفات المحذوفة — سلة المحذوفات", "Deleted-file records — Recycle Bin"), "SectionTitle"))
-        rows = [[cell(T("الملف", "File")), cell(T("الامتداد", "Extension")), cell(T("وقت الحذف — السعودية", "Deletion time — Saudi Arabia")), cell(T("المحتوى ما زال بالسلة", "Payload still in bin")), cell(T("المصدر", "Evidence source"))]]
+        story.append(p(T("سجلات الملفات المحذوفة — سلة المحذوفات","Deleted-file records — Recycle Bin"),"Head3EN"))
+        rows=[[c(T("الملف","File")),c(T("الامتداد","Extension")),c(T("وقت الحذف — السعودية","Deletion time — Saudi Arabia")),c(T("المحتوى ما زال بالسلة","Payload still in bin"))]]
         for item in deleted_files[:120]:
-            rows.append([cell(item.get("file_name"), 100), cell(item.get("extension"), 30), cell(format_saudi_time(item.get("deleted_at"), language), 110), cell(T("نعم", "Yes") if item.get("recycle_payload_present") else T("لا", "No")), cell(item.get("source") or "Windows Recycle Bin", 100)])
-        story.append(make_table(rows, [43*mm, 20*mm, 48*mm, 38*mm, 22*mm]))
+            rows.append([c(item.get("file_name"),100),c(item.get("extension"),30),c(format_saudi_time(item.get("deleted_at"),language),110),c(T("نعم","Yes") if item.get("recycle_payload_present") else T("لا","No"))])
+        story.append(table(rows,[48*mm,25*mm,60*mm,58*mm]))
 
     if process_findings:
-        story.append(para(T("مؤشرات أسماء العمليات — مراجعة يدوية", "Process name indicators — manual review"), "SectionTitle"))
-        rows = [[cell(T("العملية", "Process")), cell(T("المسار", "Path")), cell(T("المؤشرات", "Indicators")), cell(T("التوقيع", "Signature"))]]
+        story.append(p(T("مؤشرات أسماء العمليات — مراجعة يدوية","Process name indicators — manual review"),"Head3EN"))
+        rows=[[c(T("العملية","Process")),c(T("المسار","Path")),c(T("المؤشرات","Indicators")),c(T("التوقيع","Signature"))]]
         for item in process_findings[:100]:
-            rows.append([cell(item.get("process_name") or item.get("file_name"), 100), cell(item.get("executable_path"), 220), cell(", ".join(str(v) for v in item.get("indicator_matches", [])[:8]), 140), cell(item.get("signature_label"), 100)])
-        story.append(make_table(rows, [34*mm, 61*mm, 43*mm, 36*mm]))
+            rows.append([c(item.get("process_name") or item.get("file_name"),100),c(item.get("executable_path"),220),c(", ".join(str(v) for v in item.get("indicator_matches",[])[:8]),140),c(item.get("signature_label"),100)])
+        story.append(table(rows,[34*mm,61*mm,43*mm,36*mm]))
 
     if artifacts:
-        story.append(para(T("جرد الملفات والمجلدات — المؤشرات أولًا ثم الأحدث", "Files and folders inventory — indicators first, newest next"), "SectionTitle"))
-        sorted_artifacts = sorted([x for x in artifacts if isinstance(x, dict)], key=lambda x: (bool(x.get("indicator_matches")), str(x.get("modified_at") or "")), reverse=True)
-        rows = [[cell(T("النوع", "Type")), cell(T("الملف", "File / folder")), cell(T("المسار", "Path")), cell(T("آخر تعديل — السعودية", "Modified — Saudi Arabia")), cell(T("المؤشرات / الحالة", "Indicators / status"))]]
-        for item in sorted_artifacts[:180]:
-            indicators = ", ".join(str(v) for v in item.get("indicator_matches", [])[:5]) or T("لا توجد مطابقة اسمية", "No name match")
-            trust = str(item.get("signature_label") or T("لم يتم التحقق", "Not checked"))
-            modified = format_saudi_time(item.get("modified_at"), language) if item.get("modified_at") else item.get("modified_display")
-            rows.append([cell(item.get("artifact_type") or T("ملف", "file"), 40), cell(item.get("file_name") or item.get("name"), 90), cell(item.get("path") or item.get("file_path"), 180), cell(modified, 110), cell(indicators + " · " + trust, 140)])
-        story.append(make_table(rows, [18*mm, 30*mm, 50*mm, 39*mm, 39*mm]))
-        if len(sorted_artifacts) > 180:
-            story.append(para(T("يعرض PDF أول 180 عنصرًا؛ بقية العناصر محفوظة في التقرير الكامل ولوحة التحكم.", "The PDF shows the first 180 entries; remaining collected entries are retained in the full dashboard report.")))
+        story.append(p(T("جرد الملفات والمجلدات — المؤشرات أولًا ثم الأحدث","Files and folders inventory — indicators first, newest next"),"Head3EN"))
+        ordered=sorted([x for x in artifacts if isinstance(x,dict)],key=lambda x:(bool(x.get("indicator_matches")),str(x.get("modified_at") or "")),reverse=True)
+        rows=[[c(T("النوع","Type")),c(T("الملف","File / folder")),c(T("المسار","Path")),c(T("آخر تعديل — السعودية","Modified — Saudi Arabia")),c(T("المؤشرات / الحالة","Indicators / status"))]]
+        for item in ordered[:180]:
+            indicators=", ".join(str(v) for v in item.get("indicator_matches",[])[:5]) or T("لا توجد مطابقة اسمية","No name match")
+            modified=format_saudi_time(item.get("modified_at"),language) if item.get("modified_at") else item.get("modified_display")
+            rows.append([c(item.get("artifact_type") or T("ملف","file"),40),c(item.get("file_name") or item.get("name"),90),c(item.get("path") or item.get("file_path"),180),c(modified,100),c(indicators+" · "+str(item.get("signature_label") or ""),140)])
+        story.append(table(rows,[18*mm,30*mm,50*mm,39*mm,39*mm]))
 
-    story.extend([
-        Spacer(1, 5*mm),
-        para(T("المنهجية والقيود", "Method and limitations"), "SectionTitle"),
-        para(T("مطابقة الاسم أو المسار مؤشر للمراجعة وليست إثباتًا للغش. سجل البرامج يجمع العمليات الجارية وبيانات Windows Prefetch لآخر 24 ساعة؛ وقت Prefetch تقريبي وقد لا يتوفر. إذا بقي سجل Prefetch بعد حذف ملف EXE فقد يظهر البرنامج المحذوف مع وقت تشغيل تقريبي. تطابق اسم الملف في سلة المحذوفات لا يؤكد تطابق المسار. لا يمكن استعادة الملفات المحذوفة نهائيًا من هذه البيانات. قد يؤثر تعطيل Prefetch أو تنظيفه أو الصلاحيات وحدود الفحص على النتائج.", "Name/path matches are review indicators, not proof of cheating. App history includes currently running processes and Windows Prefetch metadata from the last 24 hours; Prefetch timestamps are approximate and may be unavailable. If a Prefetch record remains after an EXE is deleted, the app may still appear with an approximate execution time. A filename match in the Recycle Bin does not confirm the original path. Permanently deleted files cannot be recovered from this metadata. Disabled or cleared Prefetch, permissions, and scan limits can affect coverage.")),
-        para(T("لا تُشغّل الملفات أو تُعدّل أو تُرفع محتوياتها. لا يضمن الفحص اكتشاف كل أنواع الغش أو كل آثار الحذف.", "Files are not executed, modified, or uploaded as content. This inspection cannot guarantee detection of every cheat or every deleted-file trace.")),
-        PageBreak(),
-        para(T("بيانات التقرير الخام (ملحق JSON)", "Raw report data (JSON appendix)"), "SectionTitle"),
-        Preformatted(payload[:100000], styles["Payload"], maxLineLength=100)
-    ])
+    story.extend([Spacer(1,5*mm),p(T("المنهجية والقيود","Method and limitations"),"Head3EN"),p(T("سجل البرامج يجمع العمليات الجارية وبيانات Windows Prefetch لآخر 24 ساعة؛ وقت Prefetch تقريبي وقد لا يتوفر. إذا بقي سجل Prefetch بعد حذف ملف EXE فقد يظهر البرنامج المحذوف بوقت تشغيل تقريبي. تطابق الاسم في سلة المحذوفات لا يؤكد تطابق المسار، ولا يمكن استعادة الملفات المحذوفة نهائيًا من هذه البيانات. قد يؤثر تعطيل Prefetch أو تنظيفه أو الصلاحيات وحدود الفحص على النتائج. المؤشرات تستلزم مراجعة بشرية ولا تثبت الغش.","App history includes currently running processes and Windows Prefetch metadata from the last 24 hours; Prefetch timestamps are approximate and may be unavailable. If a Prefetch record remains after an EXE is deleted, the app may appear with an approximate execution time. A filename match in the Recycle Bin does not confirm the original path. Permanently deleted files cannot be recovered from this metadata. Disabled or cleared Prefetch, permissions, and scan limits can affect coverage. Indicators require human review and do not prove cheating.")),p(T("لا تُشغّل الملفات أو تُعدّل أو تُرفع محتوياتها.","Files are not executed, modified, or uploaded as content.")),PageBreak(),p(T("بيانات التقرير الخام (ملحق JSON)","Raw report data (JSON appendix)"),"Head3EN"),Preformatted(payload[:100000],styles["Raw3EN"],maxLineLength=100)])
     doc.build(story)
     output.seek(0)
     from flask import send_file
-    log_action(actor["username"], "downloaded " + language + " PDF for report #" + str(report_id))
-    return send_file(output, mimetype="application/pdf", as_attachment=True, download_name="3eN-report-" + str(report_id) + "-" + language + ".pdf")
+    log_action(actor["username"],"downloaded "+language+" PDF for report #"+str(report_id))
+    return send_file(output,mimetype="application/pdf",as_attachment=True,download_name="3eN-report-"+str(report_id)+"-"+language+".pdf")
 
 
 @app.route("/staff", methods=["GET","POST"])
