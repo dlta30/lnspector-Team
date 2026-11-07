@@ -1495,6 +1495,9 @@ def report_detail(report_id):
     recent_apps = report_data.get("recent_apps_24h", []) if isinstance(report_data.get("recent_apps_24h", []), list) else []
     recent_apps.sort(key=lambda item: str(item.get("last_seen_at") or "") if isinstance(item, dict) else "", reverse=True)
     visible_recent_apps = recent_apps[:100]
+    recent_files = report_data.get("recent_files", []) if isinstance(report_data.get("recent_files", []), list) else []
+    recent_files.sort(key=lambda item: str(item.get("last_accessed_at") or "") if isinstance(item, dict) else "", reverse=True)
+    visible_recent_files = recent_files[:100]
     try:
         process_match_count = int(report_data.get("indicator_match_count", len(findings)) or 0)
         file_match_count = int(report_data.get("file_indicator_match_count", len(artifact_findings)) or 0)
@@ -1584,6 +1587,7 @@ def report_detail(report_id):
         <div class="report-metric">مؤشرات المطابقة<strong>{{ match_count }}</strong></div>
         <div class="report-metric">عناصر الملفات المفحوصة<strong>{{ file_artifact_count }}</strong></div>
         <div class="report-metric">تطبيقات آخر 24 ساعة<strong>{{ recent_apps|length }}</strong></div>
+        <div class="report-metric">ملفات Recent<strong>{{ recent_files|length }}</strong></div>
         <div class="report-metric">برامج موثقة رقمياً<strong>{{ report_data.get('signature_verified_count', 0) }}</strong></div>
         <div class="report-metric">برامج غير موثقة<strong>{{ report_data.get('signature_unverified_count', 0) }}</strong></div>
         <div class="report-metric">ملفات مواقع FiveM<strong>{{ report_data.get('fivem_artifact_count', 0) }}</strong></div>
@@ -1601,6 +1605,23 @@ def report_detail(report_id):
             {% if item.get('indicator_matches') %}<div class="field"><b>المؤشرات</b><span>{% for indicator in (item.get('indicator_matches_display') or item.get('indicator_matches', [])) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
           </article>
         {% else %}<div class="empty-state">لا توجد أدلة متاحة على تشغيل تطبيقات خلال آخر 24 ساعة.</div>{% endfor %}
+      </div>
+      <div class="card" id="recent-files">
+        <h2>Recent — الملفات الحديثة وآثار الملفات المحذوفة</h2>
+        <p class="muted">يعرض اختصارات الملفات الحديثة في Windows Recent. إذا كان الملف الهدف غير موجود، فقد يكون محذوفًا أو منقولًا؛ ولا نعدّه محذوفًا بشكل مؤكد إلا عند وجود سجل مطابق في سلة المحذوفات.</p>
+        {% for item in visible_recent_files %}
+          <article class="process-embed">
+            <div class="process-embed-head"><span>🕘</span><span class="process-embed-title">{{ item.get('file_name') or item.get('shortcut_name') or 'ملف غير معروف' }}</span>
+              {% if item.get('confirmed_recycle_bin_record') %}<span class="tag" style="background:#48221e;color:#ffc078">سجل حذف مؤكد في سلة المحذوفات</span>
+              {% elif item.get('target_status') == 'missing_or_moved' %}<span class="tag">الملف غير موجود — قد يكون محذوفًا أو منقولًا</span>
+              {% else %}<span class="tag">موجود</span>{% endif %}
+            </div>
+            <div class="field"><b>المسار الهدف</b><span dir="ltr">{{ item.get('target_path') or 'غير متاح' }}</span></div>
+            <div class="field"><b>وقت ظهور الاختصار</b><span dir="ltr">{{ item.get('last_accessed_display') or item.get('last_accessed_at') or 'غير متاح' }}</span></div>
+            <div class="field"><b>مصدر الدليل</b><span>{{ item.get('evidence_source') or 'Windows Recent' }}</span></div>
+            {% if item.get('deleted_at') %}<div class="field"><b>وقت الحذف المسجل</b><span dir="ltr">{{ item.get('deleted_at') }}</span></div>{% endif %}
+          </article>
+        {% else %}<div class="empty-state">لا توجد اختصارات ملفات حديثة في مجلد Recent.</div>{% endfor %}
       </div>
       <div class="card"><h2>النتيجة والتوصية</h2><p>{{ status_detail }}</p><p class="muted">{{ report_data.get('note', 'النتائج الآلية مؤشرات أولية وتحتاج إلى مراجعة بشرية.') }}</p></div>
       <div class="card" id="process-list">
@@ -1656,7 +1677,7 @@ def report_detail(report_id):
       </div>
       <script>(function(){const input=document.getElementById('file-search'),items=Array.from(document.querySelectorAll('[data-file-search]')),none=document.getElementById('file-none');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase();let n=0;items.forEach(el=>{const ok=el.dataset.fileSearch.toLocaleLowerCase().includes(q);el.style.display=ok?'block':'none';if(ok)n++;});if(none)none.style.display=n?'none':'block';});})();</script>
     </div>
-    """,r=r,report_data=report_data,processes=processes,visible_processes=visible_processes,process_page=process_page,process_pages=process_pages,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,visible_artifacts=visible_artifacts,artifact_page=artifact_page,artifact_pages=artifact_pages,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"],source_label=source_label,target_label=target_label,recent_apps=recent_apps,visible_recent_apps=visible_recent_apps)
+    """,r=r,report_data=report_data,processes=processes,visible_processes=visible_processes,process_page=process_page,process_pages=process_pages,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,visible_artifacts=visible_artifacts,artifact_page=artifact_page,artifact_pages=artifact_pages,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"],source_label=source_label,target_label=target_label,recent_apps=recent_apps,visible_recent_apps=visible_recent_apps,recent_files=recent_files,visible_recent_files=visible_recent_files)
 
 @app.post("/reports/<int:report_id>/send-discord")
 @login_required
