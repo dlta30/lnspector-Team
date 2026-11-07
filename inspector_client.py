@@ -1248,13 +1248,19 @@ class InspectorApp(tk.Tk):
         self.minsize(940, 700)
         self.configure(bg="#090a10")
         self.report = None
+        self.lang = "ar"
         style = ttk.Style(self)
         style.theme_use("clam")
         style.configure("TProgressbar", troughcolor="#20212c", background="#ff304f", bordercolor="#20212c")
         style.configure("TButton", font=("Segoe UI", 10, "bold"), padding=9)
         self._build()
 
+    def _t(self, ar, en):
+        return ar if self.lang == "ar" else en
+
     def _build(self):
+        for child in self.winfo_children():
+            child.destroy()
         BG = "#080a10"
         PANEL = "#111521"
         PANEL_ALT = "#171c2a"
@@ -1297,13 +1303,18 @@ class InspectorApp(tk.Tk):
         brand.pack(side="left", fill="x", expand=True)
         tk.Label(brand, text="3EN INSPECT", bg=PANEL, fg=WHITE,
                  font=("Segoe UI", 21, "bold")).pack(anchor="w")
-        tk.Label(brand, text="CYBERSECURITY  •  DEVICE INSPECTION", bg=PANEL,
-                 fg=RED, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(3, 0))
-        tk.Label(brand, text="فحص أمني منظّم • واضح وبموافقتك",
-                 bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w", pady=(5, 0))
-        self.session_badge = tk.Label(hero, text="●  جاهز للفحص", bg="#142b28", fg=GREEN,
+        tk.Label(brand, text=self._t("فحص أمني منظّم • واضح وبموافقتك",
+                                     "SECURITY INSPECTION  •  CONSENT-BASED"),
+                 bg=PANEL, fg=RED, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(5, 0))
+        self.session_badge = tk.Label(hero, text=self._t("●  جاهز للفحص", "●  Ready"),
+                                      bg="#142b28", fg=GREEN,
                                       font=("Segoe UI", 9, "bold"), padx=14, pady=9)
         self.session_badge.pack(side="right", anchor="center")
+        self.language_choice = ttk.Combobox(hero, state="readonly", width=11,
+            values=("العربية", "English"), font=("Segoe UI", 9))
+        self.language_choice.set("العربية" if self.lang == "ar" else "English")
+        self.language_choice.pack(side="right", padx=(0, 10))
+        self.language_choice.bind("<<ComboboxSelected>>", self._change_language)
 
         body = tk.Frame(self, bg=BG, padx=24, pady=19)
         body.pack(fill="both", expand=True, padx=8, pady=(0, 8))
@@ -1312,7 +1323,8 @@ class InspectorApp(tk.Tk):
         heading.pack(fill="x", pady=(0, 14))
         tk.Label(heading, text="3EN INSPECT", bg=BG, fg=WHITE,
                  font=("Segoe UI", 23, "bold")).pack(anchor="w")
-        tk.Label(heading, text="فحص أمني منظّم للجهاز.",
+        tk.Label(heading, text=self._t("فحص أمني منظّم للجهاز.",
+                                       "Structured device security inspection."),
                  bg=BG, fg=MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(4, 0))
 
         # Keep metric variables for report processing without displaying extra cards.
@@ -1323,11 +1335,12 @@ class InspectorApp(tk.Tk):
         # Consent block
         consent_box = tk.Frame(body, bg=PANEL, highlightbackground=LINE, highlightthickness=1, padx=17, pady=12)
         consent_box.pack(fill="x", pady=(0, 12))
-        tk.Label(consent_box, text="01  /  الموافقة والصلاحية", bg=PANEL, fg="#ff8ca0",
-                 font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        tk.Label(consent_box, text=self._t("01  /  الموافقة والصلاحية", "01  /  CONSENT & AUTHORIZATION"),
+                 bg=PANEL, fg="#ff8ca0", font=("Segoe UI", 9, "bold")).pack(anchor="w")
         self.consent_scan = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على فحص الجهاز و تصوير صورة كاملة وإرسالها مع التقرير إلى المفتش",
+            text=self._t("أوافق على فحص الجهاز و تصوير صورة كاملة وإرسالها مع التقرير إلى المفتش",
+                         "I agree to have this device inspected and a full-screen image sent with the report to the inspector"),
             variable=self.consent_scan, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
@@ -1338,9 +1351,10 @@ class InspectorApp(tk.Tk):
         scanbox.pack(fill="x", pady=(0, 12))
         topstatus = tk.Frame(scanbox, bg=PANEL)
         topstatus.pack(fill="x")
-        tk.Label(topstatus, text="02  /  تقدم الفحص", bg=PANEL, fg=WHITE,
-                 font=("Segoe UI", 9, "bold")).pack(side="left")
-        self.status = tk.StringVar(value="جاهز — وافق على الفحص ثم ابدأ.")
+        tk.Label(topstatus, text=self._t("02  /  تقدم الفحص", "02  /  INSPECTION PROGRESS"),
+                 bg=PANEL, fg=WHITE, font=("Segoe UI", 9, "bold")).pack(side="left")
+        self.status = tk.StringVar(value=self._t("جاهز — وافق على الفحص ثم ابدأ.",
+                                                  "Ready — accept the consent and start."))
         tk.Label(topstatus, textvariable=self.status, bg=PANEL, fg=MUTED,
                  font=("Segoe UI", 9)).pack(side="right")
         progress_row = tk.Frame(scanbox, bg=PANEL)
@@ -1353,19 +1367,47 @@ class InspectorApp(tk.Tk):
 
         controls = tk.Frame(body, bg=BG)
         controls.pack(fill="x", pady=(0, 12))
-        self.start_button = ttk.Button(controls, text="▶   بدء الفحص", command=self.start)
+        self.start_button = ttk.Button(controls, text=self._t("▶   بدء الفحص", "▶   START INSPECTION"), command=self.start)
         self.start_button.pack(side="left", padx=(0, 9))
-        tk.Label(controls, text="يُرسل التقرير تلقائيًا بعد اكتمال الفحص؛ والتصنيف النهائي يحدده المفتش.",
+        tk.Label(controls, text=self._t("يُرسل التقرير تلقائيًا بعد اكتمال الفحص؛ والتصنيف النهائي يحدده المفتش.",
+                                        "The report is sent automatically when complete; the inspector makes the final classification."),
                  bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left", padx=5)
 
         tk.Label(self, text="3EN INSPECT",
                  bg="#0d1018", fg="#7e899f", font=("Segoe UI", 8, "bold"), pady=9).pack(fill="x")
+    def _change_language(self, _event=None):
+        self.lang = "en" if self.language_choice.get() == "English" else "ar"
+        self._build()
+
+    def _progress_text(self, value):
+        if self.lang == "ar":
+            return value
+        replacements = (
+            ("اكتمل الفحص وتجهيز التقرير", "Inspection complete. Preparing report"),
+            ("فحص ملفات البرامج ومجلدات المستخدم فقط", "Inspecting user and application files only"),
+            ("جمع بيانات العمليات", "Collecting process metadata"),
+            ("تجاوز عمليات Windows الأساسية", "Skipping core Windows processes"),
+            ("تجاوز ملفات وعمليات Windows النظامية", "Skipping Windows system files and processes"),
+            ("ترتيب ملفات البرامج", "Organizing application files"),
+            ("فحص مواقع FiveM وGTA V", "Inspecting game-related locations"),
+            ("تحليل سجلات FiveM النصية", "Analyzing game text logs"),
+            ("تحليل ملفات موارد وإعدادات FiveM", "Analyzing game resources and settings"),
+            ("فحص بيانات سلة المحذوفات", "Inspecting Recycle Bin metadata"),
+            ("التحقق من مصدر البرامج", "Verifying application publishers"),
+            ("اكتمل", "Completed"), ("جارٍ", "In progress"),
+            ("ملف", "files"), ("عنصر", "items"), ("عملية", "processes"),
+        )
+        result = str(value)
+        for ar, en in replacements:
+            result = result.replace(ar, en)
+        return result
+
     def update_progress(self, value, text):
         def paint():
             value = max(0, min(100, int(value)))
             self.progress.configure(value=value)
             self.progress_percent.configure(text=f"{value}%")
-            self.status.set(text)
+            self.status.set(self._progress_text(text))
 
         self.after(0, paint)
 
