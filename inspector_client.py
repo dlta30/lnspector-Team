@@ -1082,9 +1082,14 @@ def collect_recent_apps(processes, progress, deleted_file_findings=None, languag
         "securityhealthservice", "msmpeng", "startmenuexperiencehost",
         "shellexperiencehost", "textinputhost"
     }
+    prefetch_started = time.monotonic()
+    prefetch_scanned = 0
     try:
         with os.scandir(str(prefetch_root)) as entries:
             for entry in entries:
+                if prefetch_scanned >= 5000 or time.monotonic() - prefetch_started >= 8:
+                    break
+                prefetch_scanned += 1
                 if not entry.is_file(follow_symlinks=False) or not entry.name.casefold().endswith(".pf"):
                     continue
                 try:
@@ -1206,10 +1211,7 @@ ConvertTo-Json -InputObject @($out) -Compress
         else:
             target_status = "missing_or_moved"
             target_status_ar = "الملف غير موجود في مساره؛ قد يكون محذوفًا أو منقولًا"
-        try:
-            display = format_saudi_time(utc_timestamp(st.st_mtime), language)
-        except (ValueError, OSError, OverflowError):
-            display = format_saudi_time(utc_timestamp(st.st_mtime), language)
+        display = format_saudi_time(utc_timestamp(st.st_mtime), language)
         results.append({
             "file_name": file_name,
             "shortcut_name": shortcut.name[:240],
