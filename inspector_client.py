@@ -1057,10 +1057,10 @@ def collect_recent_apps(processes, progress, deleted_file_findings=None, languag
             "path": path or "Unavailable",
             "last_seen_at": observed_at, "last_seen_display": format_saudi_time(observed_at, language),
             "process_started_at": started_at, "process_started_display": started_display,
-            "evidence_source": "Currently running process — observed during inspection",
+            "evidence_source": "عملية جارية — تمت ملاحظتها أثناء الفحص" if language == "ar" else "Currently running process — observed during inspection",
             "time_accuracy": "live_process_observation", "currently_running": True,
             "started_within_24h": started_recently,
-            "activity_window": "Currently running" if started_recently else "Currently running; started over 24 hours ago",
+            "activity_window": ("يعمل الآن" if started_recently else "يعمل الآن؛ بدأ قبل أكثر من 24 ساعة") if language == "ar" else ("Currently running" if started_recently else "Currently running; started over 24 hours ago"),
             "indicator_matches": proc.get("indicator_matches", []),
             "indicator_category": proc.get("indicator_category", "No name match"),
             "signature_status": proc.get("signature_status", "not_checked"),
@@ -1108,21 +1108,21 @@ def collect_recent_apps(processes, progress, deleted_file_findings=None, languag
                     deleted_at = deleted_row.get("deleted_at") if deleted_row else None
                     recent.append({
                         "app_name": app_name, "file_name": entry.name,
-                        "path": "Windows Prefetch metadata (system path hidden)",
+                        "path": "بيانات Windows Prefetch (مسار النظام مخفي)" if language == "ar" else "Windows Prefetch metadata (system path hidden)",
                         "last_seen_at": prefetch_time,
                         "last_seen_display": format_saudi_time(prefetch_time, language),
-                        "evidence_source": "Windows Prefetch (.pf) — approximate execution record",
+                        "evidence_source": "سجل Windows Prefetch (.pf) — قرينة تشغيل تقريبية" if language == "ar" else "Windows Prefetch (.pf) — approximate execution record",
                         "time_accuracy": "approximate_prefetch_timestamp",
                         "prefetch_key": entry.name.casefold(), "currently_running": False,
                         "started_within_24h": True,
-                        "activity_window": "Last 24 hours — approximate Prefetch timestamp",
+                        "activity_window": "آخر 24 ساعة — وقت Prefetch تقريبي" if language == "ar" else "Last 24 hours — approximate Prefetch timestamp",
                         "deleted_file_name_match": bool(deleted_row),
                         "deleted_at": deleted_at,
                         "deleted_at_display": format_saudi_time(deleted_at, language) if deleted_at else None,
                         "indicator_matches": prefetch_matches,
-                        "indicator_category": "Name indicators" if prefetch_matches else "No name match",
+                        "indicator_category": ("مؤشرات اسمية" if prefetch_matches else "لا توجد مطابقة اسمية") if language == "ar" else ("Name indicators" if prefetch_matches else "No name match"),
                         "signature_status": "not_checked",
-                        "signature_label": "Execution-history metadata; application signature not checked"
+                        "signature_label": "بيانات سجل تشغيل؛ لم يتم التحقق من توقيع البرنامج" if language == "ar" else "Execution-history metadata; application signature not checked"
                     })
                 except OSError:
                     continue
@@ -1219,7 +1219,7 @@ ConvertTo-Json -InputObject @($out) -Compress
             "recent_shortcut_path": "Recent",
             "last_accessed_at": utc_timestamp(st.st_mtime),
             "last_accessed_display": display,
-            "evidence_source": "Windows Recent folder (.lnk shortcut metadata)",
+            "evidence_source": "مجلد Windows Recent (بيانات اختصارات .lnk)" if language == "ar" else "Windows Recent folder (.lnk shortcut metadata)",
             "time_accuracy": "shortcut_timestamp_not_proof_of_open",
             "target_status": target_status,
             "target_status_ar": target_status_ar,
