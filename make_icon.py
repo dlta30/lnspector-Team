@@ -37,8 +37,8 @@ gradient_line(17, 52, 47, width=2.5)
 # Strong centered 3EN wordmark, same proportions and clean white treatment as the site.
 font = None
 font_candidates = [
-    r"C:\\Windows\\Fonts\\arialbd.ttf",
-    r"C:\\Windows\\Fonts\\seguisb.ttf",
+    "C:/Windows/Fonts/arialbd.ttf",
+    "C:/Windows/Fonts/seguisb.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
 ]
 for candidate in font_candidates:
