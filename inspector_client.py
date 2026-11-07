@@ -104,6 +104,36 @@ def build_indicator_terms():
 
 INDICATOR_TERMS = build_indicator_terms()
 
+BINARY_INDICATOR_LABELS = {
+    "virtualallocex": ("تخصيص ذاكرة داخل عملية أخرى", "Remote-process memory allocation"),
+    "writeprocessmemory": ("كتابة بيانات في ذاكرة عملية أخرى", "Writing to another process memory"),
+    "readprocessmemory": ("قراءة بيانات من ذاكرة عملية أخرى", "Reading another process memory"),
+    "createremotethread": ("إنشاء مسار تنفيذ داخل عملية أخرى", "Creating a thread in another process"),
+    "ntcreatethreadex": ("إنشاء مسار تنفيذ منخفض المستوى داخل عملية أخرى", "Low-level remote thread creation"),
+    "queueuserapc": ("جدولة إجراء داخل مسار تنفيذ آخر", "Queueing an APC in another thread"),
+    "setwindowshookex": ("تثبيت خطاف لمراقبة أحداث Windows", "Installing a Windows event hook"),
+    "openprocess": ("فتح مقبض لعملية أخرى", "Opening another process handle"),
+}
+
+def localized_indicator_labels(values, language="ar"):
+    labels = []
+    for value in values or []:
+        pair = BINARY_INDICATOR_LABELS.get(str(value or "").casefold())
+        if pair:
+            labels.append(f"{pair[0]} ({value})" if language == "ar" else f"{pair[1]} ({value})")
+        else:
+            labels.append(str(value))
+    return labels
+
+def add_localized_indicator_fields(report, language="ar"):
+    for collection_name in ("processes", "file_artifacts", "recent_apps_24h"):
+        for row in report.get(collection_name, []) or []:
+            row["indicator_matches_display"] = localized_indicator_labels(
+                row.get("indicator_matches", []), language
+            )
+    report["interface_language"] = language
+    return report
+
 
 def is_windows_system_path(path):
     """Return True for Windows OS, component-store, driver and protected app paths."""
@@ -112,8 +142,11 @@ def is_windows_system_path(path):
         "\\windows\\", "\\programdata\\microsoft\\",
         "\\system volume information\\", "\\$recycle.bin\\",
         "\\windowsapps\\", "\\driverstore\\", "\\winsxs\\", "\\servicing\\",
+        "\\system32\\", "\\syswow64\\", "\\windows defender\\",
+        "\\program files\\windowsapps\\", "\\program files (x86)\\windowsapps\\",
+        "\\microsoft shared\\", "\\assembly\\",
     )
-    return any(marker in value for marker in markers)
+    return any(marker in value for marker in markers) or value.endswith("\\windows")
 
 
 def is_inspector_self_path(path):
@@ -434,6 +467,8 @@ def collect_fivem_artifacts(progress, max_files=8000, max_scan_seconds=35):
                 if ext not in allowed_extensions:
                     continue
                 path = os.path.join(current, name)
+                if is_windows_system_path(path) or is_inspector_self_path(path):
+                    continue
                 try:
                     if os.path.islink(path) or not os.path.isfile(path):
                         continue
@@ -954,6 +989,11 @@ def collect_recent_apps(processes, progress):
             "signature_status": proc.get("signature_status", "not_checked"),
             "signature_label": proc.get("signature_label", "لم يتم التحقق")
         })
+
+    # Windows Prefetch is OS metadata and is omitted from the user-facing report.
+    recent.sort(key=lambda row: row.get("last_seen_at") or "", reverse=True)
+    progress(90, f"اكتمل تجميع التطبيقات الحالية: {len(recent)}")
+    return recent
 
     prefetch_roots = [r"C:\Windows\Prefetch"]
     for root in prefetch_roots:
@@ -1497,13 +1537,14 @@ class InspectorApp(tk.Tk):
             files.sort(key=lambda item: group_order.get(item.get("scan_group"), 9))
             verify_authenticode_signatures(processes, files, self.update_progress)
             recent_apps = collect_recent_apps(processes, self.update_progress)
-            recent_files = collect_recent_files(self.update_progress)
+            # Windows Recent shortcuts are OS metadata and are omitted from the report.
+            recent_files = []
             evidence_quality = finalize_evidence_quality(processes, files, recent_apps, recent_files)
             matches = [p for p in processes if p["indicator_matches"]]
             file_matches = [item for item in files if item["indicator_matches"]]
             fivem_matches = [item for item in fivem_files if item["indicator_matches"]]
             self.report = {
-                "product": APP,
+                "product": "3EN INSPECT",
                 "signature": "3eN INSPECT TEAM",
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
@@ -1540,6 +1581,7 @@ class InspectorApp(tk.Tk):
                 "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded user/application-file inventory with Windows/system locations excluded, plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. Selected FiveM/CitizenFX text logs are checked locally for specific known tool markers; only marker names and line numbers are retained, never log text. Selected FiveM resource/configuration text files are also checked locally; targeted EXE/DLL/ASI/BIN game binaries receive bounded SHA-256 hashing and local static string triage for known tool names and multiple process-memory API markers; only hashes and marker names are retained, never binary contents. Selected resources for known tool names and combinations of gameplay-manipulation indicators; only matched marker names and line numbers are retained, never file text. Windows Recycle Bin metadata is also checked for selected security-relevant file types; only filename, approximate deletion time, size, and a coarse folder category are retained, not the original full path or deleted contents. This does not detect every permanently deleted file and does not perform recovery. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened; only selected FiveM/CitizenFX text logs are read locally for specific known markers, and their text is never uploaded; file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. A full-desktop screenshot is captured and retained with the report only when the separate screenshot-consent option is selected; otherwise no screenshot is taken. No files are modified and no processes are terminated.",
                 "processes": processes,
             }
+            add_localized_indicator_fields(self.report, self.lang)
             self.update_progress(100, "اكتمل الفحص وتجهيز التقرير.")
             self.delivery_status = "pending"
             self.after(0, self._show_report)
