@@ -155,6 +155,28 @@ def timestamp_utc_iso(value):
         return None
 
 
+def localize_timestamp_fields(value, language="ar"):
+    """Copy report data and render known timestamp fields as fixed Saudi UTC+3 strings."""
+    timestamp_keys = {
+        "created_at", "expires_at", "used_at", "downloaded_at",
+        "last_seen_at", "process_started_at", "file_created_at",
+        "file_modified_at", "modified_at", "accessed_at", "last_accessed_at",
+        "deleted_at", "desktop_screenshot_captured_at", "captured_at",
+        "timestamp", "started_at", "ended_at"
+    }
+    if isinstance(value, dict):
+        result = {}
+        for key, item in value.items():
+            if key in timestamp_keys and item:
+                result[key] = format_saudi_time(item, language)
+            else:
+                result[key] = localize_timestamp_fields(item, language)
+        return result
+    if isinstance(value, list):
+        return [localize_timestamp_fields(item, language) for item in value]
+    return value
+
+
 class PgCursor:
     def __init__(self, cursor):
         self._cursor = cursor
@@ -545,6 +567,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
                     pdf_report.pop(key, None)
             pdf_report['discord_export_scope'] = 'Clean review: detailed inspection evidence intentionally omitted from Discord.'
         screenshot_note = 'Desktop screenshot attached separately to this Discord message.' if screenshot_b64 else 'No desktop screenshot was included.'
+        pdf_report = localize_timestamp_fields(pdf_report, report.get('interface_language', 'ar'))
         raw = json.dumps(pdf_report, ensure_ascii=False, indent=2, default=str)[:90000]
         story = [Paragraph('3eN INSPECT — INSPECTION REPORT', styles['Title']),
             Paragraph('Report #' + escape(str(report_id)), styles['Heading1']), Spacer(1, 4*mm),
@@ -1035,8 +1058,13 @@ def home():
         total_sessions = con.execute("SELECT COUNT(*) n FROM inspection_sessions").fetchone()["n"]
         pending_sessions = con.execute("SELECT COUNT(*) n FROM inspection_sessions WHERE status='open' AND expires_at>?", (now(),)).fetchone()["n"]
         completed_reports = con.execute("SELECT COUNT(*) n FROM reports").fetchone()["n"] if can_see_reports else 0
-        recent_reports = con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,s.target_label FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id ORDER BY r.id DESC LIMIT 6").fetchall() if can_see_reports else []
-        recent_sessions = con.execute("SELECT s.display_code,COALESCE(u.discord_server_name,u.discord_username,s.created_by) AS creator_name,u.discord_username AS creator_username,s.created_at,s.expires_at,s.status,(SELECT MAX(r.id) FROM reports r WHERE r.session_id=s.display_code) AS report_id FROM inspection_sessions s LEFT JOIN users u ON u.username=s.created_by OR u.discord_username=s.created_by ORDER BY s.id DESC LIMIT 6").fetchall() if user["role"] in ("owner","deputy","team","inspector") else []
+        recent_reports = [dict(row) for row in con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,s.target_label FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id ORDER BY r.id DESC LIMIT 6").fetchall()] if can_see_reports else []
+        recent_sessions = [dict(row) for row in con.execute("SELECT s.display_code,COALESCE(u.discord_server_name,u.discord_username,s.created_by) AS creator_name,u.discord_username AS creator_username,s.created_at,s.expires_at,s.status,(SELECT MAX(r.id) FROM reports r WHERE r.session_id=s.display_code) AS report_id FROM inspection_sessions s LEFT JOIN users u ON u.username=s.created_by OR u.discord_username=s.created_by ORDER BY s.id DESC LIMIT 6").fetchall()] if user["role"] in ("owner","deputy","team","inspector") else []
+        for item in recent_reports:
+            item["created_at_display"] = format_saudi_time(item.get("created_at"))
+        for item in recent_sessions:
+            item["created_at_display"] = format_saudi_time(item.get("created_at"))
+            item["expires_at_display"] = format_saudi_time(item.get("expires_at"))
         staff_count = con.execute("SELECT COUNT(*) n FROM users").fetchone()["n"] if user["role"] == "owner" else None
     return page("""<section class="card" style="background:radial-gradient(ellipse at 0% 50%,#40101e 0,transparent 58%),linear-gradient(120deg,#17121d,#0c0d14);border-color:#48202c"><div class="eyebrow">3EN SECURITY OPERATIONS</div><h2 style="font-size:25px;margin-top:10px">مرحباً بك في Inspect</h2><p class="muted">إدارة جلسات الفحص ومراجعة النتائج والتقارير من لوحة واحدة.</p><a class="btn" href="{{ url_for('sessions_page') }}">＋ بدء جلسة فحص جديدة</a></section>
     <div class="grid">
@@ -1045,8 +1073,8 @@ def home():
       <div class="card"><div class="muted">التقارير المكتملة</div><div class="metric">{{ completed_reports }}</div><div class="muted">تقارير وصلت إلى اللوحة</div></div>
       {% if staff_count is not none %}<div class="card"><div class="muted">أعضاء الفريق</div><div class="metric">{{ staff_count }}</div><div class="muted">حسابات الفريق المسجلة</div></div>{% endif %}
     </div>
-    {% if can_see_reports %}<div class="card"><h2>آخر التقارير</h2>{% if recent_reports %}<table><tr><th>رقم التقرير</th><th>الجلسة</th><th>الجهاز</th><th>وقت الاستلام (UTC)</th><th>الملخص</th></tr>{% for r in recent_reports %}<tr><td><a class="btn" href="{{ url_for('report_detail', report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['target_label'] or '—' }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at'] }}</td><td>{{ r['summary'] }}</td></tr>{% endfor %}</table>{% else %}<p class="muted">لا توجد تقارير حتى الآن. أنشئ جلسة وشارك ملف الفحص بعد موافقة صاحب الجهاز.</p>{% endif %}</div>{% endif %}
-    {% if recent_sessions %}<div class="card"><h2>آخر الجلسات</h2><table><tr><th>كود الجلسة</th><th>أنشأها</th><th>وقت الإنشاء</th><th>الانتهاء</th><th>الحالة</th></tr>{% for s in recent_sessions %}<tr><td>{% if s['report_id'] %}<a class="btn" href="{{ url_for('report_detail',report_id=s['report_id']) }}">{{ s['display_code'] }}</a>{% else %}<span title="لم يصل تقرير لهذه الجلسة بعد">{{ s['display_code'] }}</span>{% endif %}</td><td><strong>{{ s['creator_name'] or s['created_by'] }}</strong>{% if s['creator_username'] %}<br><small class="muted">@{{ s['creator_username'] }}</small>{% endif %}</td><td>{{ s['created_at'] }}</td><td>{{ s['expires_at'] }}</td><td>{% if s['status']=='open' %}<span style="color:#ffb454">بانتظار التقرير</span>{% elif s['status']=='used' %}<span style="color:#62d6a7">مكتملة</span>{% else %}<span class="danger">{{ s['status'] }}</span>{% endif %}</td></tr>{% endfor %}</table></div>{% endif %}""", total_sessions=total_sessions, pending_sessions=pending_sessions, completed_reports=completed_reports, recent_reports=recent_reports, recent_sessions=recent_sessions, staff_count=staff_count, can_see_reports=can_see_reports)
+    {% if can_see_reports %}<div class="card"><h2>آخر التقارير</h2>{% if recent_reports %}<table><tr><th>رقم التقرير</th><th>الجلسة</th><th>الجهاز</th><th>وقت الاستلام — السعودية (UTC+3)</th><th>الملخص</th></tr>{% for r in recent_reports %}<tr><td><a class="btn" href="{{ url_for('report_detail', report_id=r['id']) }}">#{{ r['id'] }}</a></td><td>{{ r['session_id'] }}</td><td>{{ r['target_label'] or '—' }}</td><td>{{ r['computer_label'] }}</td><td>{{ r['created_at_display'] }}</td><td>{{ r['summary'] }}</td></tr>{% endfor %}</table>{% else %}<p class="muted">لا توجد تقارير حتى الآن. أنشئ جلسة وشارك ملف الفحص بعد موافقة صاحب الجهاز.</p>{% endif %}</div>{% endif %}
+    {% if recent_sessions %}<div class="card"><h2>آخر الجلسات</h2><table><tr><th>كود الجلسة</th><th>أنشأها</th><th>وقت الإنشاء</th><th>الانتهاء</th><th>الحالة</th></tr>{% for s in recent_sessions %}<tr><td>{% if s['report_id'] %}<a class="btn" href="{{ url_for('report_detail',report_id=s['report_id']) }}">{{ s['display_code'] }}</a>{% else %}<span title="لم يصل تقرير لهذه الجلسة بعد">{{ s['display_code'] }}</span>{% endif %}</td><td><strong>{{ s['creator_name'] or s['created_by'] }}</strong>{% if s['creator_username'] %}<br><small class="muted">@{{ s['creator_username'] }}</small>{% endif %}</td><td>{{ s['created_at_display'] }}</td><td>{{ s['expires_at_display'] }}</td><td>{% if s['status']=='open' %}<span style="color:#ffb454">بانتظار التقرير</span>{% elif s['status']=='used' %}<span style="color:#62d6a7">مكتملة</span>{% else %}<span class="danger">{{ s['status'] }}</span>{% endif %}</td></tr>{% endfor %}</table></div>{% endif %}""", total_sessions=total_sessions, pending_sessions=pending_sessions, completed_reports=completed_reports, recent_reports=recent_reports, recent_sessions=recent_sessions, staff_count=staff_count, can_see_reports=can_see_reports)
  
 @app.route("/sessions", methods=["GET", "POST"])
 @login_required
@@ -1512,6 +1540,9 @@ def report_detail(report_id):
     processes.sort(key=lambda item: bool(item.get("indicator_matches")), reverse=True)
     # Prepare every running process, not just processes that matched a heuristic.
     for item in processes:
+        for field in ("process_started_at", "file_created_at", "file_modified_at"):
+            if item.get(field):
+                item[field + "_display"] = format_saudi_time(item.get(field))
         path = str(item.get("executable_path") or "")
         normalized_path = path.replace(chr(92), "/")
         item["file_name"] = normalized_path.rsplit("/", 1)[-1] if normalized_path else str(item.get("process_name") or "غير متاح")
@@ -1526,14 +1557,23 @@ def report_detail(report_id):
     artifacts.sort(key=lambda item: (bool(item.get("indicator_matches")), str(item.get("modified_at") or "")) if isinstance(item, dict) else (False, ""), reverse=True)
     for item in artifacts:
         if isinstance(item, dict):
-            item["modified_display"] = str(item.get("modified_display") or item.get("modified_at") or "غير متاح")
-            item["created_display"] = str(item.get("created_display") or item.get("created_at") or "غير متاح")
+            item["modified_display"] = format_saudi_time(item.get("modified_at")) if item.get("modified_at") else "غير متاح"
+            item["created_display"] = format_saudi_time(item.get("created_at")) if item.get("created_at") else "غير متاح"
     artifact_findings = [item for item in artifacts if isinstance(item, dict) and item.get("indicator_matches")]
     recent_apps = report_data.get("recent_apps_24h", []) if isinstance(report_data.get("recent_apps_24h", []), list) else []
     recent_apps.sort(key=lambda item: str(item.get("last_seen_at") or "") if isinstance(item, dict) else "", reverse=True)
+    for item in recent_apps:
+        if isinstance(item, dict):
+            item["last_seen_display"] = format_saudi_time(item.get("last_seen_at")) if item.get("last_seen_at") else "غير متاح"
+            item["process_started_display"] = format_saudi_time(item.get("process_started_at")) if item.get("process_started_at") else None
+            item["deleted_at_display"] = format_saudi_time(item.get("deleted_at")) if item.get("deleted_at") else None
     visible_recent_apps = recent_apps[:100]
     recent_files = report_data.get("recent_files", []) if isinstance(report_data.get("recent_files", []), list) else []
     recent_files.sort(key=lambda item: str(item.get("last_accessed_at") or "") if isinstance(item, dict) else "", reverse=True)
+    for item in recent_files:
+        if isinstance(item, dict):
+            item["last_accessed_display"] = format_saudi_time(item.get("last_accessed_at")) if item.get("last_accessed_at") else "غير متاح"
+            item["deleted_at_display"] = format_saudi_time(item.get("deleted_at")) if item.get("deleted_at") else None
     visible_recent_files = recent_files[:100]
     try:
         process_match_count = int(report_data.get("indicator_match_count", len(findings)) or 0)
@@ -1658,7 +1698,7 @@ def report_detail(report_id):
             <div class="field"><b>المسار الهدف</b><span dir="ltr">{{ item.get('target_path') or 'غير متاح' }}</span></div>
             <div class="field"><b>وقت ظهور الاختصار</b><span dir="ltr">{{ item.get('last_accessed_display') or item.get('last_accessed_at') or 'غير متاح' }}</span></div>
             <div class="field"><b>مصدر الدليل</b><span>{{ item.get('evidence_source') or 'Windows Recent' }}</span></div>
-            {% if item.get('deleted_at') %}<div class="field"><b>وقت الحذف المسجل</b><span dir="ltr">{{ item.get('deleted_at') }}</span></div>{% endif %}
+            {% if item.get('deleted_at') %}<div class="field"><b>وقت الحذف المسجل — السعودية (UTC+3)</b><span dir="ltr">{{ item.get('deleted_at_display') or 'غير متاح' }}</span></div>{% endif %}
           </article>
         {% else %}<div class="empty-state">لا توجد اختصارات ملفات حديثة في مجلد Recent.</div>{% endfor %}
       </div>
@@ -1675,9 +1715,9 @@ def report_detail(report_id):
             <div class="field"><b>اسم العملية</b><span dir="ltr">{{ item.get('process_name') or 'غير متاح' }}</span></div>
             <div class="field"><b>اسم الملف</b><span dir="ltr">{{ item.get('file_name') or 'غير متاح' }}</span></div>
             <div class="field"><b>المسار الكامل</b><span dir="ltr">{{ item.get('executable_path') or 'غير متاح' }}</span></div>
-            <div class="field"><b>وقت بدء التشغيل (UTC)</b><span dir="ltr">{{ item.get('process_started_at') }}</span></div>
-            <div class="field"><b>تاريخ إنشاء الملف (UTC)</b><span dir="ltr">{{ item.get('file_created_at') }}</span></div>
-            <div class="field"><b>تاريخ تعديل الملف (UTC)</b><span dir="ltr">{{ item.get('file_modified_at') }}</span></div>
+            <div class="field"><b>وقت بدء التشغيل — السعودية (UTC+3)</b><span dir="ltr">{{ item.get('process_started_at_display') or 'غير متاح' }}</span></div>
+            <div class="field"><b>تاريخ إنشاء الملف — السعودية (UTC+3)</b><span dir="ltr">{{ item.get('file_created_at_display') or 'غير متاح' }}</span></div>
+            <div class="field"><b>تاريخ تعديل الملف — السعودية (UTC+3)</b><span dir="ltr">{{ item.get('file_modified_at_display') or 'غير متاح' }}</span></div>
             <div class="field"><b>حالة التوثيق</b><span>{{ item.get('signature_label') or 'لم يتم التحقق' }}</span></div>
             {% if item.get('download_mark') %}<div class="field"><b>علامة تنزيل من الإنترنت</b><span>موجودة — لا تحدد وقت التنزيل بدقة</span></div>{% endif %}
             {% if item.get('indicator_matches') %}<div class="field"><b>سبب الاشتباه · {{ item.get('indicator_category') or 'مؤشر' }}</b><span>{% for indicator in (item.get('indicator_matches_display') or item.get('indicator_matches', [])) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
@@ -2117,7 +2157,10 @@ def users_page():
 def audit_page():
     if current_user()["role"]!="owner": abort(403)
     with db() as con: rows=con.execute("SELECT * FROM audit ORDER BY id DESC LIMIT 300").fetchall()
-    return page("""<div class="card"><h2>سجل الأحداث</h2><table><tr><th>الوقت (UTC)</th><th>Actor</th><th>Action</th></tr>{% for r in rows %}<tr><td>{{ r['created_at'] }}</td><td>{{ r['actor'] }}</td><td>{{ r['action'] }}</td></tr>{% endfor %}</table></div>""",rows=rows)
+    rows = [dict(row) for row in rows]
+    for row in rows:
+        row["created_at_display"] = format_saudi_time(row.get("created_at"))
+    return page("""<div class="card"><h2>سجل الأحداث</h2><table><tr><th>الوقت — السعودية (UTC+3)</th><th>Actor</th><th>Action</th></tr>{% for r in rows %}<tr><td>{{ r['created_at_display'] }}</td><td>{{ r['actor'] }}</td><td>{{ r['action'] }}</td></tr>{% endfor %}</table></div>""",rows=rows)
 
 @app.post("/api/v1/reports")
 def ingest_report():
