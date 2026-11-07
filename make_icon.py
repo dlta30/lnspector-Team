@@ -1,30 +1,49 @@
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
-# Match the public 3EN website favicon: black rounded tile, red accents, white wordmark.
-SIZE = 256
-SCALE = 4
+# Premium 3EN identity: bold monogram, shield geometry and restrained red glow.
+SIZE = 512
+SCALE = 3
 N = SIZE * SCALE
-im = Image.new("RGBA", (N, N), (8, 9, 13, 255))
-d = ImageDraw.Draw(im)
+im = Image.new("RGBA", (N, N), (6, 7, 12, 255))
+draw = ImageDraw.Draw(im)
 
-def box(coords):
-    return tuple(int(v * SCALE) for v in coords)
+def p(v):
+    return int(v * SCALE)
 
-d.rounded_rectangle(box((2, 2, 62, 62)), radius=12*SCALE,
-                    fill=(8, 9, 13, 255), outline=(143, 24, 53, 255), width=2*SCALE)
+def poly(points, fill, outline=None, width=1):
+    pts = [(p(x), p(y)) for x, y in points]
+    draw.polygon(pts, fill=fill)
+    if outline:
+        draw.line(pts + [pts[0]], fill=outline, width=p(width), joint="curve")
 
-# Subtle red gradient accents, matching the website mark.
-for x in range(9, 56):
-    t = (x - 9) / 47
-    color = (int(255 - 70*t), int(83 - 65*t), int(109 - 59*t), 255)
-    d.line((x*SCALE, 18*SCALE, (x+0.01)*SCALE, 18*SCALE), fill=color, width=3*SCALE)
-d.line(box((17, 52, 47, 52)), fill=(220, 24, 60, 255), width=3*SCALE)
+# Deep red atmospheric halo behind the shield.
+glow = Image.new("RGBA", im.size, (0, 0, 0, 0))
+gd = ImageDraw.Draw(glow)
+gd.ellipse((p(65), p(45), p(447), p(455)), fill=(210, 5, 42, 105))
+glow = glow.filter(ImageFilter.GaussianBlur(p(44)))
+im = Image.alpha_composite(im, glow)
+draw = ImageDraw.Draw(im)
 
+# Layered shield silhouette with a crisp red edge.
+outer = [(256, 24), (438, 91), (420, 292), (369, 388), (256, 476),
+         (143, 388), (92, 292), (74, 91)]
+inner = [(256, 48), (415, 107), (398, 285), (350, 369), (256, 442),
+         (162, 369), (114, 285), (97, 107)]
+poly(outer, (13, 10, 17, 255), (235, 28, 62, 255), 8)
+poly(inner, (8, 10, 16, 255), (104, 18, 42, 255), 3)
+
+# Subtle top/bottom angular cuts create a custom esports/security mark.
+poly([(111, 115), (170, 137), (170, 147), (111, 128)], (255, 48, 83, 210))
+poly([(401, 115), (342, 137), (342, 147), (401, 128)], (255, 48, 83, 210))
+poly([(150, 355), (190, 382), (178, 391), (137, 362)], (153, 20, 48, 255))
+poly([(362, 355), (322, 382), (334, 391), (375, 362)], (153, 20, 48, 255))
+
+# Strong, clean 3EN wordmark.
 font = None
-for p in ("C:/Windows/Fonts/arialbd.ttf", "C:/Windows/Fonts/seguisb.ttf",
-          "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
+for path in ("C:/Windows/Fonts/arialbd.ttf", "C:/Windows/Fonts/seguisb.ttf",
+             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
     try:
-        font = ImageFont.truetype(p, 24*SCALE)
+        font = ImageFont.truetype(path, p(132))
         break
     except OSError:
         pass
@@ -32,11 +51,31 @@ if font is None:
     font = ImageFont.load_default()
 
 word = "3EN"
-bbox = d.textbbox((0, 0), word, font=font)
-x = (N - (bbox[2] - bbox[0])) / 2 - bbox[0]
-y = 30*SCALE - (bbox[3] - bbox[1]) / 2 - bbox[1]
-d.text((x, y), word, font=font, fill=(255, 255, 255, 255))
+bbox = draw.textbbox((0, 0), word, font=font, stroke_width=p(1))
+tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+x = (N - tw) // 2 - bbox[0]
+y = p(194) - bbox[1]
+draw.text((x, y), word, font=font, fill=(255, 249, 251, 255),
+          stroke_width=p(1), stroke_fill=(255, 255, 255, 255))
 
+# Red divider and small INSPECT wordmark.
+draw.rounded_rectangle((p(158), p(345), p(354), p(352)), radius=p(4),
+                       fill=(255, 38, 75, 255))
+small = None
+for path in ("C:/Windows/Fonts/arialbd.ttf", "C:/Windows/Fonts/seguisb.ttf",
+             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
+    try:
+        small = ImageFont.truetype(path, p(29))
+        break
+    except OSError:
+        pass
+if small:
+    label = "INSPECT"
+    b = draw.textbbox((0, 0), label, font=small)
+    draw.text(((N-(b[2]-b[0]))//2, p(365)-b[1]), label, font=small,
+              fill=(224, 225, 233, 255))
+
+# Final high-quality raster outputs used by the UI and Windows executable.
 im = im.resize((SIZE, SIZE), Image.Resampling.LANCZOS)
-im.save("3en.png", "PNG")
+im.save("3en.png", "PNG", optimize=True)
 im.save("3en.ico", "ICO", sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])
