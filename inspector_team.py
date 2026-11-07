@@ -180,7 +180,7 @@ def create_pdf_report(report, destination):
     w, h = A4; y = h - 55
     pdf.setFillColor(colors.HexColor('#090a0f')); pdf.rect(0, h-90, w, 90, fill=1, stroke=0)
     pdf.setFillColor(colors.HexColor('#ff4057')); pdf.setFont('Helvetica-Bold', 17); pdf.drawString(38, h-42, '3EN INSPECT TEAM')
-    pdf.setFillColor(colors.white); pdf.setFont('Helvetica', 9); pdf.drawString(38, h-62, 'PLAYER INSPECTION REPORT | BY:ROITH')
+    pdf.setFillColor(colors.white); pdf.setFont('Helvetica', 9); pdf.drawString(38, h-62, 'PLAYER INSPECTION REPORT')
     pdf.setFillColor(colors.black)
     def write(text, bold=False):
         nonlocal y
@@ -271,9 +271,7 @@ class InspectorApp:
                  font=("Segoe UI", 20, "bold")).pack()
         tk.Label(self.sidebar, text="INSPECT TEAM", bg="#0d0f16", fg=RED,
                  font=("Segoe UI", 10, "bold")).pack()
-        tk.Label(self.sidebar, text="BY:ROITH", bg="#0d0f16", fg=MUTED,
-                 font=("Segoe UI", 9)).pack(pady=(0, 24))
-        self.pages = ttk.Notebook(shell)
+                self.pages = ttk.Notebook(shell)
         self.pages.pack(side="left", fill="both", expand=True, padx=10, pady=10)
         self.main_page = tk.Frame(self.pages, bg=BG)
         self.pages.add(self.main_page, text="⌂  الرئيسية")
@@ -283,8 +281,7 @@ class InspectorApp:
         mark.pack(side="left", padx=(0, 14))
         brand = tk.Frame(header, bg=BG); brand.pack(side="left", fill="y")
         tk.Label(brand, text="3eN Inspect Team", bg=BG, fg=TEXT, font=("Segoe UI", 22, "bold")).pack(anchor="w")
-        tk.Label(brand, text="by: ROITH  •  PLAYER INSPECTION OPERATIONS", bg=BG, fg=RED, font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(3, 0))
-        tk.Label(header, text="●  النظام جاهز للفحص", bg=BG, fg=RED, font=("Segoe UI", 10, "bold")).pack(side="right", anchor="n", pady=8)
+                tk.Label(header, text="●  النظام جاهز للفحص", bg=BG, fg=RED, font=("Segoe UI", 10, "bold")).pack(side="right", anchor="n", pady=8)
 
         control = tk.Frame(self.main_page, bg=PANEL, highlightbackground=BORDER, highlightthickness=1)
         control.pack(fill="x", padx=22, pady=(0, 12))
