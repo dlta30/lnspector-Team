@@ -1091,12 +1091,6 @@ def sessions_page():
         if not target_nickname or not target_username:
             flash("أدخل Server Nickname وDiscord Username.")
             return redirect(url_for("sessions_page"))
-        with db() as con:
-            already_reported = con.execute("SELECT r.id FROM reports r JOIN inspection_sessions s ON s.display_code=r.session_id WHERE s.target_discord_id=? LIMIT 1", (target_discord_id,)).fetchone()
-            active_session = con.execute("SELECT id FROM inspection_sessions WHERE target_discord_id=? AND status='scanning' AND expires_at>? LIMIT 1", (target_discord_id, now())).fetchone()
-        if already_reported or active_session:
-            flash("هذا العضو تم فحصه مسبقًا أو أن فحصه جارٍ. لا يمكن إنشاء جلسة ثانية.")
-            return redirect(url_for("sessions_page"))
         target_label = target_nickname
         code = secrets.token_urlsafe(6).replace("-", "").replace("_", "")[:8].upper()
         code_hash = hashlib.sha256(code.encode()).hexdigest()
@@ -1302,10 +1296,6 @@ def start_inspection_session():
             abort(410, "انتهت صلاحية جلسة الفحص.")
         if row["status"] != "open":
             abort(409, "تم فحصك مسبقًا أو أن الفحص جارٍ بالفعل.")
-        previous = con.execute("SELECT r.id FROM reports r JOIN inspection_sessions s ON s.display_code=r.session_id WHERE s.target_discord_id=? LIMIT 1", (row["target_discord_id"],)).fetchone()
-        if previous:
-            con.execute("UPDATE inspection_sessions SET status='used',used_at=? WHERE id=? AND status='open'", (now(), row["id"]))
-            abort(409, "تم فحصك مسبقًا. لا يمكن استخدام رابط فحص جديد.")
         cur = con.execute("UPDATE inspection_sessions SET status='scanning' WHERE id=? AND status='open'", (row["id"],))
         if cur.rowcount != 1:
             abort(409, "تم فحصك مسبقًا أو أن الفحص جارٍ بالفعل.")
