@@ -995,7 +995,7 @@ def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=1
     return findings
 
 
-def collect_recent_apps(processes, progress, deleted_file_findings=None):
+def collect_recent_apps(processes, progress, deleted_file_findings=None, language="ar"):
     """Collect live processes and last-24h Prefetch execution records, including records for deleted apps."""
     import time
 
@@ -1018,14 +1018,14 @@ def collect_recent_apps(processes, progress, deleted_file_findings=None):
             if started.tzinfo is None:
                 started = started.replace(tzinfo=timezone.utc)
             started_recently = started.timestamp() >= cutoff
-            started_display = format_saudi_time(started_at)
+            started_display = format_saudi_time(started_at, language)
         except (ValueError, TypeError, OSError, OverflowError):
             started_recently = False
             started_display = "Unavailable"
         recent.append({
             "app_name": name, "file_name": proc.get("file_name") or name,
             "path": path or "Unavailable",
-            "last_seen_at": observed_at, "last_seen_display": format_saudi_time(observed_at),
+            "last_seen_at": observed_at, "last_seen_display": format_saudi_time(observed_at, language),
             "process_started_at": started_at, "process_started_display": started_display,
             "evidence_source": "Currently running process — observed during inspection",
             "time_accuracy": "live_process_observation", "currently_running": True,
@@ -1075,7 +1075,7 @@ def collect_recent_apps(processes, progress, deleted_file_findings=None):
                         "app_name": app_name, "file_name": entry.name,
                         "path": "Windows Prefetch metadata (system path hidden)",
                         "last_seen_at": prefetch_time,
-                        "last_seen_display": format_saudi_time(prefetch_time),
+                        "last_seen_display": format_saudi_time(prefetch_time, language),
                         "evidence_source": "Windows Prefetch (.pf) — approximate execution record",
                         "time_accuracy": "approximate_prefetch_timestamp",
                         "prefetch_key": entry.name.casefold(), "currently_running": False,
@@ -1083,7 +1083,7 @@ def collect_recent_apps(processes, progress, deleted_file_findings=None):
                         "activity_window": "Last 24 hours — approximate Prefetch timestamp",
                         "deleted_file_name_match": bool(deleted_row),
                         "deleted_at": deleted_at,
-                        "deleted_at_display": format_saudi_time(deleted_at) if deleted_at else None,
+                        "deleted_at_display": format_saudi_time(deleted_at, language) if deleted_at else None,
                         "indicator_matches": prefetch_matches,
                         "indicator_category": "Name indicators" if prefetch_matches else "No name match",
                         "signature_status": "not_checked",
@@ -1100,7 +1100,7 @@ def collect_recent_apps(processes, progress, deleted_file_findings=None):
     return recent
 
 
-def collect_recent_files(progress, deleted_file_findings=None, max_entries=500):
+def collect_recent_files(progress, deleted_file_findings=None, max_entries=500, language="ar"):
     """Collect Windows Recent-folder shortcut metadata and resolved targets, without opening targets."""
     import subprocess
 
@@ -1177,9 +1177,9 @@ ConvertTo-Json -InputObject @($out) -Compress
             target_status = "missing_or_moved"
             target_status_ar = "الملف غير موجود في مساره؛ قد يكون محذوفًا أو منقولًا"
         try:
-            display = datetime.fromtimestamp(st.st_mtime).astimezone().strftime("%B %d, %Y %I:%M:%S %p")
+            display = format_saudi_time(utc_timestamp(st.st_mtime), language)
         except (ValueError, OSError, OverflowError):
-            display = utc_timestamp(st.st_mtime)
+            display = format_saudi_time(utc_timestamp(st.st_mtime), language)
         results.append({
             "file_name": file_name,
             "shortcut_name": shortcut.name[:240],
@@ -1635,10 +1635,10 @@ class InspectorApp(tk.Tk):
             files.sort(key=lambda item: 0 if item.get("indicator_matches") else 1)
             files.sort(key=lambda item: group_order.get(item.get("scan_group"), 9))
             verify_authenticode_signatures(processes, files, self.update_progress)
-            recent_apps = collect_recent_apps(processes, self.update_progress, deleted_file_findings)
+            recent_apps = collect_recent_apps(processes, self.update_progress, deleted_file_findings, self.lang)
             # Include Windows Recent shortcut records: targets may be deleted or moved.
             recent_files = collect_recent_files(
-                self.update_progress, deleted_file_findings=deleted_file_findings
+                self.update_progress, deleted_file_findings=deleted_file_findings, language=self.lang
             )
             evidence_quality = finalize_evidence_quality(processes, files, recent_apps, recent_files)
             matches = [p for p in processes if p["indicator_matches"]]
