@@ -180,7 +180,7 @@ def create_pdf_report(report, destination):
     w, h = A4; y = h - 55
     pdf.setFillColor(colors.HexColor('#090a0f')); pdf.rect(0, h-90, w, 90, fill=1, stroke=0)
     pdf.setFillColor(colors.HexColor('#ff4057')); pdf.setFont('Helvetica-Bold', 17); pdf.drawString(38, h-42, '3EN INSPECT TEAM')
-    pdf.setFillColor(colors.white); pdf.setFont('Helvetica', 9); pdf.drawString(38, h-62, 'PLAYER INSPECTION REPORT | by: ROITH')
+    pdf.setFillColor(colors.white); pdf.setFont('Helvetica', 9); pdf.drawString(38, h-62, 'PLAYER INSPECTION REPORT | BY:ROITH')
     pdf.setFillColor(colors.black)
     def write(text, bold=False):
         nonlocal y
@@ -271,7 +271,7 @@ class InspectorApp:
                  font=("Segoe UI", 20, "bold")).pack()
         tk.Label(self.sidebar, text="INSPECT TEAM", bg="#0d0f16", fg=RED,
                  font=("Segoe UI", 10, "bold")).pack()
-        tk.Label(self.sidebar, text="by: ROITH", bg="#0d0f16", fg=MUTED,
+        tk.Label(self.sidebar, text="BY:ROITH", bg="#0d0f16", fg=MUTED,
                  font=("Segoe UI", 9)).pack(pady=(0, 24))
         self.pages = ttk.Notebook(shell)
         self.pages.pack(side="left", fill="both", expand=True, padx=10, pady=10)
@@ -691,7 +691,7 @@ class InspectorApp:
         try:
             boundary = "----3EN" + secrets.token_hex(12)
             summary = json.dumps({"content": (
-                "**3EN INSPECT TEAM**\n"
+                "**3EN INSPECT TEAM • BY:ROITH**\n"
                 f"Player: {report.get('player', 'Unknown')}\n"
                 f"Device: {report.get('device', 'Unknown')}\n"
                 f"Results: {report.get('result_count', 0)} | Review leads: {report.get('review_count', 0)}\n"
