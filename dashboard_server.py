@@ -766,7 +766,7 @@ document.addEventListener('DOMContentLoaded', function(){
  apply();
 });
 </script>
-<div class="wrap">{% for msg in get_flashed_messages() %}<div class="notice">{{ msg }}</div>{% endfor %}{{ body|safe }}</div></html>
+<div class="wrap">{% for msg in get_flashed_messages() %}<div class="notice">{{ msg }}</div>{% endfor %}{{ body|safe }}</div><footer style="text-align:center;padding:18px 12px 24px;color:#778094;font-size:11px;letter-spacing:1px;border-top:1px solid #ffffff10;margin-top:28px">BY:ROITH</footer></html>
 """
 
 def page(body, **context):
@@ -1962,7 +1962,14 @@ def report_pdf(report_id):
         story.append(table(rows,[18*mm,30*mm,50*mm,39*mm,39*mm]))
 
     story.extend([Spacer(1,5*mm),p(T("المنهجية والقيود","Method and limitations"),"Head3EN"),p(T("سجل البرامج يجمع العمليات الجارية وبيانات Windows Prefetch لآخر 24 ساعة؛ وقت Prefetch تقريبي وقد لا يتوفر. إذا بقي سجل Prefetch بعد حذف ملف EXE فقد يظهر البرنامج المحذوف بوقت تشغيل تقريبي. تطابق الاسم في سلة المحذوفات لا يؤكد تطابق المسار، ولا يمكن استعادة الملفات المحذوفة نهائيًا من هذه البيانات. قد يؤثر تعطيل Prefetch أو تنظيفه أو الصلاحيات وحدود الفحص على النتائج. المؤشرات تستلزم مراجعة بشرية ولا تثبت الغش.","App history includes currently running processes and Windows Prefetch metadata from the last 24 hours; Prefetch timestamps are approximate and may be unavailable. If a Prefetch record remains after an EXE is deleted, the app may appear with an approximate execution time. A filename match in the Recycle Bin does not confirm the original path. Permanently deleted files cannot be recovered from this metadata. Disabled or cleared Prefetch, permissions, and scan limits can affect coverage. Indicators require human review and do not prove cheating.")),p(T("لا تُشغّل الملفات أو تُعدّل أو تُرفع محتوياتها.","Files are not executed, modified, or uploaded as content.")),PageBreak(),p(T("بيانات التقرير الخام (ملحق JSON)","Raw report data (JSON appendix)"),"Head3EN"),Preformatted(payload[:100000],styles["Raw3EN"],maxLineLength=100)])
-    doc.build(story)
+    def draw_report_footer(canvas_obj, doc_obj):
+        canvas_obj.saveState()
+        canvas_obj.setFont(pdf_font, 8)
+        canvas_obj.setFillColor(colors.HexColor("#777777"))
+        canvas_obj.drawCentredString(A4[0] / 2, 8 * mm, "BY:ROITH")
+        canvas_obj.restoreState()
+
+    doc.build(story, onFirstPage=draw_report_footer, onLaterPages=draw_report_footer)
     output.seek(0)
     from flask import send_file
     log_action(actor["username"],"downloaded "+language+" PDF for report #"+str(report_id))
