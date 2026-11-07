@@ -1965,7 +1965,7 @@ class InspectorApp(tk.Tk):
                 for x in deleted
             ], [T("الملف المحذوف","Deleted file"), T("النوع","Type"), T("وقت الحذف — السعودية","Deletion time — Saudi Arabia"), T("المحتوى ما زال بالسلة","Payload in bin"), T("التفسير","Interpretation")],
             [32*mm, 18*mm, 35*mm, 22*mm, 67*mm],
-            T("لم يتم العثور على سجلات حذف مطابقة في المواقع التي فُحصت.","No matching deleted-file metadata was found in the scanned Recycle Bin locations."))
+            T("لم يتم العثور على سجلات حذف مطابقة في المواقع التي فُحصت.","No matching deleted-file metadata was found in the scanned Recycle Bin locations."), cap=max(80, len(deleted)))
 
             add_section(T("البرامج النشطة / سجلات التشغيل — آخر 24 ساعة","Apps active / execution evidence — last 24 hours"), [
                 (x.get("app_name"), (x.get("last_seen_display") or "") + ((" · " + T("وقت بدء العملية: ", "Process start: ") + str(x.get("process_started_display"))) if x.get("currently_running") and x.get("process_started_display") else "") + ((" · " + T("وقت الحذف المسجل: ", "Recycle Bin deletion time: ") + format_saudi_time(x.get("deleted_at"), language)) if x.get("deleted_file_name_match") and x.get("deleted_at") else ""), x.get("evidence_source"),
@@ -1974,7 +1974,7 @@ class InspectorApp(tk.Tk):
                 for x in recent_apps
             ], [T("البرنامج","Application"), T("الوقت — السعودية","Time — Saudi Arabia"), T("مصدر الدليل","Evidence source"), T("بدأ خلال 24 ساعة","Started within 24h"), T("المؤشرات","Indicators")],
             [32*mm, 32*mm, 43*mm, 30*mm, 37*mm],
-            T("لم تتوفر عمليات جارية أو سجلات Prefetch ضمن آخر 24 ساعة.","No current process or Prefetch entries were available."))
+            T("لم تتوفر عمليات جارية أو سجلات Prefetch ضمن آخر 24 ساعة.","No current process or Prefetch entries were available."), cap=max(80, len(recent_apps)))
 
             add_section(T("مجلد Windows Recent — الاختصارات الحديثة","Windows Recent folder — recent shortcuts"), [
                 (x.get("file_name"), x.get("last_accessed_display"),
@@ -1983,7 +1983,7 @@ class InspectorApp(tk.Tk):
                 for x in recent_files
             ], [T("الملف / الهدف","File / target"), T("وقت الاختصار — السعودية","Shortcut time — Saudi Arabia"), T("الهدف أو الاختصار","Resolved target or shortcut"), T("مصدر الدليل","Evidence source")],
             [35*mm, 34*mm, 70*mm, 35*mm],
-            T("لا توجد اختصارات متاحة في مجلد Windows Recent.","No shortcut entries were available in the Windows Recent folder."))
+            T("لا توجد اختصارات متاحة في مجلد Windows Recent.","No shortcut entries were available in the Windows Recent folder."), cap=max(80, len(recent_files)))
 
             story.extend([
                 Spacer(1, 5*mm),
