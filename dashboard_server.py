@@ -1805,7 +1805,15 @@ def report_pdf(report_id):
         from reportlab.pdfbase.ttfonts import TTFont
         candidates = ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/noto/NotoSansArabic-Regular.ttf", str(APP_DIR / "fonts" / "DejaVuSans.ttf")]
         font_path = next((p for p in candidates if Path(p).is_file()), None)
-        if not font_path: abort(503, "Arabic PDF font missing on server (DejaVu Sans / Noto Sans Arabic).")
+        if not font_path:
+            try:
+                import fontpkg
+                packaged_font = fontpkg.path("Noto Naskh Arabic")
+                if Path(packaged_font).is_file():
+                    font_path = str(packaged_font)
+            except Exception:
+                font_path = None
+        if not font_path: abort(503, "Arabic PDF font missing on server (Noto Naskh Arabic package unavailable).")
         pdfmetrics.registerFont(TTFont("3ENArabicPDF", font_path))
         font_name = "3ENArabicPDF"
         try:
