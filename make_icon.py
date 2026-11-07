@@ -1,81 +1,68 @@
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont
 
-# Premium 3EN identity: bold monogram, shield geometry and restrained red glow.
+# 3EN INSPECT app icon — intentionally matches static/favicon.svg on the website.
 SIZE = 512
-SCALE = 3
+SCALE = 4
 N = SIZE * SCALE
-im = Image.new("RGBA", (N, N), (6, 7, 12, 255))
+im = Image.new("RGBA", (N, N), "#08090d")
 draw = ImageDraw.Draw(im)
 
-def p(v):
-    return int(v * SCALE)
+def p(value):
+    return int(value * SCALE)
 
-def poly(points, fill, outline=None, width=1):
-    pts = [(p(x), p(y)) for x, y in points]
-    draw.polygon(pts, fill=fill)
-    if outline:
-        draw.line(pts + [pts[0]], fill=outline, width=p(width), joint="curve")
+# Website-matched rounded square and thin burgundy outline.
+draw.rounded_rectangle(
+    (p(2), p(2), p(62), p(62)),
+    radius=p(12),
+    outline="#8f1835",
+    width=p(2),
+)
 
-# Deep red atmospheric halo behind the shield.
-glow = Image.new("RGBA", im.size, (0, 0, 0, 0))
-gd = ImageDraw.Draw(glow)
-gd.ellipse((p(65), p(45), p(447), p(455)), fill=(210, 5, 42, 105))
-glow = glow.filter(ImageFilter.GaussianBlur(p(44)))
-im = Image.alpha_composite(im, glow)
-draw = ImageDraw.Draw(im)
+# Red gradient strokes matching the website favicon.
+def gradient_line(x1, y, x2, color_left="#ff536d", color_right="#b50932", width=3):
+    from PIL import ImageColor
+    c1 = ImageColor.getrgb(color_left)
+    c2 = ImageColor.getrgb(color_right)
+    length = max(1, p(x2 - x1))
+    for offset in range(length + 1):
+        t = offset / length
+        color = tuple(round(c1[i] * (1 - t) + c2[i] * t) for i in range(3))
+        x = p(x1) + offset
+        draw.line((x, p(y), x, p(y)), fill=color, width=p(width))
+    draw.line((p(x1), p(y), p(x2), p(y)), fill=color_right, width=p(width), joint="curve")
 
-# Layered shield silhouette with a crisp red edge.
-outer = [(256, 24), (438, 91), (420, 292), (369, 388), (256, 476),
-         (143, 388), (92, 292), (74, 91)]
-inner = [(256, 48), (415, 107), (398, 285), (350, 369), (256, 442),
-         (162, 369), (114, 285), (97, 107)]
-poly(outer, (13, 10, 17, 255), (235, 28, 62, 255), 8)
-poly(inner, (8, 10, 16, 255), (104, 18, 42, 255), 3)
+gradient_line(9, 18, 55, width=3)
+gradient_line(17, 52, 47, width=2.5)
 
-# Subtle top/bottom angular cuts create a custom esports/security mark.
-poly([(111, 115), (170, 137), (170, 147), (111, 128)], (255, 48, 83, 210))
-poly([(401, 115), (342, 137), (342, 147), (401, 128)], (255, 48, 83, 210))
-poly([(150, 355), (190, 382), (178, 391), (137, 362)], (153, 20, 48, 255))
-poly([(362, 355), (322, 382), (334, 391), (375, 362)], (153, 20, 48, 255))
-
-# Strong, clean 3EN wordmark.
+# Strong centered 3EN wordmark, same proportions and clean white treatment as the site.
 font = None
-for path in ("C:/Windows/Fonts/arialbd.ttf", "C:/Windows/Fonts/seguisb.ttf",
-             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
+font_candidates = [
+    r"C:\\Windows\\Fonts\\arialbd.ttf",
+    r"C:\\Windows\\Fonts\\seguisb.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+]
+for candidate in font_candidates:
     try:
-        font = ImageFont.truetype(path, p(132))
+        font = ImageFont.truetype(candidate, p(24))
         break
     except OSError:
-        pass
+        continue
 if font is None:
     font = ImageFont.load_default()
 
-word = "3EN"
-bbox = draw.textbbox((0, 0), word, font=font, stroke_width=p(1))
-tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+text = "3EN"
+bbox = draw.textbbox((0, 0), text, font=font, stroke_width=0)
+tw = bbox[2] - bbox[0]
+th = bbox[3] - bbox[1]
 x = (N - tw) // 2 - bbox[0]
-y = p(194) - bbox[1]
-draw.text((x, y), word, font=font, fill=(255, 249, 251, 255),
-          stroke_width=p(1), stroke_fill=(255, 255, 255, 255))
+y = p(32) - (th // 2) - bbox[1] + p(1)
+draw.text((x, y), text, font=font, fill="#ffffff")
 
-# Red divider and small INSPECT wordmark.
-draw.rounded_rectangle((p(158), p(345), p(354), p(352)), radius=p(4),
-                       fill=(255, 38, 75, 255))
-small = None
-for path in ("C:/Windows/Fonts/arialbd.ttf", "C:/Windows/Fonts/seguisb.ttf",
-             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"):
-    try:
-        small = ImageFont.truetype(path, p(29))
-        break
-    except OSError:
-        pass
-if small:
-    label = "INSPECT"
-    b = draw.textbbox((0, 0), label, font=small)
-    draw.text(((N-(b[2]-b[0]))//2, p(365)-b[1]), label, font=small,
-              fill=(224, 225, 233, 255))
-
-# Final high-quality raster outputs used by the UI and Windows executable.
 im = im.resize((SIZE, SIZE), Image.Resampling.LANCZOS)
-im.save("3en.png", "PNG", optimize=True)
-im.save("3en.ico", "ICO", sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])
+im.save("3en.png", optimize=True)
+im.save(
+    "3en.ico",
+    format="ICO",
+    sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+)
+print("Generated website-matched 3EN INSPECT icons: 3en.png, 3en.ico")
