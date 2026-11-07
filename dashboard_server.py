@@ -24,7 +24,7 @@ import pg8000
 import urllib.request
 import urllib.error
 import urllib.parse
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from functools import wraps
 from pathlib import Path
 
@@ -123,6 +123,35 @@ CREATE TABLE IF NOT EXISTS audit (
 
 def now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+SAUDI_TZ = timezone(timedelta(hours=3), "AST")
+
+
+def format_saudi_time(value):
+    """Format stored ISO timestamps consistently as Saudi Arabia time (UTC+3)."""
+    if not value:
+        return "غير متاح"
+    try:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(SAUDI_TZ).strftime("%d/%m/%Y %I:%M:%S %p") + " (توقيت السعودية UTC+3)"
+    except (TypeError, ValueError, OverflowError):
+        return str(value)
+
+
+def timestamp_utc_iso(value):
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    except (TypeError, ValueError, OverflowError):
+        return None
+
 
 class PgCursor:
     def __init__(self, cursor):
@@ -433,7 +462,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         {'name': '🧑‍⚖️ التصنيف النهائي', 'value': verdict_title, 'inline': False},
         {'name': '📝 سبب التصنيف', 'value': reason, 'inline': False},
         {'name': '🧾 رقم التقرير', 'value': safe(report_id, 80), 'inline': True},
-        {'name': '🕒 وقت التقرير (UTC)', 'value': safe(report_time, 100), 'inline': True},
+        {'name': '🕒 وقت التقرير — السعودية', 'value': safe(format_saudi_time(report_time), 100), 'inline': True},
         {'name': '📡 مصدر التقرير', 'value': safe(report_source, 150), 'inline': True},
         {'name': '🎫 الجلسة', 'value': safe(session_code, 100), 'inline': True},
         {'name': '💻 الجهاز', 'value': safe(computer, 100), 'inline': True},
@@ -480,7 +509,8 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         'description': ('اعتمد المراجع تصنيف «كلين». لا تُرسل تفاصيل المؤشرات أو أعدادها إلى Discord؛ تبقى في لوحة المفتش. هذا القرار اليدوي لا يثبت خلو الجهاز من كل المخاطر.' if verdict == 'clean' else ('اعتمد المراجع تصنيف «هاك / مشتبه». المؤشرات تحتاج تحققًا يدويًا ولا تُعد وحدها إثباتًا قاطعًا.\n\n' if verdict == 'hack' else 'التقرير بانتظار قرار المراجع.\n\n') + safe(summary or 'تم استلام التقرير وحفظه في لوحة التحكم.', 700)),
         'color': verdict_color,
         'fields': fields[:25],
-        'footer': {'text': '3eN INSPECTOR TEAM • مؤشرات الأسماء تحتاج مراجعة يدوية ولا تثبت وحدها وجود هاك.'}
+        'timestamp': timestamp_utc_iso(report_time),
+        'footer': {'text': '3eN INSPECTOR TEAM • الوقت المعروض بتوقيت السعودية (UTC+3) • المؤشرات تحتاج مراجعة يدوية.'}
     }
     message = {
         'username': '3eN Inspect Team',
@@ -521,7 +551,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
             Paragraph('<b>Known name:</b> ' + escape(str(target_name)), styles['DiscordMeta']),
             Paragraph('<b>Device:</b> ' + escape(str(computer)), styles['DiscordMeta']),
             Paragraph('<b>Session:</b> ' + escape(str(session_code)), styles['DiscordMeta']),
-            Paragraph('<b>Time (UTC):</b> ' + escape(str(report_time)), styles['DiscordMeta']),
+            Paragraph('<b>Report time — Saudi Arabia (UTC+3):</b> ' + escape(format_saudi_time(report_time)), styles['DiscordMeta']),
             Paragraph('<b>Source:</b> ' + escape(str(report_source)), styles['DiscordMeta']),
             Paragraph('<b>Processes reviewed:</b> ' + escape(str(report.get('process_count', len(processes)))), styles['DiscordMeta']),
             *([] if verdict == 'clean' else [Paragraph('<b>Review leads:</b> ' + escape(str(len(findings))), styles['DiscordMeta'])]),
@@ -1343,6 +1373,7 @@ def reports():
         if source_key not in source_label_cache:
             source_label_cache[source_key] = report_source_label(source_key)
         item["source_label"] = source_label_cache[source_key]
+        item["created_at_display"] = format_saudi_time(item.get("created_at"))
         item["match_count"] = matches
         item["process_count"] = data.get("process_count", len(processes))
         item["status_label"] = "تحتاج مراجعة" if matches else "لم تظهر مؤشرات"
@@ -1404,7 +1435,7 @@ def reports():
           <div class="report-device">DEVICE · {{ r['computer_label'] or 'غير معروف' }}</div>
           <div class="report-meta">
             <div><small>كود الجلسة</small><span><a href="{{ url_for('report_detail',report_id=r['id']) }}">{{ r['session_id'] }}</a></span></div>
-            <div><small>وقت الاستلام (UTC)</small><span>{{ r['created_at'] }}</span></div>
+            <div><small>وقت الاستلام — السعودية (UTC+3)</small><span>{{ r['created_at_display'] }}</span></div>
             <div><small>العمليات المفحوصة</small><span>{{ r['process_count'] }}</span></div>
             <div><small>المؤشرات المطابقة</small><span>{{ r['match_count'] }}</span></div>
             <div><small>مصدر التقرير</small><span>{{ r['source_label'] }}</span></div>
@@ -1580,7 +1611,7 @@ def report_detail(report_id):
         <p class="muted">الشخص المفتَّش: {{ target_label or 'اسم الشخص غير مسجل' }}</p>
         <p class="muted">الجهاز: {{ r['computer_label'] }} · الجلسة: {{ r['session_id'] }}</p>
         <p class="muted">مصدر التقرير: {{ source_label }}</p>
-        <p class="muted">وقت الاستلام: {{ r['created_at'] }} UTC</p>
+        <p class="muted">وقت الاستلام — توقيت السعودية (UTC+3): {{ r['created_at_display'] }}</p>
       </div>
       <div class="report-metrics">
         <div class="report-metric">العمليات المفحوصة<strong>{{ process_count }}</strong></div>
@@ -1689,6 +1720,8 @@ def report_send_discord(report_id):
         r = con.execute("SELECT * FROM reports WHERE id=?", (report_id,)).fetchone()
     if not r:
         abort(404)
+    r = dict(r)
+    r["created_at_display"] = format_saudi_time(r.get("created_at"))
     if actor["role"] == "inspector" and r["submitted_by"] != "session:" + actor["username"]:
         abort(403)
     try:
@@ -1802,7 +1835,7 @@ def report_pdf(report_id):
         Paragraph("<b>Person:</b> " + escape(str(target_label or "Not specified")), styles["SmallMeta"]),
         Paragraph("<b>Device:</b> " + escape(str(r["computer_label"])), styles["SmallMeta"]),
         Paragraph("<b>Session:</b> " + escape(str(r["session_id"])), styles["SmallMeta"]),
-        Paragraph("<b>Received (UTC):</b> " + escape(str(r["created_at"])), styles["SmallMeta"]),
+        Paragraph("<b>وقت الاستلام — السعودية:</b> " + escape(format_saudi_time(r["created_at"])), styles["SmallMeta"]),
         Paragraph("<b>Submitted by:</b> " + escape(str(source_label)), styles["SmallMeta"]),
         Paragraph("<b>Summary:</b> " + escape(str(r["summary"] or "No summary")), styles["SmallMeta"]),
         Paragraph("Overview", styles["SectionTitle"]),
