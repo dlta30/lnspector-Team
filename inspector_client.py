@@ -144,11 +144,41 @@ def localized_indicator_labels(values, language="ar"):
     return labels
 
 def add_localized_indicator_fields(report, language="ar"):
-    for collection_name in ("processes", "file_artifacts", "recent_apps_24h"):
+    translations = {
+        "ملفات FiveM وGTA V": "FiveM / GTA V files",
+        "سجلات FiveM وCitizenFX": "FiveM / CitizenFX logs",
+        "سكربتات وإعدادات FiveM": "FiveM scripts and settings",
+        "آثار ملفات محذوفة": "Deleted-file traces",
+        "ملفات برامج المستخدم": "User application files",
+        "مؤشرات هاك/غش": "Cheat indicators",
+        "مؤشرات اسمية تحتاج مراجعة": "Name-based indicators — review required",
+        "ملف محذوف — بيانات وصفية فقط": "Deleted file — metadata only",
+        "مؤشرات حركة": "Movement indicators",
+        "لا توجد مطابقة اسمية": "No name match",
+        "غير متاح": "Unavailable",
+        "لم يتم التحقق": "Not checked",
+        "لم يتم التحقق من توقيع الملف المحذوف": "Deleted file signature not checked",
+        "جارٍ التحقق": "Verification pending",
+        "الملف موجود": "File exists",
+        "الملف غير موجود": "File missing",
+        "الملف غير موجود في مساره؛ قد يكون محذوفًا أو منقولًا": "File is missing from its path; it may have been deleted or moved",
+        "اسم مطابق في سجل سلة المحذوفات": "Filename match in Recycle Bin record",
+        "Windows Recent folder (.lnk shortcut metadata)": "Windows Recent folder (.lnk shortcut metadata)",
+        "سجل $I في سلة المحذوفات يثبت وجود إدخال حذف؛ وجود ملف $R يعني أن محتوى الملف ما زال في السلة، وليس أنه خبيث.": "A Recycle Bin $I record confirms a deletion entry; a matching $R item means the content remains in the bin, not that it is malicious.",
+        "مطابقة اسمية/مسارية فقط؛ يلزم التحقق من الملف والسياق قبل أي استنتاج.": "Name/path match only; verify the file and context before drawing conclusions."
+    }
+    for collection_name in ("processes", "file_artifacts", "recent_apps_24h", "recent_files"):
         for row in report.get(collection_name, []) or []:
             row["indicator_matches_display"] = localized_indicator_labels(
                 row.get("indicator_matches", []), language
             )
+            if language == "en":
+                for field in ("scan_group", "indicator_category", "evidence_reason", "signature_label", "evidence_source", "activity_window", "target_status_ar"):
+                    value = row.get(field)
+                    if isinstance(value, str):
+                        for ar, en in translations.items():
+                            value = value.replace(ar, en)
+                        row[field] = value
             if row.get("binary_indicator_type"):
                 if language == "en":
                     row["indicator_category"] = "Binary-file indicators — review required"
@@ -1801,6 +1831,24 @@ class InspectorApp(tk.Tk):
                     raise RuntimeError("Arabic PDF support is missing. Install arabic-reshaper and python-bidi.")
             def pdf_text(value):
                 value = str(value if value not in (None, "") else "—")
+                if language == "en":
+                    for ar, en in {
+                        "ملفات FiveM وGTA V": "FiveM / GTA V files",
+                        "سجلات FiveM وCitizenFX": "FiveM / CitizenFX logs",
+                        "سكربتات وإعدادات FiveM": "FiveM scripts and settings",
+                        "آثار ملفات محذوفة": "Deleted-file traces",
+                        "ملفات برامج المستخدم": "User application files",
+                        "مؤشرات هاك/غش": "Cheat indicators",
+                        "مؤشرات اسمية تحتاج مراجعة": "Name-based indicators — review required",
+                        "ملف محذوف — بيانات وصفية فقط": "Deleted file — metadata only",
+                        "مؤشرات حركة": "Movement indicators",
+                        "لا توجد مطابقة اسمية": "No name match",
+                        "لم يتم التحقق": "Not checked",
+                        "لم يتم التحقق من توقيع الملف المحذوف": "Deleted file signature not checked",
+                        "مطابقة اسمية/مسارية فقط؛ يلزم التحقق من الملف والسياق قبل أي استنتاج.": "Name/path match only; verify the file and context before drawing conclusions."
+                    }.items():
+                        value = value.replace(ar, en)
+                    return value
                 return reshape_arabic(value) if reshape_arabic else value
             styles = getSampleStyleSheet()
             styles.add(ParagraphStyle(name="BrandTitle", parent=styles["Title"], textColor=colors.HexColor("#b51f3b"), fontSize=22, leading=27, spaceAfter=4, fontName=pdf_font, alignment=2 if language == "ar" else 0))
@@ -1938,8 +1986,8 @@ class InspectorApp(tk.Tk):
             story.extend([
                 Spacer(1, 5*mm),
                 Paragraph(pdf_text(T("نطاق الفحص والقيود","Scope and limitations")), styles["SectionTitle"]),
-                Paragraph("This is a targeted, bounded inspection of common FiveM, CitizenFX and GTA V locations, selected user/application folders, running processes, selected text logs and resource files, Windows Prefetch metadata, the Windows Recent shortcut folder, and Windows Recycle Bin metadata. It does not inspect every location or every possible cheat, and it cannot guarantee detection of all cheats.", styles["MutedNote"]),
-                Paragraph("A Recent shortcut timestamp is not definitive proof that a file was opened. Prefetch timestamps are approximate execution evidence and may be unavailable. Recycle Bin records cover items still represented by Windows Recycle Bin metadata only; permanently deleted files are not recovered. Files are not executed, deleted, modified, or uploaded as content. Log/resource text is analyzed locally; only matched indicator names and line numbers are retained. Indicators are leads for human review, not proof of cheating. A valid digital signature does not guarantee software is safe.", styles["MutedNote"]),
+                Paragraph(pdf_text(T("هذا فحص موجّه ومحدود لمواقع FiveM وCitizenFX وGTA V الشائعة، ومجلدات مستخدم وبرامج محددة، والعمليات الجارية، وسجلات وملفات موارد مختارة، وبيانات Windows Prefetch وRecent وسلة المحذوفات. لا يفحص كل المواقع أو كل أنواع الغش ولا يضمن اكتشافها جميعًا.", "This is a targeted, bounded inspection of common FiveM, CitizenFX and GTA V locations, selected user/application folders, running processes, selected text logs and resource files, Windows Prefetch metadata, the Windows Recent shortcut folder, and Windows Recycle Bin metadata. It does not inspect every location or every possible cheat, and it cannot guarantee detection of all cheats.")), styles["MutedNote"]),
+                Paragraph(pdf_text(T("وقت اختصار Recent لا يثبت وحده أن الملف فُتح. أوقات Prefetch قرائن تشغيل تقريبية وقد لا تتوفر. سجلات سلة المحذوفات تشمل العناصر التي ما زالت بياناتها موجودة فقط؛ لا تتم استعادة الملفات المحذوفة نهائيًا. لا يتم تشغيل الملفات أو تعديلها أو رفع محتواها. تُحلل ملفات السجلات والموارد محليًا، وتُحفظ أسماء المؤشرات وأرقام الأسطر فقط. المؤشرات تستلزم مراجعة بشرية ولا تثبت الغش، والتوقيع الرقمي الصحيح لا يضمن سلامة البرنامج.", "A Recent shortcut timestamp is not definitive proof that a file was opened. Prefetch timestamps are approximate execution evidence and may be unavailable. Recycle Bin records cover items still represented by Windows Recycle Bin metadata only; permanently deleted files are not recovered. Files are not executed, deleted, modified, or uploaded as content. Log/resource text is analyzed locally; only matched indicator names and line numbers are retained. Indicators are leads for human review, not proof of cheating. A valid digital signature does not guarantee software is safe.")), styles["MutedNote"]),
                 Paragraph(pdf_text(T("تم إنشاء التقرير بواسطة 3EN Inspect Team.","Report generated by 3EN Inspect Team.")), styles["MutedNote"])
             ])
             doc.build(story)
