@@ -116,6 +116,31 @@ def is_windows_system_path(path):
     return any(marker in value for marker in markers)
 
 
+def is_inspector_self_path(path):
+    """Exclude only this inspector's own executable/source bundle from its report."""
+    if not path:
+        return False
+    try:
+        candidate = os.path.normcase(os.path.abspath(str(path)))
+        own_files = {
+            os.path.normcase(os.path.abspath(sys.executable)),
+            os.path.normcase(os.path.abspath(__file__)),
+        }
+        if candidate in own_files:
+            return True
+        if getattr(sys, "frozen", False):
+            bundle_root = os.path.dirname(os.path.abspath(sys.executable))
+            internal_root = os.path.join(bundle_root, "_internal")
+            if os.path.isdir(internal_root) and os.path.commonpath([candidate, bundle_root]) == bundle_root:
+                return True
+            extraction_root = getattr(sys, "_MEIPASS", "")
+            if extraction_root and os.path.commonpath([candidate, os.path.abspath(extraction_root)]) == os.path.abspath(extraction_root):
+                return True
+    except (OSError, ValueError):
+        return False
+    return False
+
+
 def find_indicator_matches(name, path, indicators=None):
     indicators = indicators or INDICATOR_TERMS
     if is_windows_system_path(path):
@@ -290,6 +315,8 @@ def collect_files(progress, max_files=5000, max_scan_seconds=25):
                 if extension not in allowed_extensions:
                     continue
                 path = os.path.join(current, name)
+                if is_inspector_self_path(path):
+                    continue
                 path_lower = os.path.abspath(path).casefold()
                 if any(marker in path_lower for marker in excluded_path_markers):
                     continue
@@ -1154,6 +1181,8 @@ def collect_processes(progress):
     for i, proc in enumerate(processes, 1):
         try:
             info = proc.info
+            if int(info.get("pid") or -1) == os.getpid() or is_inspector_self_path(info.get("exe")):
+                continue
             name = str(info.get("name") or "Unknown")[:180]
             if name.casefold() in {"system", "registry", "secure system", "memory compression", "smss.exe", "csrss.exe", "wininit.exe", "services.exe", "lsass.exe", "winlogon.exe", "svchost.exe"}:
                 progress(int(i * 25 / total), f"تجاوز عمليات Windows الأساسية {i}/{total}")
@@ -1297,7 +1326,7 @@ class InspectorApp(tk.Tk):
         self.consent_scan = tk.BooleanVar(value=False)
         self.consent_screenshot = tk.BooleanVar(value=False)
         tk.Checkbutton(consent_box,
-            text="أوافق على فحص العمليات ومجلدات البرامج المحددة وملفات FiveM/GTA V وCitizenFX والسجلات والموارد، والتحقق من التوقيعات الرقمية. لا يجري فحصًا شاملًا لمجلدات Windows أو ملفات النظام. تُفحص آثار سلة المحذوفات على C: وD: كبيانات وصفية فقط. يُرسل التقرير مع أسماء المؤشرات والمسارات وأرقام الأسطر؛ لا تُرفع محتويات الملفات أو نصوص السجلات ولا تُنفّذ الملفات.",
+            text="أوافق على جميع خطوات الفحص الموضحة: العمليات، ملفات البرامج المحددة، FiveM/GTA V وCitizenFX، السجلات والموارد، والتحقق من التوقيعات. لا يشمل الفحص مجلدات Windows أو ملفات النظام. تُقرأ بيانات سلة المحذوفات الوصفية فقط. تُرسل أسماء المؤشرات والمسارات وأرقام الأسطر للمفتش؛ لا تُرفع محتويات الملفات ولا تُنفّذ. لا يبدأ الفحص إلا بعد تحديد هذه الموافقة.",
             variable=self.consent_scan, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
             activebackground=PANEL, activeforeground=WHITE, wraplength=900,
             font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(7, 0))
@@ -1349,8 +1378,8 @@ class InspectorApp(tk.Tk):
         # Close the UI without launching a second process or changing user files.
         self.destroy()
     def start(self):
-        # The dashboard enforces one-time session use; the client does not
-        # create local completion files or persist session state on the device.
+        # A single explicit consent covers the stated inspection scope. Screenshot
+        # consent remains optional and is never required to start the scan.
         if not self.consent_scan.get():
             messagebox.showwarning(APP, "وافق على فحص الجهاز مرة واحدة قبل البدء.")
             return
@@ -1362,6 +1391,37 @@ class InspectorApp(tk.Tk):
         if not self.active_session_code or not self.active_dashboard_url.startswith("https://"):
             messagebox.showerror(APP, "هذا الملف غير مرتبط بجلسة فحص. اطلب من المسؤول إنشاء جلسة وتنزيل ملفها المخصص.")
             return
+        # Reserve the session on the server before reading any local evidence.
+        # This prevents a second launch or a second device from reusing the link.
+        try:
+            import urllib.request
+            start_url = self.active_dashboard_url + "/api/v1/session-start"
+            start_body = json.dumps({"session_code": self.active_session_code}).encode("utf-8")
+            start_req = urllib.request.Request(start_url, data=start_body,
+                headers={"Content-Type": "application/json"}, method="POST")
+            with urllib.request.urlopen(start_req, timeout=15) as response:
+                start_result = json.loads(response.read().decode("utf-8"))
+            if not start_result.get("ok"):
+                messagebox.showwarning(APP, "تعذر حجز جلسة الفحص. لم يبدأ الفحص.")
+                return
+        except urllib.error.HTTPError as exc:
+            try:
+                detail = exc.read(1000).decode("utf-8", errors="replace")
+            except Exception:
+                detail = ""
+            if exc.code == 409:
+                self.metric_state.set("USED")
+                self.session_badge.configure(text="●  تم الفحص مسبقًا", bg="#351521", fg="#ff8093")
+                self.status.set("تم فحص هذا العضو مسبقًا أو أن الفحص جارٍ بالفعل.")
+                self.start_button.configure(state="disabled")
+                messagebox.showinfo(APP, "تم فحصك مسبقًا. لا يمكن استخدام رابط الفحص مرة أخرى.")
+            else:
+                messagebox.showerror(APP, "رفض الخادم بدء الفحص (HTTP " + str(exc.code) + "). لم يبدأ الفحص. " + detail[:180])
+            return
+        except Exception as exc:
+            messagebox.showerror(APP, "تعذر التحقق من صلاحية الجلسة. لم يبدأ الفحص حفاظًا على منع التكرار. " + type(exc).__name__)
+            return
+
         self.metric_state.set("SCANNING")
         self.session_badge.configure(text="●  الفحص جارٍ", bg="#332616", fg="#ffbd69")
         self.start_button.configure(state="disabled")
