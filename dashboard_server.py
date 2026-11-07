@@ -1631,13 +1631,15 @@ def report_detail(report_id):
         <div class="report-metric">مؤشرات FiveM<strong>{{ report_data.get('fivem_indicator_match_count', 0) }}</strong></div>
       </div>
       <div class="card" id="recent-apps">
-        <h2>التطبيقات المستخدمة خلال آخر 24 ساعة</h2>
-        <p class="muted">يعرض العمليات التي بدأ تشغيلها خلال آخر 24 ساعة، وسجلات Prefetch في Windows كقرينة تقريبية لآخر تشغيل. قد لا تظهر التطبيقات إذا كان سجل Prefetch معطلاً أو محذوفًا.</p>
+        <h2>البرامج التي لها سجل خلال آخر 24 ساعة</h2>
+        <p class="muted">يشمل العمليات المفتوحة الآن وسجلات Windows Prefetch لآخر 24 ساعة. سجل Prefetch قد يبقى بعد حذف البرنامج، ويظهر كقرينة تشغيل تقريبية. إذا وُجد اسم مطابق في سلة المحذوفات نعرض وقت الحذف، لكن تطابق الاسم لا يؤكد المسار. قد لا تتوفر السجلات إذا كان Prefetch معطلاً أو تم تنظيفه.</p>
         {% for item in visible_recent_apps %}
           <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}">
-            <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}🕒{% endif %}</span><span class="process-embed-title">{{ item.get('app_name') or item.get('file_name') or 'تطبيق غير معروف' }}</span><span class="process-embed-meta">{{ item.get('evidence_source') or 'مصدر غير محدد' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">{{ item.get('indicator_category') or 'مؤشرات هاك/غش' }} — يحتاج مراجعة</span>{% endif %}</div>
+            <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}🕒{% endif %}</span><span class="process-embed-title">{{ item.get('app_name') or item.get('file_name') or 'تطبيق غير معروف' }}</span><span class="process-embed-meta">{{ 'يعمل الآن' if item.get('currently_running') else 'سجل تشغيل تقريبي' }}</span><span class="process-embed-meta">{{ item.get('evidence_source') or 'مصدر غير محدد' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">{{ item.get('indicator_category') or 'مؤشرات هاك/غش' }} — يحتاج مراجعة</span>{% endif %}</div>
             <div class="field"><b>المسار / سجل التشغيل</b><span dir="ltr">{{ item.get('path') or 'غير متاح' }}</span></div>
-            <div class="field"><b>آخر وقت ظاهر</b><span dir="ltr">{{ item.get('last_seen_display') or item.get('last_seen_at') or 'غير متاح' }}</span></div>
+            <div class="field"><b>وقت آخر ظهور / تشغيل</b><span dir="ltr">{{ item.get('last_seen_display') or item.get('last_seen_at') or 'غير متاح' }}</span></div>
+            {% if item.get('process_started_display') %}<div class="field"><b>وقت بدء العملية الحالية</b><span dir="ltr">{{ item.get('process_started_display') }}</span></div>{% endif %}
+            {% if item.get('deleted_file_name_match') %}<div class="field"><b>سجل حذف محتمل — تطابق اسم فقط</b><span>{{ item.get('file_name') }} · {{ item.get('deleted_at_display') or format_saudi_time(item.get('deleted_at')) }} · المسار الأصلي غير مؤكد</span></div>{% endif %}
             <div class="field"><b>حالة التوثيق</b><span>{{ item.get('signature_label') or 'لم يتم التحقق' }}</span></div>
             {% if item.get('indicator_matches') %}<div class="field"><b>المؤشرات</b><span>{% for indicator in (item.get('indicator_matches_display') or item.get('indicator_matches', [])) %}<span class="tag">{{ indicator }}</span>{% endfor %}</span></div>{% endif %}
           </article>
