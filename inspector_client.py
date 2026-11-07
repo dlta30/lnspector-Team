@@ -13,10 +13,26 @@ import sys
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 APP = "3EN INSPECT"
+
+
+SAUDI_TZ = timezone(timedelta(hours=3), "AST")
+
+
+def format_saudi_time(value):
+    """Display ISO/UTC report timestamps in Saudi Arabia time (UTC+3)."""
+    if not value:
+        return "غير متاح"
+    try:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(SAUDI_TZ).strftime("%d/%m/%Y %I:%M:%S %p") + " (توقيت السعودية UTC+3)"
+    except (TypeError, ValueError, OverflowError):
+        return str(value)
 try:
     from session_config import SESSION_CODE, DASHBOARD_URL
 except ImportError:
@@ -1741,7 +1757,7 @@ class InspectorApp(tk.Tk):
             story = [
                 Paragraph("3EN INSPECT", styles["BrandTitle"]),
                 Paragraph(self._t("تقرير فحص أمني", "Security Inspection Report"), styles["Heading2"]),
-                Paragraph("Generated: " + escape(str(report.get("created_at", ""))) + " UTC", styles["MutedNote"]),
+                Paragraph(self._t("وقت إنشاء التقرير — السعودية: ", "Report generated — Saudi Arabia: ") + escape(format_saudi_time(report.get("created_at"))), styles["MutedNote"]),
                 Spacer(1, 5*mm)
             ]
 
