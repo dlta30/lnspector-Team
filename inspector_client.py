@@ -1902,7 +1902,8 @@ class InspectorApp(tk.Tk):
             styles["Title"].fontName = pdf_font
             doc = SimpleDocTemplate(path, pagesize=A4, rightMargin=13*mm, leftMargin=13*mm, topMargin=15*mm, bottomMargin=15*mm)
             story = [
-                Paragraph("3EN INSPECT", styles["BrandTitle"]),\n                Paragraph(pdf_text(T("تقرير فحص أمني", "Security Inspection Report")), styles["Heading2"]),
+                Paragraph("3EN INSPECT", styles["BrandTitle"]),
+                Paragraph(pdf_text(T("تقرير فحص أمني", "Security Inspection Report")), styles["Heading2"]),
                 Paragraph(pdf_text(T("وقت إنشاء التقرير — توقيت السعودية: ", "Report generated — Saudi Arabia time: ") + format_saudi_time(report.get("created_at"), language)), styles["MutedNote"]),
                 Spacer(1, 5*mm)
             ]
