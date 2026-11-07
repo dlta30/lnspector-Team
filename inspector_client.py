@@ -1547,7 +1547,7 @@ class InspectorApp(tk.Tk):
                                         "The report is sent automatically when complete; the inspector makes the final classification."),
                  bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(side="left", padx=5)
 
-        tk.Label(self, text="3EN INSPECT",
+        tk.Label(self, text="BY:ROITH",
                  bg="#0d1018", fg="#7e899f", font=("Segoe UI", 8, "bold"), pady=9).pack(fill="x")
     def _change_language(self, _event=None):
         # Rebuild translated widgets without losing an active scan or its UI state.
