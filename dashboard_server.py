@@ -582,7 +582,14 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
             Paragraph('<b>Desktop screenshot:</b> ' + escape(screenshot_note), styles['DiscordMeta']),
             Spacer(1, 3*mm), Paragraph('Collected report data (JSON)', styles['Heading2']),
             Preformatted(raw, styles['DiscordPayload'], maxLineLength=110)]
-        doc.build(story)
+        def draw_discord_pdf_footer(canvas_obj, doc_obj):
+            canvas_obj.saveState()
+            canvas_obj.setFont('Helvetica', 8)
+            canvas_obj.setFillColorRGB(0.45, 0.45, 0.45)
+            canvas_obj.drawCentredString(A4[0] / 2, 8 * mm, 'BY:ROITH')
+            canvas_obj.restoreState()
+
+        doc.build(story, onFirstPage=draw_discord_pdf_footer, onLaterPages=draw_discord_pdf_footer)
         pdf_data = pdf_buffer.getvalue()
         import base64
         screenshot_data = None
