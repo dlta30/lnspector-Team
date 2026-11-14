@@ -1158,21 +1158,15 @@ def session_build_status(code):
     if not GITHUB_ACTIONS_TOKEN: return {"state":"needs_setup","message":"اضبط GITHUB_ACTIONS_TOKEN في Render."}
     try:
         runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?event=workflow_dispatch&per_page=20") or {}
-        created = datetime.fromisoformat(row["created_at"].replace("Z","+00:00"))
         matching_runs = []
         expected = "3eN-Inspect-" + code.upper()
         for run in runs.get("workflow_runs",[]):
-            run_created = run.get("created_at")
-            if not run_created:
-                continue
-            run_time = datetime.fromisoformat(run_created.replace("Z","+00:00"))
-            if run_time < created:
-                continue
+            # The artifact name contains this session's one-time random code;
+            # it is a stronger match than comparing clocks across Render and GitHub.
             matching_runs.append(run)
-            # Never treat an unrelated active run as this session's build.
             arts = github_api_json("/actions/runs/" + str(run["id"]) + "/artifacts") or {}
             artifact = next((a for a in arts.get("artifacts",[]) if a.get("name")==expected and not a.get("expired")),None)
-            if artifact:
+            if artifact and run.get("status") == "completed" and run.get("conclusion") == "success":
                 return {"state":"ready","download_url":url_for("download_session_build",code=code.upper())}
         # Only report "building" when there is a recent workflow_dispatch run
         # after this session was created. Old generic/push builds are ignored.
@@ -1211,17 +1205,14 @@ def download_session_build(code):
     try:
         # GitHub stores workflow artifacts as ZIP archives; extract only the single session EXE.
         runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?event=workflow_dispatch&per_page=50") or {}
-        session_created = datetime.fromisoformat(row["created_at"].replace("Z","+00:00"))
         artifact = None
+        expected_artifact_name = "3eN-Inspect-" + code.upper()
         for run in runs.get("workflow_runs", []):
-            run_created = run.get("created_at")
-            if not run_created or datetime.fromisoformat(run_created.replace("Z","+00:00")) < session_created:
-                continue
             if run.get("status") != "completed" or run.get("conclusion") != "success":
                 continue
             arts = github_api_json("/actions/runs/" + str(run["id"]) + "/artifacts") or {}
             candidate = next((a for a in arts.get("artifacts", [])
-                              if a.get("name") == "3eN-Inspect-" + code and not a.get("expired")), None)
+                              if a.get("name") == expected_artifact_name and not a.get("expired")), None)
             if candidate:
                 artifact = candidate
                 break
