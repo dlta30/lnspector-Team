@@ -1137,6 +1137,15 @@ async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_s
     return page("""<div class="card"><h2>جلسات الفحص</h2><p class="muted">أنشئ كوداً مؤقتاً لفحص بموافقة صاحب الجهاز. يلزم أخذ موافقة صاحب الجهاز قبل التشغيل.</p><form method="post"><label>Discord User ID للشخص المراد فحصه</label><input name="target_discord_id" inputmode="numeric" pattern="[0-9]{17,20}" minlength="17" maxlength="20" required placeholder="الصق Copy User ID هنا"><label>Server Nickname</label><input name="target_nickname" maxlength="120" required placeholder="اسم الشخص داخل السيرفر"><label>Discord Username</label><input name="target_username" maxlength="120" required placeholder="مثال: username"><small class="muted">أدخل الاسمين كما يظهران في Discord؛ لا يلزم وجود بوت.</small><button class="btn">إنشاء جلسة وملف فحص</button></form></div><div class="card"><table><tr><th>الكود</th><th>Server Nickname</th><th>Discord Username</th><th>أنشأها</th><th>الإنشاء — السعودية (UTC+3)</th><th>ينتهي — السعودية (UTC+3)</th><th>تحميل الملف — السعودية (UTC+3)</th><th>استلام التقرير — السعودية (UTC+3)</th><th>الحالة</th></tr>{% for r in rows %}<tr><td>{% if r['report_id'] %}<a class="btn" href="{{ url_for('report_detail',report_id=r['report_id']) }}">{{ r['display_code'] }}</a>{% else %}<span title="لم يصل تقرير لهذه الجلسة بعد">{{ r['display_code'] }}</span>{% endif %}</td><td>{{ r['target_nickname'] or r['target_label'] }}</td><td>@{{ r['target_username'] or '—' }}</td><td><strong>{{ r['creator_name'] or r['created_by'] }}</strong>{% if r['creator_username'] %}<br><small class="muted">@{{ r['creator_username'] }}</small>{% endif %}</td><td>{{ r['created_at_display'] }}</td><td>{{ r['expires_at_display'] }}</td><td>{{ r['downloaded_at_display'] }}</td><td>{{ r['used_at_display'] }}</td><td>{{ r['status'] }}</td></tr>{% endfor %}</table></div>""", rows=rows)
 
 
+@app.get("/session-hero.jpg")
+def session_hero_asset():
+    from flask import send_file
+    hero = APP_DIR / "3en-inspect-hero.jpg"
+    if not hero.is_file():
+        abort(404)
+    return send_file(hero, mimetype="image/jpeg", max_age=3600)
+
+
 @app.get("/public/session/<code>")
 def public_session_page(code):
     code = code.upper()
@@ -1144,11 +1153,34 @@ def public_session_page(code):
         row = con.execute("SELECT display_code,target_label,expires_at,status FROM inspection_sessions WHERE display_code=?", (code,)).fetchone()
     if not row: abort(404)
     if row["status"] != "open" or datetime.fromisoformat(row["expires_at"].replace("Z","+00:00")) < datetime.now(timezone.utc):
-        return page("""<section class="card" style="max-width:650px;margin:8vh auto;text-align:center"><div style="font-size:48px;color:#ff3656;font-weight:900">3EN</div><h2>الرابط غير متاح</h2><p class="muted">انتهت صلاحية الجلسة أو تم استخدامها.</p></section>"""), 410
-    return page("""<section class="card" style="max-width:680px;margin:7vh auto;text-align:center;padding:34px"><div style="font-size:58px;font-weight:900;letter-spacing:5px;color:#ff3656">3EN</div><div class="eyebrow">INSPECT TEAM</div><h2 style="margin-top:28px">برنامج الفحص الخاص بك</h2><p class="muted">الجلسة مخصصة لـ: <b>{{ row['target_label'] or 'عضو السيرفر' }}</b></p><p class="muted">سيبدأ تنزيل البرنامج تلقائيًا عند اكتمال تجهيزه.</p><p id="build-state" class="notice">يتم التحقق من جاهزية البرنامج…</p><a id="download-build" class="btn" style="display:none;font-size:15px;padding:14px 24px" href="{{ url_for('download_session_build',code=code) }}">⬇ تحميل البرنامج</a><p class="muted" style="margin-top:22px;font-size:12px">شغّل البرنامج فقط إذا وافقت على الفحص الموضح في شاشة الموافقة داخله.</p></section><script>
-const state=document.getElementById('build-state'), download=document.getElementById('download-build'); let downloadStarted=false;
-async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{cache:'no-store'});const d=await r.json();state.textContent=d.message||({'ready':'البرنامج جاهز للتحميل.','building':'يتم تجهيز البرنامج…','failed':'تعذر تجهيز البرنامج.','needs_setup':'الخدمة غير مكتملة الإعداد.'}[d.state]||'جارٍ التجهيز…');if(d.state==='ready'){download.style.display='inline-block';if(!downloadStarted){downloadStarted=true;state.textContent='اكتمل التجهيز؛ بدأ تنزيل ملف الفحص.';window.location.assign(download.href);}return;}if(['failed','needs_setup','missing','api_error'].includes(d.state))return;}catch(e){state.textContent='تعذر الاتصال بالخدمة. أعد تحميل الصفحة.';return;}setTimeout(checkBuild,10000)}checkBuild();
-</script>""", code=code, row=row)
+        return """<!doctype html><html lang="en"><meta charset="utf-8"><title>3EN INSPECT</title><body style="margin:0;background:#07080c;color:white;font:18px Segoe UI;display:grid;place-items:center;height:100vh"><h1>SESSION UNAVAILABLE</h1></body></html>""", 410
+    return render_template_string("""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>3EN INSPECT — Consent</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050609;color:#fff;font-family:Segoe UI,Arial,sans-serif}
+body{background-image:linear-gradient(90deg,rgba(0,0,0,.04) 0%,rgba(0,0,0,.05) 45%,rgba(0,0,0,.46) 100%),url('/session-hero.jpg');background-size:cover;background-position:center}
+main{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;padding:6vw}
+.copy{width:min(44vw,620px);text-align:center;text-shadow:0 3px 16px #000}
+.brand{font-size:clamp(38px,5vw,76px);font-weight:950;letter-spacing:.04em;margin:0 0 10px}
+.kicker{font-size:clamp(20px,2.2vw,32px);font-weight:850;color:#ff425d;margin:0 0 18px}
+p{font-size:clamp(15px,1.3vw,19px);line-height:1.6;margin:12px 0}
+button{margin-top:26px;border:2px solid #ff334f;border-radius:3px;padding:17px 30px;background:rgba(115,5,23,.88);color:white;font-weight:900;font-size:clamp(15px,1.4vw,20px);letter-spacing:.04em;cursor:pointer;box-shadow:0 0 26px #e51b3b66}
+button:hover{background:#d51c38}#build-state{font-weight:700;color:#fff;min-height:28px}
+footer{position:absolute;bottom:18px;left:24px;font-size:12px;letter-spacing:.12em;color:#ddd}
+@media(max-width:700px){body{background-position:38% center}main{justify-content:center;padding:8vw}.copy{width:94vw;margin-top:40vh;background:linear-gradient(transparent,rgba(0,0,0,.65));padding:18px}}
+</style></head><body><main><section class="copy">
+<h1 class="brand">3EN INSPECT</h1><div class="kicker">CONSENT REQUIRED</div>
+<p>Review and agree before starting the inspection.</p>
+<p>Session: <b>{{ row['display_code'] }}</b></p>
+<p>I authorize the stated device inspection and collection of the listed security evidence. I understand that the inspection begins only after I agree.</p>
+<button id="agree">I AGREE &amp; START SCAN</button>
+<p id="build-state" aria-live="polite"></p>
+</section></main><footer>BY:ROITH</footer>
+<script>
+const state=document.getElementById('build-state'),button=document.getElementById('agree');let downloadStarted=false,consented=false;
+async function checkBuild(){if(!consented)return;try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{cache:'no-store'});const d=await r.json();state.textContent=d.message||({'ready':'The inspection app is ready.','building':'Preparing your inspection app…','failed':'The build failed. Please contact the inspector.'}[d.state]||'Checking build status…');if(d.state==='ready'&&!downloadStarted){downloadStarted=true;state.textContent='Build complete. Starting download…';window.location.assign('{{ url_for("download_session_build",code=code) }}');return;}if(['failed','needs_setup','missing','api_error','dispatch_failed'].includes(d.state))return;}catch(e){state.textContent='Connection error. Please try again.';return;}setTimeout(checkBuild,8000)}
+button.addEventListener('click',()=>{if(consented)return;consented=true;button.disabled=true;button.textContent='CONSENT RECORDED';state.textContent='Consent recorded. Preparing your inspection app…';checkBuild();});
+</script></body></html>""", code=code, row=row)
 
 @app.get("/api/session-build/<code>")
 def session_build_status(code):
