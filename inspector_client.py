@@ -913,6 +913,84 @@ def analyze_fivem_binaries(artifacts, progress, max_files=500,
     }
 
 
+
+def collect_amcache_evidence(progress, max_entries=2500, max_scan_seconds=8, language="ar"):
+    """Read bounded Amcache inventory metadata from Windows registry; never modify the hive."""
+    import time
+    if platform.system().lower() != "windows":
+        return []
+    try:
+        import winreg
+    except ImportError:
+        return []
+
+    started = time.monotonic()
+    rows = []
+    registry_path = r"AMCACHE\\Root\\InventoryApplicationFile"
+    try:
+        root = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, registry_path, 0, winreg.KEY_READ)
+    except OSError:
+        progress(69, "Windows Amcache inventory is unavailable or access was denied.")
+        return []
+
+    def read_value(key, name):
+        try:
+            return winreg.QueryValueEx(key, name)[0]
+        except OSError:
+            return None
+
+    scanned = 0
+    try:
+        while scanned < max_entries and time.monotonic() - started < max_scan_seconds:
+            try:
+                subkey_name = winreg.EnumKey(root, scanned)
+            except OSError:
+                break
+            scanned += 1
+            try:
+                with winreg.OpenKey(root, subkey_name, 0, winreg.KEY_READ) as item_key:
+                    name = str(read_value(item_key, "Name") or "")
+                    path = str(read_value(item_key, "LowerCaseLongPath") or "")
+                    if not name and not path:
+                        continue
+                    matches = find_indicator_matches(name, path)
+                    combined = (name + " " + path).casefold()
+                    is_fivem = any(term in combined for term in ("fivem", "citizenfx", "gta5", "grand theft auto"))
+                    # Keep relevant leads and game-context records; avoid exporting a full software inventory.
+                    if not matches and not is_fivem:
+                        continue
+                    rows.append({
+                        "artifact_type": "Windows Amcache inventory metadata",
+                        "scan_group": "Windows Amcache",
+                        "source": "HKLM\\AMCACHE\\Root\\InventoryApplicationFile",
+                        "file_name": (name or Path(path).name)[:260],
+                        "path": path[:1500] if path and not is_windows_system_path(path) else "Windows Amcache metadata (system path hidden)",
+                        "product_name": str(read_value(item_key, "ProductName") or "")[:240],
+                        "product_version": str(read_value(item_key, "ProductVersion") or "")[:120],
+                        "publisher": str(read_value(item_key, "Publisher") or "")[:240],
+                        "size_bytes": read_value(item_key, "Size"),
+                        "indicator_matches": matches,
+                        "indicator_category": "مؤشرات هاك/غش" if matches else "سياق لعبة — بيانات وصفية",
+                        "assessment": "review" if matches else "metadata_only",
+                        "evidence_confidence": "low" if matches else "none",
+                        "evidence_reason": (
+                            "مطابقة اسم/مسار في مخزون Amcache؛ لا تثبت وحدها تشغيل الملف أو الغش."
+                            if language == "ar" else
+                            "Name/path match in Amcache inventory; does not by itself prove execution or cheating."
+                        ),
+                        "context_flags": ["FiveM/GTA V context"] if is_fivem else [],
+                        "signature_status": "not_checked",
+                        "signature_label": "لم يتم التحقق" if language == "ar" else "Not checked",
+                    })
+            except OSError:
+                continue
+    finally:
+        winreg.CloseKey(root)
+
+    progress(70, f"Amcache metadata entries reviewed: {scanned}; relevant records: {len(rows)}")
+    return rows
+
+
 def collect_deleted_file_evidence(progress, max_entries=2000, max_scan_seconds=12, language="ar"):
     """Read bounded Windows Recycle Bin metadata for deleted executable/script/config artifacts only."""
     import struct
@@ -1684,13 +1762,15 @@ class InspectorApp(tk.Tk):
             fivem_script_findings = collect_fivem_script_evidence(self.update_progress)
             binary_analysis = analyze_fivem_binaries(fivem_files, self.update_progress)
             deleted_file_findings = collect_deleted_file_evidence(self.update_progress, language=self.lang)
-            # Keep targeted game evidence, log indicators, and deleted-file metadata in the unified inventory.
+            amcache_findings = collect_amcache_evidence(self.update_progress, language=self.lang)
+            # Keep targeted game evidence, log indicators, deleted-file metadata, and Amcache inventory in the unified inventory.
             for item in fivem_files:
                 item.setdefault("source", "FiveM/GTA V targeted locations")
             files.extend(fivem_files)
             files.extend(fivem_log_findings)
             files.extend(fivem_script_findings)
             files.extend(deleted_file_findings)
+            files.extend(amcache_findings)
             # Newest available last-access timestamp first; fall back to last modification.
             group_order = {
                 "ملفات FiveM وGTA V": 0,
@@ -1698,6 +1778,7 @@ class InspectorApp(tk.Tk):
                 "سكربتات وإعدادات FiveM": 2,
                 "آثار ملفات محذوفة": 3,
                 "ملفات برامج المستخدم": 4,
+                "Windows Amcache": 5,
             }
             # Stable multi-key ordering: game evidence first, matched indicators next,
             # then newest available access/modification timestamp within each group.
@@ -1720,7 +1801,7 @@ class InspectorApp(tk.Tk):
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "Bounded inventory of user folders and selected third-party app locations only (up to 5,000 items or 25 seconds); Windows/system directories and Windows components are not traversed; plus targeted FiveM/GTA V install, CitizenFX, and user Documents locations (up to 8,000 items or 35 seconds; EXE/DLL/ASI/LUA/LUAC/JSON/CFG/INI/LOG/DAT/BIN/ZIP/RAR/7Z/RPF/META/XML); selected FiveM/CitizenFX text logs are scanned with strict file/byte/time limits and only marker names and line numbers are reported, never log contents; selected FiveM/CitizenFX resource and configuration text files are also checked locally with strict file/byte/time limits; only matched indicators and line numbers are retained, never file contents; Windows Recycle Bin $I metadata is checked on C: and D: for selected executable/script/config/archive file types, without reading or restoring deleted file contents; all currently running processes plus Windows Prefetch evidence from the last 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
+                "scan_scope": "Bounded inventory of user folders and selected third-party app locations only (up to 5,000 items or 25 seconds); Windows/system directories and Windows components are not traversed; plus read-only Windows Amcache inventory metadata (up to 2,500 registry entries or 8 seconds; relevant game-context records and name/path leads only; Amcache presence is not proof of execution); targeted FiveM/GTA V install, CitizenFX, and user Documents locations (up to 8,000 items or 35 seconds; EXE/DLL/ASI/LUA/LUAC/JSON/CFG/INI/LOG/DAT/BIN/ZIP/RAR/7Z/RPF/META/XML); selected FiveM/CitizenFX text logs are scanned with strict file/byte/time limits and only marker names and line numbers are reported, never log contents; selected FiveM/CitizenFX resource and configuration text files are also checked locally with strict file/byte/time limits; only matched indicators and line numbers are retained, never file contents; Windows Recycle Bin $I metadata is checked on C: and D: for selected executable/script/config/archive file types, without reading or restoring deleted file contents; all currently running processes plus Windows Prefetch evidence from the last 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches) + len(file_matches),
                 "unique_indicator_file_count": evidence_quality["unique_indicator_file_count"],
@@ -1741,6 +1822,8 @@ class InspectorApp(tk.Tk):
                 "deleted_file_evidence_count": len(deleted_file_findings),
                 "deleted_suspicious_file_count": sum(1 for item in deleted_file_findings if item.get("indicator_matches")),
                 "deleted_fivem_file_count": sum(1 for item in deleted_file_findings if item.get("game_context")),
+                "amcache_record_count": len(amcache_findings),
+                "amcache_indicator_count": sum(1 for item in amcache_findings if item.get("indicator_matches")),
                 "file_artifacts": files,
                 "recent_apps_24h": recent_apps,
                 "recent_apps_24h_count": len(recent_apps),
@@ -1749,7 +1832,7 @@ class InspectorApp(tk.Tk):
                 "signature_verified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "verified"),
                 "signature_unverified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "unverified"),
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded user/application-file inventory with Windows/system locations excluded, plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. Selected FiveM/CitizenFX text logs are checked locally for specific known tool markers; only marker names and line numbers are retained, never log text. Selected FiveM resource/configuration text files are also checked locally; targeted EXE/DLL/ASI/BIN game binaries receive bounded SHA-256 hashing and local static string triage for known tool names and multiple process-memory API markers; only hashes and marker names are retained, never binary contents. Selected resources for known tool names and combinations of gameplay-manipulation indicators; only matched marker names and line numbers are retained, never file text. Windows Recycle Bin metadata is also checked for selected security-relevant file types; only filename, approximate deletion time, size, and a coarse folder category are retained, not the original full path or deleted contents. This does not detect every permanently deleted file and does not perform recovery. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened; only selected FiveM/CitizenFX text logs are read locally for specific known markers, and their text is never uploaded; file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. A full-desktop screenshot is captured and retained with the report only when the separate screenshot-consent option is selected; otherwise no screenshot is taken. No files are modified and no processes are terminated.",
+                "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded user/application-file inventory with Windows/system locations excluded, plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. Selected FiveM/CitizenFX text logs are checked locally for specific known tool markers; only marker names and line numbers are retained, never log text. Selected FiveM resource/configuration text files are also checked locally; targeted EXE/DLL/ASI/BIN game binaries receive bounded SHA-256 hashing and local static string triage for known tool names and multiple process-memory API markers; only hashes and marker names are retained, never binary contents. Selected resources for known tool names and combinations of gameplay-manipulation indicators; only matched marker names and line numbers are retained, never file text. Windows Recycle Bin metadata is also checked for selected security-relevant file types; only filename, approximate deletion time, size, and a coarse folder category are retained, not the original full path or deleted contents. This does not detect every permanently deleted file and does not perform recovery. The report also includes bounded, read-only Amcache inventory metadata for relevant FiveM/GTA V context and name/path leads; Amcache inventory is not proof of execution. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened; only selected FiveM/CitizenFX text logs are read locally for specific known markers, and their text is never uploaded; file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. A full-desktop screenshot is captured and retained with the report only when the separate screenshot-consent option is selected; otherwise no screenshot is taken. No files are modified and no processes are terminated.",
                 "processes": processes,
             }
             add_localized_indicator_fields(self.report, self.lang)
