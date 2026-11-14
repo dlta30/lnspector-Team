@@ -989,8 +989,8 @@ def collect_usb_device_history(progress, max_devices=250, language="ar"):
     if platform.system().lower() != "windows":
         return [], {"status": "unsupported_platform", "device_count": 0}
     roots = [
-        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\\CurrentControlSet\\Enum\\USB", "USB"),
-        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\\CurrentControlSet\\Enum\\USBSTOR", "USBSTOR"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Enum\USB", "USB"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Enum\USBSTOR", "USBSTOR"),
     ]
     rows, seen = [], set()
     for hive, registry_path, source_name in roots:
