@@ -984,10 +984,10 @@ ConvertTo-Json -InputObject @($result) -Depth 4 -Compress
 
 def collect_usb_device_history(progress, max_devices=250, language="ar"):
     """Read bounded USB/USBSTOR registry history; identifiers are hashed to avoid exposing serial numbers."""
-    import winreg
     import hashlib
     if platform.system().lower() != "windows":
         return [], {"status": "unsupported_platform", "device_count": 0}
+    import winreg
     roots = [
         (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Enum\USB", "USB"),
         (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Enum\USBSTOR", "USBSTOR"),
