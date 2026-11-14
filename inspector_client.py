@@ -1640,7 +1640,7 @@ class InspectorApp(tk.Tk):
             except Exception:
                 pass
         self.minsize(760, 520)
-        self.resizable(True, True)
+        self.resizable(False, False)
         self.configure(bg="#090a10")
         self.report = None
         self.lang = "en"  # English is the default interface language.
