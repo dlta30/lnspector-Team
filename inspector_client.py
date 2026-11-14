@@ -1842,6 +1842,10 @@ class InspectorApp(tk.Tk):
         process_metric = self.metric_processes.get() if hasattr(self, "metric_processes") else "—"
         flag_metric = self.metric_flags.get() if hasattr(self, "metric_flags") else "—"
         self.lang = "en" if self.language_choice.get() == "English" else "ar"
+        if getattr(self, "scan_stage", "consent") != "progress":
+            self._build()
+            self.consent_scan.set(consent_accepted)
+            return
         self._build()
         self.consent_scan.set(consent_accepted)
         self.metric_state.set(current_state)
