@@ -1930,24 +1930,39 @@ class InspectorApp(tk.Tk):
 
     def _scan_worker(self):
         try:
-            processes = collect_processes(self.update_progress)
-            files = collect_files(self.update_progress, max_files=5000, max_scan_seconds=25)
-            fivem_files = collect_fivem_artifacts(self.update_progress)
-            fivem_log_findings = collect_fivem_log_evidence(self.update_progress)
-            fivem_script_findings = collect_fivem_script_evidence(self.update_progress)
-            binary_analysis = analyze_fivem_binaries(fivem_files, self.update_progress)
-            deleted_file_findings = collect_deleted_file_evidence(self.update_progress, language=self.lang)
-            amcache_findings = collect_amcache_evidence(self.update_progress, language=self.lang)
-            defender_events, defender_status = collect_defender_history(self.update_progress, language=self.lang)
-            usb_history, usb_status = collect_usb_device_history(self.update_progress, language=self.lang)
-            # Keep targeted game evidence, log indicators, deleted-file metadata, and Amcache inventory in the unified inventory.
-            for item in fivem_files:
-                item.setdefault("source", "FiveM/GTA V targeted locations")
-            files.extend(fivem_files)
-            files.extend(fivem_log_findings)
-            files.extend(fivem_script_findings)
-            files.extend(deleted_file_findings)
-            files.extend(amcache_findings)
+            # Focus the report on relevant evidence instead of enumerating ordinary Windows/app files.
+            all_processes = collect_processes(self.update_progress)
+            processes = [
+                row for row in all_processes
+                if row.get("indicator_matches") or row.get("game_context")
+            ]
+            self.update_progress(25, "جمع القرائن المرتبطة فقط...")
+            files = []
+            fivem_files = collect_fivem_artifacts(self.update_progress, max_files=3500, max_scan_seconds=12)
+            fivem_log_findings = collect_fivem_log_evidence(self.update_progress, max_files=160)
+            fivem_script_findings = collect_fivem_script_evidence(self.update_progress, max_files=500)
+            binary_analysis = analyze_fivem_binaries(fivem_files, self.update_progress, max_files=180)
+            deleted_file_findings = collect_deleted_file_evidence(
+                self.update_progress, max_entries=1000, max_scan_seconds=6, language=self.lang
+            )
+            amcache_findings = collect_amcache_evidence(
+                self.update_progress, max_entries=1200, max_scan_seconds=4, language=self.lang
+            )
+            defender_events, defender_status = collect_defender_history(
+                self.update_progress, max_events=120, days=60, language=self.lang
+            )
+            usb_history, usb_status = collect_usb_device_history(
+                self.update_progress, max_devices=120, language=self.lang
+            )
+            # Keep matched indicators and selected RPF context only; omit routine OS/app inventory rows.
+            files.extend([
+                row for row in fivem_files
+                if row.get("indicator_matches") or str(row.get("file_name") or "").casefold().endswith(".rpf")
+            ])
+            files.extend([row for row in fivem_log_findings if row.get("indicator_matches")])
+            files.extend([row for row in fivem_script_findings if row.get("indicator_matches")])
+            files.extend([row for row in deleted_file_findings if row.get("indicator_matches") or row.get("game_context")])
+            files.extend([row for row in amcache_findings if row.get("indicator_matches")])
             # Newest available last-access timestamp first; fall back to last modification.
             group_order = {
                 "ملفات FiveM وGTA V": 0,
@@ -1963,11 +1978,19 @@ class InspectorApp(tk.Tk):
             files.sort(key=lambda item: 0 if item.get("indicator_matches") else 1)
             files.sort(key=lambda item: group_order.get(item.get("scan_group"), 9))
             verify_authenticode_signatures(processes, files, self.update_progress)
-            recent_apps = collect_recent_apps(processes, self.update_progress, deleted_file_findings, self.lang)
-            # Include Windows Recent shortcut records: targets may be deleted or moved.
+            recent_apps = collect_recent_apps(all_processes, self.update_progress, deleted_file_findings, self.lang)
+            recent_apps = [
+                row for row in recent_apps
+                if row.get("indicator_matches") or row.get("deleted_file_name_match")
+                or any(term in str(row.get("app_name") or "").casefold() for term in ("fivem", "citizenfx", "gta5"))
+            ]
             recent_files = collect_recent_files(
                 self.update_progress, deleted_file_findings=deleted_file_findings, language=self.lang
             )
+            recent_files = [
+                row for row in recent_files
+                if find_indicator_matches(row.get("file_name"), row.get("target_path"))
+            ]
             evidence_quality = finalize_evidence_quality(processes, files, recent_apps, recent_files)
             matches = [p for p in processes if p["indicator_matches"]]
             file_matches = [item for item in files if item["indicator_matches"]]
