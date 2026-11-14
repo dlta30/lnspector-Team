@@ -1613,7 +1613,7 @@ class InspectorApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("3EN INSPECT")
-        self.geometry("1180x780")
+        self.geometry("820x560")
         # PyInstaller --onedir stores bundled assets under sys._MEIPASS (usually _internal).
         # Keep the PNG PhotoImage alive for the lifetime of the Tk window.
         resource_root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
@@ -1639,7 +1639,8 @@ class InspectorApp(tk.Tk):
                 print("3EN branding asset could not be loaded:", type(exc).__name__, str(exc))
             except Exception:
                 pass
-        self.minsize(980, 680)
+        self.minsize(760, 520)
+        self.resizable(True, True)
         self.configure(bg="#090a10")
         self.report = None
         self.lang = "en"  # English is the default interface language.
@@ -1668,8 +1669,9 @@ class InspectorApp(tk.Tk):
         # Full-screen, image-first consent: no separate panels or language switch.
         self.lang = "en"
         self.configure(bg="#050609")
-        self.attributes("-fullscreen", True)
-        screen_w, screen_h = self.winfo_screenwidth(), self.winfo_screenheight()
+        self.attributes("-fullscreen", False)
+        self.geometry("820x560")
+        screen_w, screen_h = 820, 560
         self._hero_photo = None
         canvas = tk.Canvas(self, width=screen_w, height=screen_h, bg="#050609",
                            highlightthickness=0, bd=0)
@@ -1710,11 +1712,13 @@ class InspectorApp(tk.Tk):
         canvas.create_window(int(screen_w * .70), int(screen_h * .64), window=button)
         canvas.create_text(screen_w - 24, screen_h - 18, text="BY:ROITH",
                            fill="#d6d6d6", font=("Segoe UI", 9, "bold"), anchor="se")
-        self.bind("<Escape>", lambda _event: self.attributes("-fullscreen", False))
+        self.bind("<Escape>", lambda _event: self.focus_force())
 
     def _accept_consent(self):
-        if not self.consent_scan.get() or self.scan_running:
+        # The button itself is the explicit consent action; there is no hidden checkbox.
+        if self.scan_running:
             return
+        self.consent_scan.set(True)
         self.scan_stage = "progress"
         self._build()
         self.consent_scan.set(True)
