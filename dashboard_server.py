@@ -1746,7 +1746,7 @@ def report_detail(report_id):
       <div class="card" id="process-list">
         <h2>الملفات والعمليات</h2>
         <p class="muted">أسماء الملفات ومساراتها وأوقات التشغيل وتواريخ الملفات المتاحة. تاريخ إنشاء الملف لا يثبت وقت تنزيله بدقة.</p>
-        <input id="file-search" type="search" placeholder="ابحث باسم ملف أو مسار…" aria-label="بحث في ملفات التقرير">
+        <p class="muted">يمكنك استخدام شريط البحث والتصفية أعلى التقرير للبحث في جميع الأدلة.</p>
         <div class="muted" style="margin:10px 0">عرض {{ visible_processes|length }} من أصل {{ processes|length }} عملية · الصفحة {{ process_page }} من {{ process_pages }}</div>
         <div id="file-list">
         {% for item in visible_processes %}
@@ -1776,7 +1776,7 @@ def report_detail(report_id):
         {% if report_data.get('file_artifacts_truncated') %}<p class="muted">وصل الفحص إلى الحد الأعلى للعناصر؛ قد توجد عناصر إضافية لم تُدرج.</p>{% endif %}
         <div class="muted" style="margin:10px 0">عرض {{ visible_artifacts|length }} من أصل {{ artifacts|length }} عنصر · الصفحة {{ artifact_page }} من {{ artifact_pages }}</div>
         {% for item in visible_artifacts %}
-          <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}" data-file-search="{{ (item.get('name','') ~ ' ' ~ item.get('file_name','') ~ ' ' ~ item.get('path','') ~ ' ' ~ item.get('source','') ~ ' ' ~ item.get('indicator_matches',[])|join(' '))|e }}">
+          <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}" data-report-entry data-severity="{{ 'warning' if item.get('indicator_matches') else 'info' }}" data-file-search="{{ (item.get('name','') ~ ' ' ~ item.get('file_name','') ~ ' ' ~ item.get('path','') ~ ' ' ~ item.get('source','') ~ ' ' ~ item.get('indicator_matches',[])|join(' '))|e }}">
             <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}📁{% endif %}</span><span class="process-embed-title">{{ item.get('name') or item.get('file_name') or item.get('path') or 'اسم غير متاح' }}</span><span class="process-embed-meta">{{ item.get('source') or 'غير محدد' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">{{ item.get('indicator_category') or 'مؤشرات هاك/غش' }} — يحتاج مراجعة</span>{% endif %}</div>
             <div class="field"><b>المسار</b><span dir="ltr">{{ item.get('path') or 'غير متاح' }}</span></div>
             <div class="field"><b>الحجم</b><span dir="ltr">{{ item.get('size_bytes', 'غير متاح') }} bytes</span></div>
