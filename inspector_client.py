@@ -1613,7 +1613,7 @@ class InspectorApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("3EN INSPECT")
-        self.geometry("1120x820")
+        self.geometry("1180x780")
         # PyInstaller --onedir stores bundled assets under sys._MEIPASS (usually _internal).
         # Keep the PNG PhotoImage alive for the lifetime of the Tk window.
         resource_root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
@@ -1639,11 +1639,12 @@ class InspectorApp(tk.Tk):
                 print("3EN branding asset could not be loaded:", type(exc).__name__, str(exc))
             except Exception:
                 pass
-        self.minsize(940, 700)
+        self.minsize(980, 680)
         self.configure(bg="#090a10")
         self.report = None
         self.lang = "en"  # English is the default interface language.
         self.scan_running = False
+        self.scan_stage = "consent"
         self._progress_value = 0
         self._progress_message = "Ready — accept the consent and start."
         style = ttk.Style(self)
@@ -1658,51 +1659,129 @@ class InspectorApp(tk.Tk):
     def _build(self):
         for child in self.winfo_children():
             child.destroy()
-        BG = "#080a10"
-        PANEL = "#111521"
-        PANEL_ALT = "#171c2a"
-        RED = "#ff365c"
-        MUTED = "#98a3b8"
-        WHITE = "#f4f6fc"
-        LINE = "#2b3244"
-        GREEN = "#62e0b0"
+        if getattr(self, "scan_stage", "consent") == "progress":
+            self._build_progress_screen()
+        else:
+            self._build_consent_screen()
 
+    def _build_consent_screen(self):
+        BG, PANEL, RED = "#080a10", "#111521", "#ff365c"
+        WHITE, MUTED, LINE = "#f4f6fc", "#aab3c5", "#30384b"
+        self.configure(bg=BG)
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        style.configure("TButton", font=("Segoe UI", 10, "bold"), padding=(18, 13),
+                        background="#242a3b", foreground=WHITE, bordercolor=LINE, relief="flat")
+        style.map("TButton", background=[("active", "#542033")], foreground=[("active", "white")])
+
+        shell = tk.Frame(self, bg=BG)
+        shell.pack(fill="both", expand=True, padx=16, pady=14)
+
+        hero = tk.Frame(shell, bg="#090b12", height=360, highlightbackground=LINE, highlightthickness=1)
+        hero.pack(fill="x")
+        hero.pack_propagate(False)
+        self._hero_photo = None
+        try:
+            from PIL import Image, ImageTk
+            root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+            hero_path = os.path.join(root, "3en-inspect-hero.jpg")
+            with Image.open(hero_path) as src:
+                photo = src.convert("RGB").resize((1080, 360), Image.Resampling.LANCZOS)
+            self._hero_photo = ImageTk.PhotoImage(photo)
+            tk.Label(hero, image=self._hero_photo, bg="#090b12", bd=0).place(x=0, y=0, relwidth=1, relheight=1)
+        except Exception:
+            hero.configure(bg="#15101a")
+        # Dark glass overlay keeps the brand readable over the supplied Charger artwork.
+        shade = tk.Frame(hero, bg="#090b12", padx=24, pady=18)
+        shade.place(relx=0.035, rely=0.08, relwidth=0.54, relheight=0.82)
+        tk.Label(shade, text="3EN", bg="#090b12", fg=RED,
+                 font=("Segoe UI", 13, "bold")).pack(anchor="w")
+        tk.Label(shade, text="INSPECT", bg="#090b12", fg=WHITE,
+                 font=("Segoe UI", 31, "bold")).pack(anchor="w", pady=(2, 0))
+        tk.Label(shade, text=self._t("تحقيق جنائي رقمي • فحص بموافقة صريحة",
+                                     "DIGITAL FORENSICS  •  EXPLICIT CONSENT"),
+                 bg="#090b12", fg="#ff7891", font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(3, 14))
+        tk.Label(shade, text=self._t("تحليل موجّه لآثار FiveM و GTA V ومؤشرات الأدوات والتلاعب.",
+                                     "Targeted analysis of FiveM / GTA V traces, tool indicators and tampering evidence."),
+                 bg="#090b12", fg="#c4cada", font=("Segoe UI", 10),
+                 wraplength=510, justify="left").pack(anchor="w")
+        tk.Label(shade, text="SECURITY INSPECTION  /  3EN TEAM",
+                 bg="#090b12", fg="#7f8ba2", font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(18, 0))
+
+        top = tk.Frame(shell, bg=BG)
+        top.pack(fill="x", pady=(12, 10))
+        tk.Label(top, text=self._t("قبل بدء الفحص", "BEFORE INSPECTION"),
+                 bg=BG, fg=WHITE, font=("Segoe UI", 18, "bold")).pack(side="left")
+        self.session_badge = tk.Label(top, text=self._t("●  بانتظار الموافقة", "●  AWAITING CONSENT"),
+                                      bg="#321522", fg="#ff8098", padx=13, pady=8,
+                                      font=("Segoe UI", 9, "bold"))
+        self.session_badge.pack(side="right")
+        self.language_choice = ttk.Combobox(top, state="readonly", width=11,
+            values=("العربية", "English"), font=("Segoe UI", 9))
+        self.language_choice.set("العربية" if self.lang == "ar" else "English")
+        self.language_choice.pack(side="right", padx=(0, 10))
+        self.language_choice.bind("<<ComboboxSelected>>", self._change_language)
+
+        consent = tk.Frame(shell, bg=PANEL, padx=20, pady=17,
+                           highlightbackground=LINE, highlightthickness=1)
+        consent.pack(fill="x")
+        tk.Label(consent, text=self._t("01  /  الموافقة والتفويض", "01  /  CONSENT & AUTHORIZATION"),
+                 bg=PANEL, fg="#ff7891", font=("Segoe UI", 9, "bold")).pack(anchor="w")
+        self.consent_scan = tk.BooleanVar(value=False)
+        tk.Checkbutton(consent,
+            text=self._t("أوافق على فحص هذا الجهاز وجمع بياناته المحددة، والتقاط صورة للشاشة، وإرسال تقرير الفحص إلى المفتش.",
+                         "I authorize this device inspection, collection of the stated evidence, desktop screenshot capture, and delivery of the report to the inspector."),
+            variable=self.consent_scan, command=self._accept_consent,
+            bg=PANEL, fg=WHITE, selectcolor="#202638", activebackground=PANEL,
+            activeforeground=WHITE, wraplength=980, justify="left",
+            font=("Segoe UI", 10), relief="flat", padx=0, pady=7).pack(anchor="w")
+        tk.Label(consent,
+            text=self._t("بمجرد تحديد الموافقة ينتقل البرنامج تلقائيًا إلى شاشة التقدم ويبدأ الفحص. يمكنك إغلاق البرنامج قبل الموافقة.",
+                         "Checking the consent box moves to the progress screen and starts the inspection automatically. You may close the app before consenting."),
+            bg=PANEL, fg=MUTED, font=("Segoe UI", 9), wraplength=980,
+            justify="left").pack(anchor="w", pady=(6, 0))
+
+        bottom = tk.Frame(shell, bg=BG)
+        bottom.pack(fill="x", pady=(10, 0))
+        tk.Label(bottom, text=self._t("فحص موجّه • نتائج قابلة للمراجعة • لا حذف لملفات الجهاز",
+                                      "TARGETED SCAN  •  REVIEWABLE FINDINGS  •  NO DEVICE FILE DELETION"),
+                 bg=BG, fg="#8792a8", font=("Segoe UI", 8, "bold")).pack(side="left")
+        tk.Label(self, text="BY:ROITH", bg="#0d1018", fg="#7e899f",
+                 font=("Segoe UI", 8, "bold"), pady=8).pack(fill="x")
+
+    def _accept_consent(self):
+        if not self.consent_scan.get() or self.scan_running:
+            return
+        self.scan_stage = "progress"
+        self._build()
+        self.consent_scan.set(True)
+        self.session_badge.configure(text=self._t("●  تمت الموافقة", "●  CONSENT GRANTED"),
+                                     bg="#142b28", fg="#62e0b0")
+        self.status.set(self._t("تمت الموافقة — جارٍ تجهيز الفحص...", "Consent granted — preparing inspection..."))
+        self.after(350, self.start)
+
+    def _build_progress_screen(self):
+        BG, PANEL, RED = "#080a10", "#111521", "#ff365c"
+        WHITE, MUTED, LINE = "#f4f6fc", "#98a3b8", "#2b3244"
+        GREEN = "#62e0b0"
         self.configure(bg=BG)
         style = ttk.Style(self)
         style.theme_use("clam")
         style.configure("TProgressbar", troughcolor="#22283a", background=RED,
-                        bordercolor="#22283a", lightcolor=RED, darkcolor=RED, thickness=12)
+                        bordercolor="#22283a", lightcolor=RED, darkcolor=RED, thickness=16)
         style.configure("TButton", font=("Segoe UI", 10, "bold"), padding=(16, 12),
                         background="#202638", foreground=WHITE, bordercolor=LINE, relief="flat")
-        style.map("TButton", background=[("active", "#3b2030"), ("disabled", "#171923")],
-                  foreground=[("active", "white"), ("disabled", "#74798a")])
 
         shell = tk.Frame(self, bg=BG)
         shell.pack(fill="both", expand=True, padx=18, pady=16)
-        header = tk.Frame(shell, bg=PANEL, padx=22, pady=17,
+        header = tk.Frame(shell, bg=PANEL, padx=20, pady=15,
                           highlightbackground=LINE, highlightthickness=1)
         header.pack(fill="x")
-        logo = tk.Frame(header, bg=PANEL)
-        logo.pack(side="left", padx=(0, 16))
-        try:
-            from PIL import Image, ImageTk
-            logo_path = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__))), "3en.png")
-            image = Image.open(logo_path).convert("RGBA").resize((64, 64), Image.Resampling.LANCZOS)
-            self._brand_logo = ImageTk.PhotoImage(image)
-            tk.Label(logo, image=self._brand_logo, bg=PANEL, bd=0).pack()
-        except Exception:
-            tk.Label(logo, text="3EN", bg="#08090d", fg=WHITE,
-                     font=("Segoe UI", 22, "bold"), padx=14, pady=12).pack()
-        brand = tk.Frame(header, bg=PANEL)
-        brand.pack(side="left", fill="x", expand=True)
-        tk.Label(brand, text="3EN INSPECT", bg=PANEL, fg=WHITE,
-                 font=("Segoe UI", 21, "bold")).pack(anchor="w")
-        tk.Label(brand, text=self._t("تحقيق رقمي • فحص بموافقة صاحب الجهاز",
-                                     "DIGITAL FORENSICS  •  CONSENT-BASED"),
-                 bg=PANEL, fg=RED, font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(5, 0))
-        self.session_badge = tk.Label(header, text=self._t("●  جاهز", "●  READY"),
-                                      bg="#142b28", fg=GREEN, font=("Segoe UI", 9, "bold"),
-                                      padx=14, pady=9)
+        tk.Label(header, text="3EN  /  INSPECT", bg=PANEL, fg=WHITE,
+                 font=("Segoe UI", 21, "bold")).pack(side="left")
+        self.session_badge = tk.Label(header, text=self._t("●  الفحص جارٍ", "●  INSPECTION RUNNING"),
+                                      bg="#332616", fg="#ffbd69", padx=13, pady=8,
+                                      font=("Segoe UI", 9, "bold"))
         self.session_badge.pack(side="right", padx=(12, 0))
         self.language_choice = ttk.Combobox(header, state="readonly", width=11,
             values=("العربية", "English"), font=("Segoe UI", 9))
@@ -1710,97 +1789,49 @@ class InspectorApp(tk.Tk):
         self.language_choice.pack(side="right")
         self.language_choice.bind("<<ComboboxSelected>>", self._change_language)
 
-        content = tk.Frame(shell, bg=BG)
-        content.pack(fill="both", expand=True, pady=(16, 12))
-        sidebar = tk.Frame(content, bg="#0d111b", width=205,
-                           highlightbackground=LINE, highlightthickness=1)
-        sidebar.pack(side="left", fill="y", padx=(0, 14))
-        sidebar.pack_propagate(False)
-        tk.Label(sidebar, text=self._t("لوحة الفحص", "INSPECTION"),
-                 bg="#0d111b", fg=MUTED, font=("Segoe UI", 9, "bold")).pack(anchor="w", padx=16, pady=(18, 12))
-        for label, active in [
-            (self._t("◈  نظرة عامة", "◈  Overview"), True),
-            (self._t("⌕  مؤشرات التحقيق", "⌕  Evidence scope"), False),
-            (self._t("✓  الموافقة", "✓  Authorization"), False),
-        ]:
-            tk.Label(sidebar, text=label, anchor="w", bg="#251522" if active else "#0d111b",
-                     fg="#ff8ca0" if active else "#b5bfd1", font=("Segoe UI", 9, "bold"),
-                     padx=14, pady=12).pack(fill="x", padx=9, pady=3)
-        tk.Frame(sidebar, bg=LINE, height=1).pack(fill="x", padx=14, pady=(16, 12))
-        tk.Label(sidebar, text=self._t("نطاق الفحص", "SCAN FOCUS"), bg="#0d111b",
-                 fg=RED, font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=16)
-        tk.Label(sidebar, text=self._t("• آثار FiveM و GTA V\n• مؤشرات الأدوات المعروفة\n• سجل الحماية والتشغيل\n• الملفات المرتبطة فقط",
-                                       "• FiveM / GTA V traces\n• Known tool indicators\n• Security & execution history\n• Relevant files only"),
-                 justify="left", anchor="w", bg="#0d111b", fg=MUTED,
-                 font=("Segoe UI", 9), padx=16, pady=10).pack(fill="x")
+        tk.Label(shell, text=self._t("مركز التحقيق الرقمي", "FORENSIC INSPECTION CENTER"),
+                 bg=BG, fg=WHITE, font=("Segoe UI", 24, "bold")).pack(anchor="w", pady=(24, 4))
+        tk.Label(shell, text=self._t("تم تسجيل موافقتك. يجري الآن جمع القرائن المحددة وتحليلها.",
+                                     "Your consent is recorded. Targeted evidence is now being collected and analyzed."),
+                 bg=BG, fg=MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 18))
 
-        main = tk.Frame(content, bg=BG)
-        main.pack(side="left", fill="both", expand=True)
-        intro = tk.Frame(main, bg=BG)
-        intro.pack(fill="x", pady=(0, 13))
-        tk.Label(intro, text=self._t("مركز التحقيق الرقمي", "FORENSIC INSPECTION CENTER"),
-                 bg=BG, fg=WHITE, font=("Segoe UI", 22, "bold")).pack(anchor="w")
-        tk.Label(intro, text=self._t("جمع قرائن مرتبطة بالاشتباه، مع تقليل النتائج العامة والضوضاء.",
-                                     "Targeted evidence collection with less noise from ordinary system files."),
-                 bg=BG, fg=MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(4, 0))
-
+        metrics = tk.Frame(shell, bg=BG)
+        metrics.pack(fill="x", pady=(0, 15))
         self.metric_processes = tk.StringVar(value="—")
         self.metric_flags = tk.StringVar(value="—")
-        self.metric_state = tk.StringVar(value="READY")
-        metrics = tk.Frame(main, bg=BG)
-        metrics.pack(fill="x", pady=(0, 13))
+        self.metric_state = tk.StringVar(value="SCANNING")
         for title, value, accent in [
             (self._t("العمليات المرتبطة", "RELEVANT PROCESSES"), self.metric_processes, RED),
             (self._t("المؤشرات المكتشفة", "INDICATORS"), self.metric_flags, "#ffbd69"),
             (self._t("حالة الفحص", "SCAN STATUS"), self.metric_state, GREEN),
         ]:
-            card = tk.Frame(metrics, bg=PANEL, highlightbackground=LINE, highlightthickness=1, padx=15, pady=13)
-            card.pack(side="left", fill="both", expand=True, padx=(0, 9))
+            card = tk.Frame(metrics, bg=PANEL, highlightbackground=LINE, highlightthickness=1, padx=18, pady=17)
+            card.pack(side="left", fill="both", expand=True, padx=(0, 10))
             tk.Label(card, text=title, bg=PANEL, fg=MUTED,
                      font=("Segoe UI", 8, "bold")).pack(anchor="w")
             tk.Label(card, textvariable=value, bg=PANEL, fg=accent,
-                     font=("Segoe UI", 19, "bold")).pack(anchor="w", pady=(6, 0))
+                     font=("Segoe UI", 23, "bold")).pack(anchor="w", pady=(7, 0))
 
-        consent_box = tk.Frame(main, bg=PANEL, highlightbackground=LINE, highlightthickness=1, padx=17, pady=14)
-        consent_box.pack(fill="x", pady=(0, 12))
-        tk.Label(consent_box, text=self._t("01  /  الموافقة والصلاحية", "01  /  CONSENT & AUTHORIZATION"),
-                 bg=PANEL, fg="#ff8ca0", font=("Segoe UI", 9, "bold")).pack(anchor="w")
-        self.consent_scan = tk.BooleanVar(value=False)
-        tk.Checkbutton(consent_box,
-            text=self._t("أوافق على فحص هذا الجهاز والتقاط صورة الشاشة وإرسال التقرير إلى المفتش.",
-                         "I authorize this device inspection, desktop screenshot capture, and report delivery to the inspector."),
-            variable=self.consent_scan, bg=PANEL, fg=WHITE, selectcolor=PANEL_ALT,
-            activebackground=PANEL, activeforeground=WHITE, wraplength=820,
-            font=("Segoe UI", 10), relief="flat", padx=0).pack(anchor="w", pady=(8, 0))
-
-        scanbox = tk.Frame(main, bg=PANEL, highlightbackground=LINE, highlightthickness=1, padx=17, pady=14)
-        scanbox.pack(fill="x", pady=(0, 12))
-        topstatus = tk.Frame(scanbox, bg=PANEL)
-        topstatus.pack(fill="x")
-        tk.Label(topstatus, text=self._t("02  /  تقدم التحقيق", "02  /  INVESTIGATION PROGRESS"),
-                 bg=PANEL, fg=WHITE, font=("Segoe UI", 9, "bold")).pack(side="left")
-        self.status = tk.StringVar(value=self._t("جاهز — وافق على الفحص ثم ابدأ.",
-                                                  "Ready — accept consent and start."))
-        tk.Label(topstatus, textvariable=self.status, bg=PANEL, fg=MUTED,
-                 font=("Segoe UI", 9)).pack(side="right")
-        progress_row = tk.Frame(scanbox, bg=PANEL)
-        progress_row.pack(fill="x", pady=(13, 0))
-        self.progress = ttk.Progressbar(progress_row, maximum=100, mode="determinate")
-        self.progress.pack(side="left", fill="x", expand=True)
-        self.progress_percent = tk.Label(progress_row, text="0%", bg=PANEL, fg=RED,
-                                          font=("Segoe UI", 11, "bold"), width=5)
-        self.progress_percent.pack(side="right", padx=(12, 0))
-
-        controls = tk.Frame(main, bg=BG)
-        controls.pack(fill="x", pady=(0, 8))
-        self.start_button = ttk.Button(controls, text=self._t("▶   بدء التحقيق", "▶   START INSPECTION"), command=self.start)
-        self.start_button.pack(side="left", padx=(0, 10))
-        tk.Label(controls, text=self._t("يُرسل التقرير تلقائيًا بعد اكتمال الجمع؛ والتصنيف النهائي للمفتش.",
-                                        "The report is delivered automatically; final classification stays with the inspector."),
-                 bg=BG, fg=MUTED, font=("Segoe UI", 9), wraplength=650, justify="left").pack(side="left", padx=5)
-
+        scanbox = tk.Frame(shell, bg=PANEL, highlightbackground=LINE, highlightthickness=1, padx=20, pady=20)
+        scanbox.pack(fill="x", pady=(0, 14))
+        tk.Label(scanbox, text=self._t("02  /  تقدم التحقيق", "02  /  INVESTIGATION PROGRESS"),
+                 bg=PANEL, fg="#ff7891", font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        self.status = tk.StringVar(value=self._t("جارٍ بدء الفحص...", "Starting inspection..."))
+        tk.Label(scanbox, textvariable=self.status, bg=PANEL, fg=WHITE,
+                 font=("Segoe UI", 10)).pack(anchor="w", pady=(10, 12))
+        self.progress = ttk.Progressbar(scanbox, maximum=100, mode="determinate")
+        self.progress.pack(fill="x")
+        self.progress_percent = tk.Label(scanbox, text="0%", bg=PANEL, fg=RED,
+                                          font=("Segoe UI", 15, "bold"))
+        self.progress_percent.pack(anchor="e", pady=(8, 0))
+        tk.Label(shell, text=self._t("لا يتم حذف أي ملف من الجهاز. التقرير يقتصر على المؤشرات والقرائن ذات الصلة.",
+                                     "No files are deleted from the device. The report focuses on relevant indicators and evidence."),
+                 bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w")
         tk.Label(self, text="BY:ROITH", bg="#0d1018", fg="#7e899f",
-                 font=("Segoe UI", 8, "bold"), pady=9).pack(fill="x")
+                 font=("Segoe UI", 8, "bold"), pady=8).pack(fill="x")
+        self.consent_scan = tk.BooleanVar(value=True)
+        self.start_button = ttk.Button(shell, text=self._t("الفحص جارٍ", "INSPECTION RUNNING"))
+        self.start_button.pack_forget()
 
     def _change_language(self, _event=None):
         # Rebuild translated widgets without losing an active scan or its UI state.
