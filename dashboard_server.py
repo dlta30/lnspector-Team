@@ -1152,47 +1152,59 @@ async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_s
 
 @app.get("/api/session-build/<code>")
 def session_build_status(code):
+    code = code.upper()
     with db() as con:
-        row = con.execute("SELECT created_at FROM inspection_sessions WHERE display_code=?", (code.upper(),)).fetchone()
+        row = con.execute("SELECT created_at FROM inspection_sessions WHERE display_code=?", (code,)).fetchone()
     if not row: return {"state":"missing"}, 404
     if not GITHUB_ACTIONS_TOKEN: return {"state":"needs_setup","message":"اضبط GITHUB_ACTIONS_TOKEN في Render."}
     try:
-        runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?event=workflow_dispatch&per_page=20") or {}
-        matching_runs = []
-        expected = "3eN-Inspect-" + code.upper()
-        for run in runs.get("workflow_runs",[]):
-            # The artifact name contains this session's one-time random code;
-            # it is a stronger match than comparing clocks across Render and GitHub.
-            matching_runs.append(run)
+        created_raw = row["created_at"]
+        created = datetime.fromisoformat(str(created_raw).replace("Z","+00:00"))
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+        runs = github_api_json("/actions/workflows/build-windows-client.yml/runs?event=workflow_dispatch&per_page=50") or {}
+        expected = "3eN-Inspect-" + code
+        session_runs = []
+        for run in runs.get("workflow_runs", []):
+            run_created_raw = run.get("created_at")
+            if not run_created_raw:
+                continue
+            run_created = datetime.fromisoformat(run_created_raw.replace("Z","+00:00"))
+            # Allow a small clock skew between Render and GitHub.
+            if run_created < created - timedelta(minutes=3):
+                continue
+            session_runs.append(run)
+            # The unique session artifact name is definitive proof this build belongs here.
             arts = github_api_json("/actions/runs/" + str(run["id"]) + "/artifacts") or {}
-            artifact = next((a for a in arts.get("artifacts",[]) if a.get("name")==expected and not a.get("expired")),None)
+            artifact = next((a for a in arts.get("artifacts", [])
+                             if a.get("name") == expected and not a.get("expired")), None)
             if artifact and run.get("status") == "completed" and run.get("conclusion") == "success":
-                return {"state":"ready","download_url":url_for("download_session_build",code=code.upper())}
-        # Only report "building" when there is a recent workflow_dispatch run
-        # after this session was created. Old generic/push builds are ignored.
-        if matching_runs:
-            latest = matching_runs[0]
+                return {"state":"ready","message":"اكتمل تجهيز ملف الفحص.","download_url":url_for("download_session_build",code=code)}
+            if artifact and run.get("status") != "completed":
+                return {"state":"building","message":"يتم تجهيز ملف هذه الجلسة…"}
+        if session_runs:
+            latest = session_runs[0]
             if latest.get("status") != "completed":
                 return {"state":"building","message":"يتم تجهيز ملف هذه الجلسة…"}
             if latest.get("conclusion") != "success":
-                return {"state":"failed","message":"فشل بناء ملف هذه الجلسة؛ راجع سجل GitHub Actions."}
-            return {"state":"failed","message":"اكتمل البناء لكن لم يظهر ملف الجلسة المتوقع. أعد إنشاء الجلسة بعد إصلاح إعدادات البناء."}
-        age_seconds = (datetime.now(timezone.utc) - created).total_seconds()
-        if age_seconds < 180:
-            return {"state":"building","message":"تم إنشاء الجلسة؛ ننتظر ظهور مهمة البناء الخاصة بها…"}
+                return {"state":"failed","message":"فشل بناء ملف هذه الجلسة؛ أعد إنشاء الجلسة بعد إصلاح إعدادات البناء."}
+            return {"state":"building","message":"اكتمل تشغيل البناء؛ نتحقق من ظهور ملف الجلسة…"}
+        age_seconds = (datetime.now(timezone.utc) - created.astimezone(timezone.utc)).total_seconds()
+        if age_seconds < 300:
+            return {"state":"building","message":"تم إنشاء الجلسة؛ ننتظر بدء مهمة البناء الخاصة بها…"}
         return {"state":"dispatch_failed","message":"لم تصل مهمة بناء هذه الجلسة إلى GitHub. تحقق من GITHUB_ACTIONS_TOKEN في Render (صلاحية Actions: Read and write)، ثم أعد إنشاء الجلسة."}
     except urllib.error.HTTPError as exc:
         print("Build status lookup failed: GitHub HTTP", exc.code)
         if exc.code in (401, 403):
-            return {"state":"api_error","message":"تعذر قراءة حالة البناء من GitHub (صلاحيات التوكن). تأكد أن GITHUB_ACTIONS_TOKEN يملك Actions: Read and write على المستودع."}
+            return {"state":"api_error","message":"تعذر قراءة حالة البناء من GitHub. تحقق من صلاحيات Actions للتوكن."}
         if exc.code == 404:
-            return {"state":"api_error","message":"GitHub لم يجد سير العمل المطلوب. تحقق من وجود build-windows-client.yml على فرع main."}
+            return {"state":"api_error","message":"GitHub لم يجد سير العمل المطلوب على فرع main."}
         if exc.code == 429:
             return {"state":"api_error","message":"GitHub حدّ مؤقتاً من الطلبات. انتظر دقيقة ثم أعد المحاولة."}
         return {"state":"api_error","message":"تعذر قراءة حالة البناء من GitHub (HTTP " + str(exc.code) + ")."}
     except Exception as exc:
-        print("Build status lookup failed:", type(exc).__name__)
-        return {"state":"api_error","message":"تعذر الاتصال بـ GitHub للتحقق من البناء. تحقق من اتصال الاستضافة ثم أعد المحاولة."}
+        print("Build status lookup failed:", type(exc).__name__, str(exc)[:180])
+        return {"state":"api_error","message":"تعذر التحقق من حالة البناء. راجع سجل Render."}
 
 @app.get("/sessions/<code>/download")
 def download_session_build(code):
