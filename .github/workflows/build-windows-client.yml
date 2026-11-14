@@ -17,6 +17,7 @@ on:
       - "inspector_client.py"
       - "inspector_team.py"
       - "make_icon.py"
+      - "3en-inspect-hero.jpg"
       - ".github/workflows/build-windows-client.yml"
 
 permissions:
