@@ -1568,6 +1568,8 @@ def report_detail(report_id):
             item["last_accessed_display"] = format_saudi_time(item.get("last_accessed_at")) if item.get("last_accessed_at") else "غير متاح"
             item["deleted_at_display"] = format_saudi_time(item.get("deleted_at")) if item.get("deleted_at") else None
     visible_recent_files = recent_files[:100]
+    defender_history = report_data.get("defender_history", []) if isinstance(report_data.get("defender_history", []), list) else []
+    usb_device_history = report_data.get("usb_device_history", []) if isinstance(report_data.get("usb_device_history", []), list) else []
     try:
         process_match_count = int(report_data.get("indicator_match_count", len(findings)) or 0)
         file_match_count = int(report_data.get("file_indicator_match_count", len(artifact_findings)) or 0)
@@ -1666,6 +1668,8 @@ def report_detail(report_id):
           <a href="#recent-files">الملفات الحديثة <em>{{ recent_files|length }}</em></a>
           <a href="#process-list">العمليات <em>{{ processes|length }}</em></a>
           <a href="#artifact-list">آثار الملفات <em>{{ artifacts|length }}</em></a>
+          <a href="#defender-history">سجل Defender <em>{{ defender_history|length }}</em></a>
+          <a href="#usb-history">سجل USB <em>{{ usb_device_history|length }}</em></a>
         </nav>
         <div class="forensic-nav-label">CONTEXT</div>
         <nav class="forensic-nav">
@@ -1742,6 +1746,33 @@ def report_detail(report_id):
           </article>
         {% else %}<div class="empty-state">لا توجد اختصارات ملفات حديثة في مجلد Recent.</div>{% endfor %}
       </div>
+      <div class="card" id="defender-history">
+        <h2>Defender History · سجل حماية Windows</h2>
+        <p class="muted">أحداث الكشف والإجراء من Microsoft Defender Operational خلال آخر 90 يومًا. سجل تاريخي؛ لا يعني وحده وجود غش أو إصابة نشطة.</p>
+        {% for item in defender_history %}
+          <article class="process-embed {% if item.get('event_id') == 1116 %}flagged{% endif %}" data-report-entry data-severity="{{ 'warning' if item.get('event_id') == 1116 else 'info' }}">
+            <div class="process-embed-head"><span>🛡️</span><span class="process-embed-title">{{ item.get('threat_name') or 'Threat event' }}</span><span class="process-embed-meta">Event {{ item.get('event_id') }}</span></div>
+            <div class="field"><b>الوقت — السعودية (UTC+3)</b><span dir="ltr">{{ item.get('event_time')|default('غير متاح') }}</span></div>
+            <div class="field"><b>الإجراء</b><span>{{ item.get('action_name') or 'غير مسجل' }}</span></div>
+            {% if item.get('affected_path') %}<div class="field"><b>المسار المتأثر (قد يكون منقحًا)</b><span dir="ltr">{{ item.get('affected_path') }}</span></div>{% endif %}
+            <div class="field"><b>المصدر</b><span>{{ item.get('source') }}</span></div>
+            <div class="muted">{{ item.get('interpretation') }}</div>
+          </article>
+        {% else %}<div class="empty-state">لا توجد أحداث ضمن النطاق، أو أن سجل Defender غير متاح. الحالة: {{ report_data.get('defender_history_status', {}).get('status', 'غير معروف') }}</div>{% endfor %}
+      </div>
+      <div class="card" id="usb-history">
+        <h2>USB Device History · سجل الأجهزة الخارجية</h2>
+        <p class="muted">سجل USB/USBSTOR التاريخي من Windows. لا نعرض الأرقام التسلسلية؛ نعرض بصمة مختصرة. وجود سجل لا يثبت أن الجهاز أزيل أو أنه متصل حاليًا.</p>
+        {% for item in usb_device_history %}
+          <article class="process-embed" data-report-entry data-severity="info">
+            <div class="process-embed-head"><span>🔌</span><span class="process-embed-title">{{ item.get('device_name') or 'USB device' }}</span><span class="process-embed-meta">{{ item.get('device_class') }}</span></div>
+            <div class="field"><b>آخر تعديل لسجل الجهاز — UTC</b><span dir="ltr">{{ item.get('last_registry_write') or 'غير متاح' }}</span></div>
+            <div class="field"><b>بصمة معرف الجهاز</b><span dir="ltr">{{ item.get('instance_fingerprint') }}</span></div>
+            <div class="field"><b>مصدر السجل</b><span>{{ item.get('registry_source') }}</span></div>
+            <div class="muted">{{ item.get('interpretation') }}</div>
+          </article>
+        {% else %}<div class="empty-state">لا توجد سجلات USB متاحة. الحالة: {{ report_data.get('usb_device_history_status', {}).get('status', 'غير معروف') }}</div>{% endfor %}
+      </div>
       <div class="card" id="report-notes"><h2>النتيجة والتوصية</h2><p>{{ status_detail }}</p><p class="muted">{{ report_data.get('note', 'النتائج الآلية مؤشرات أولية وتحتاج إلى مراجعة بشرية.') }}</p></div>
       <div class="card" id="process-list">
         <h2>الملفات والعمليات</h2>
@@ -1796,7 +1827,7 @@ def report_detail(report_id):
       </div>
       <script>(function(){const input=document.getElementById('forensic-search'),entries=Array.from(document.querySelectorAll('[data-report-entry]')),filters=Array.from(document.querySelectorAll('[data-filter]')),counter=document.getElementById('finding-counter');let active='all';function apply(){const q=(input?.value||'').trim().toLocaleLowerCase();let shown=0;entries.forEach(el=>{const text=(el.innerText||'').toLocaleLowerCase(),severity=el.dataset.severity||'info';const ok=(active==='all'||severity===active)&&(!q||text.includes(q));el.style.display=ok?'block':'none';if(ok)shown++;});if(counter)counter.textContent=shown+' / '+entries.length+' entries';}filters.forEach(btn=>btn.addEventListener('click',()=>{active=btn.dataset.filter;filters.forEach(x=>x.setAttribute('aria-pressed',String(x===btn)));apply();}));input?.addEventListener('input',apply);apply();})();</script>
     </div></main></div>
-    """,r=r,report_data=report_data,processes=processes,visible_processes=visible_processes,process_page=process_page,process_pages=process_pages,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,visible_artifacts=visible_artifacts,artifact_page=artifact_page,artifact_pages=artifact_pages,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"],source_label=source_label,target_label=target_label,recent_apps=recent_apps,visible_recent_apps=visible_recent_apps,recent_files=recent_files,visible_recent_files=visible_recent_files)
+    """,r=r,report_data=report_data,processes=processes,visible_processes=visible_processes,process_page=process_page,process_pages=process_pages,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,visible_artifacts=visible_artifacts,artifact_page=artifact_page,artifact_pages=artifact_pages,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"],source_label=source_label,target_label=target_label,recent_apps=recent_apps,visible_recent_apps=visible_recent_apps,recent_files=recent_files,visible_recent_files=visible_recent_files,defender_history=defender_history,usb_device_history=usb_device_history)
 
 @app.post("/reports/<int:report_id>/send-discord")
 @login_required
