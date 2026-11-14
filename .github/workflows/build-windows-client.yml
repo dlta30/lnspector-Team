@@ -68,7 +68,7 @@ jobs:
           if (Test-Path "session_config.py") {
             python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --add-data "3en.png;." --add-data "3en-inspect-hero.jpg;." --hidden-import session_config inspector_client.py
           } else {
-            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --add-data "3en.png;." inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --add-data "3en.png;." --add-data "3en-inspect-hero.jpg;." inspector_client.py
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $exe = Join-Path (Join-Path "dist" $name) "$name.exe"
