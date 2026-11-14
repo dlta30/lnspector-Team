@@ -926,7 +926,7 @@ def collect_amcache_evidence(progress, max_entries=2500, max_scan_seconds=8, lan
 
     started = time.monotonic()
     rows = []
-    registry_path = r"AMCACHE\\Root\\InventoryApplicationFile"
+    registry_path = r"AMCACHE\Root\InventoryApplicationFile"
     try:
         root = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, registry_path, 0, winreg.KEY_READ)
     except OSError:
