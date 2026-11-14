@@ -65,7 +65,7 @@ jobs:
           # Use onedir instead of onefile: avoids the self-extracting single-file bootloader.
           # No UPX, packer, obfuscation, or security-tool exclusions are used.
           if (Test-Path "session_config.py") {
-            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --add-data "3en.png;." --hidden-import session_config inspector_client.py
+            python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --add-data "3en.png;." --add-data "3en-inspect-hero.jpg;." --hidden-import session_config inspector_client.py
           } else {
             python -m PyInstaller --noconfirm --clean --noupx --onedir --windowed --name $name --icon 3en.ico --add-data "3en.ico;." --add-data "3en.png;." inspector_client.py
           }
