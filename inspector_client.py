@@ -914,6 +914,150 @@ def analyze_fivem_binaries(artifacts, progress, max_files=500,
 
 
 
+
+def collect_defender_history(progress, max_events=200, days=90, language="ar"):
+    """Read recent Microsoft Defender Operational detection/action events; never change Defender settings."""
+    import subprocess
+    import json
+    if platform.system().lower() != "windows":
+        return [], {"status": "unsupported_platform", "events_reviewed": 0}
+    script = r"""
+$ids = @(1116,1117,1118,1119)
+$events = @(Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational'; Id=$ids; StartTime=(Get-Date).AddDays(-90)} -MaxEvents 200 -ErrorAction SilentlyContinue)
+$result = foreach ($event in $events) {
+  try {
+    [xml]$xml = $event.ToXml()
+    $data = @{}
+    foreach ($node in $xml.Event.EventData.Data) { if ($node.Name) { $data[[string]$node.Name] = [string]$node.'#text' } }
+    $path = [string]$data['Path']
+    $pathClass = if ($path -match '\\Users\\[^\\]+') { $path -replace '\\Users\\[^\\]+', '\\Users\\[redacted]' } else { $path }
+    [pscustomobject]@{
+      event_id = [int]$event.Id
+      event_time = $event.TimeCreated.ToUniversalTime().ToString('o')
+      threat_name = [string]$data['Threat Name']
+      threat_id = [string]$data['Threat ID']
+      action_name = [string]$data['Action Name']
+      detection_user = ''
+      affected_path = $pathClass
+      severity_id = [string]$data['Severity ID']
+      category_id = [string]$data['Category ID']
+    }
+  } catch {}
+}
+ConvertTo-Json -InputObject @($result) -Depth 4 -Compress
+"""
+    try:
+        proc = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "RemoteSigned", "-Command", script],
+            capture_output=True, text=True, timeout=18, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        )
+        if proc.returncode != 0:
+            return [], {"status": "access_or_query_error", "events_reviewed": 0}
+        raw = json.loads(proc.stdout.strip() or "[]")
+        if isinstance(raw, dict):
+            raw = [raw]
+        rows = []
+        for item in raw[:max_events]:
+            if not isinstance(item, dict):
+                continue
+            event_id = int(item.get("event_id") or 0)
+            if event_id not in (1116, 1117, 1118, 1119):
+                continue
+            rows.append({
+                "event_id": event_id,
+                "event_time": item.get("event_time"),
+                "threat_name": str(item.get("threat_name") or "Unknown")[:180],
+                "action_name": str(item.get("action_name") or "Not recorded")[:100],
+                "affected_path": str(item.get("affected_path") or "")[:700],
+                "severity_id": str(item.get("severity_id") or "")[:30],
+                "category_id": str(item.get("category_id") or "")[:30],
+                "source": "Microsoft-Windows-Windows Defender/Operational",
+                "interpretation": "Historical Defender event; review event ID, action and current device state. It is not by itself proof of a game cheat.",
+            })
+        progress(72, f"Microsoft Defender history events reviewed: {len(rows)}")
+        return rows, {"status": "ok", "events_reviewed": len(rows), "lookback_days": days}
+    except subprocess.TimeoutExpired:
+        return [], {"status": "query_timeout", "events_reviewed": 0}
+    except (OSError, ValueError, TypeError, json.JSONDecodeError):
+        return [], {"status": "unavailable_or_unreadable", "events_reviewed": 0}
+
+
+def collect_usb_device_history(progress, max_devices=250, language="ar"):
+    """Read bounded USB/USBSTOR registry history; identifiers are hashed to avoid exposing serial numbers."""
+    import winreg
+    import hashlib
+    if platform.system().lower() != "windows":
+        return [], {"status": "unsupported_platform", "device_count": 0}
+    roots = [
+        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\\CurrentControlSet\\Enum\\USB", "USB"),
+        (winreg.HKEY_LOCAL_MACHINE, r"SYSTEM\\CurrentControlSet\\Enum\\USBSTOR", "USBSTOR"),
+    ]
+    rows, seen = [], set()
+    for hive, registry_path, source_name in roots:
+        try:
+            root = winreg.OpenKey(hive, registry_path, 0, winreg.KEY_READ)
+        except OSError:
+            continue
+        try:
+            for index in range(max_devices):
+                try:
+                    device_key_name = winreg.EnumKey(root, index)
+                except OSError:
+                    break
+                try:
+                    device_key = winreg.OpenKey(root, device_key_name, 0, winreg.KEY_READ)
+                except OSError:
+                    continue
+                try:
+                    for child_index in range(max_devices):
+                        try:
+                            instance = winreg.EnumKey(device_key, child_index)
+                            instance_key = winreg.OpenKey(device_key, instance, 0, winreg.KEY_READ)
+                        except OSError:
+                            break
+                        try:
+                            try:
+                                friendly = str(winreg.QueryValueEx(instance_key, "FriendlyName")[0])
+                            except OSError:
+                                try:
+                                    friendly = str(winreg.QueryValueEx(instance_key, "DeviceDesc")[0])
+                                except OSError:
+                                    friendly = device_key_name
+                            try:
+                                _, _, _, last_write = winreg.QueryInfoKey(instance_key)
+                                stamp = datetime(1601, 1, 1, tzinfo=timezone.utc) + timedelta(microseconds=last_write / 10)
+                                last_seen = stamp.isoformat(timespec="seconds")
+                            except (OSError, OverflowError, ValueError):
+                                last_seen = None
+                            instance_hash = hashlib.sha256((source_name + "|" + device_key_name + "|" + instance).encode("utf-8", "replace")).hexdigest()[:16]
+                            if instance_hash in seen:
+                                continue
+                            seen.add(instance_hash)
+                            rows.append({
+                                "device_name": friendly[:180],
+                                "device_class": device_key_name[:120],
+                                "instance_fingerprint": instance_hash,
+                                "last_registry_write": last_seen,
+                                "registry_source": "HKLM\\SYSTEM\\CurrentControlSet\\Enum\\" + source_name,
+                                "status": "historical_registry_entry",
+                                "interpretation": "Registry history entry only; does not prove the device is currently connected or was removed at this timestamp.",
+                            })
+                        finally:
+                            winreg.CloseKey(instance_key)
+                        if len(rows) >= max_devices:
+                            break
+                finally:
+                    winreg.CloseKey(device_key)
+                if len(rows) >= max_devices:
+                    break
+        finally:
+            winreg.CloseKey(root)
+        if len(rows) >= max_devices:
+            break
+    progress(74, f"USB registry history entries reviewed: {len(rows)}")
+    return rows, {"status": "ok", "device_count": len(rows), "limit": max_devices}
+
+
 def collect_amcache_evidence(progress, max_entries=2500, max_scan_seconds=8, language="ar"):
     """Read bounded Amcache inventory metadata from Windows registry; never modify the hive."""
     import time
@@ -1763,6 +1907,8 @@ class InspectorApp(tk.Tk):
             binary_analysis = analyze_fivem_binaries(fivem_files, self.update_progress)
             deleted_file_findings = collect_deleted_file_evidence(self.update_progress, language=self.lang)
             amcache_findings = collect_amcache_evidence(self.update_progress, language=self.lang)
+            defender_events, defender_status = collect_defender_history(self.update_progress, language=self.lang)
+            usb_history, usb_status = collect_usb_device_history(self.update_progress, language=self.lang)
             # Keep targeted game evidence, log indicators, deleted-file metadata, and Amcache inventory in the unified inventory.
             for item in fivem_files:
                 item.setdefault("source", "FiveM/GTA V targeted locations")
@@ -1801,7 +1947,7 @@ class InspectorApp(tk.Tk):
                 "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
                 "device_label": platform.node()[:100] or "Unknown",
                 "platform": platform.platform()[:200],
-                "scan_scope": "Bounded inventory of user folders and selected third-party app locations only (up to 5,000 items or 25 seconds); Windows/system directories and Windows components are not traversed; plus read-only Windows Amcache inventory metadata (up to 2,500 registry entries or 8 seconds; relevant game-context records and name/path leads only; Amcache presence is not proof of execution); targeted FiveM/GTA V install, CitizenFX, and user Documents locations (up to 8,000 items or 35 seconds; EXE/DLL/ASI/LUA/LUAC/JSON/CFG/INI/LOG/DAT/BIN/ZIP/RAR/7Z/RPF/META/XML); selected FiveM/CitizenFX text logs are scanned with strict file/byte/time limits and only marker names and line numbers are reported, never log contents; selected FiveM/CitizenFX resource and configuration text files are also checked locally with strict file/byte/time limits; only matched indicators and line numbers are retained, never file contents; Windows Recycle Bin $I metadata is checked on C: and D: for selected executable/script/config/archive file types, without reading or restoring deleted file contents; all currently running processes plus Windows Prefetch evidence from the last 24 hours; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
+                "scan_scope": "Bounded inventory of user folders and selected third-party app locations only (up to 5,000 items or 25 seconds); Windows/system directories and Windows components are not traversed; plus read-only Windows Amcache inventory metadata (up to 2,500 registry entries or 8 seconds; relevant game-context records and name/path leads only; Amcache presence is not proof of execution); targeted FiveM/GTA V install, CitizenFX, and user Documents locations (up to 8,000 items or 35 seconds; EXE/DLL/ASI/LUA/LUAC/JSON/CFG/INI/LOG/DAT/BIN/ZIP/RAR/7Z/RPF/META/XML); selected FiveM/CitizenFX text logs are scanned with strict file/byte/time limits and only marker names and line numbers are reported, never log contents; selected FiveM/CitizenFX resource and configuration text files are also checked locally with strict file/byte/time limits; only matched indicators and line numbers are retained, never file contents; Windows Recycle Bin $I metadata is checked on C: and D: for selected executable/script/config/archive file types, without reading or restoring deleted file contents; all currently running processes plus Windows Prefetch evidence from the last 24 hours; read-only Microsoft Defender Operational history events 1116-1119 for the previous 90 days; read-only USB/USBSTOR registry history with hashed instance identifiers; Authenticode verification for EXE/DLL; metadata only, archives are not opened, and file contents are never uploaded",
                 "process_count": len(processes),
                 "indicator_match_count": len(matches) + len(file_matches),
                 "unique_indicator_file_count": evidence_quality["unique_indicator_file_count"],
@@ -1824,6 +1970,10 @@ class InspectorApp(tk.Tk):
                 "deleted_fivem_file_count": sum(1 for item in deleted_file_findings if item.get("game_context")),
                 "amcache_record_count": len(amcache_findings),
                 "amcache_indicator_count": sum(1 for item in amcache_findings if item.get("indicator_matches")),
+                "defender_history": defender_events,
+                "defender_history_status": defender_status,
+                "usb_device_history": usb_history,
+                "usb_device_history_status": usb_status,
                 "file_artifacts": files,
                 "recent_apps_24h": recent_apps,
                 "recent_apps_24h_count": len(recent_apps),
@@ -1832,7 +1982,7 @@ class InspectorApp(tk.Tk):
                 "signature_verified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "verified"),
                 "signature_unverified_count": sum(1 for row in list(processes) + list(files) if row.get("signature_status") == "unverified"),
                 "game_process_context": sorted({game for proc in processes for game in proc.get("game_context", [])}),
-                "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded user/application-file inventory with Windows/system locations excluded, plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. Selected FiveM/CitizenFX text logs are checked locally for specific known tool markers; only marker names and line numbers are retained, never log text. Selected FiveM resource/configuration text files are also checked locally; targeted EXE/DLL/ASI/BIN game binaries receive bounded SHA-256 hashing and local static string triage for known tool names and multiple process-memory API markers; only hashes and marker names are retained, never binary contents. Selected resources for known tool names and combinations of gameplay-manipulation indicators; only matched marker names and line numbers are retained, never file text. Windows Recycle Bin metadata is also checked for selected security-relevant file types; only filename, approximate deletion time, size, and a coarse folder category are retained, not the original full path or deleted contents. This does not detect every permanently deleted file and does not perform recovery. The report also includes bounded, read-only Amcache inventory metadata for relevant FiveM/GTA V context and name/path leads; Amcache inventory is not proof of execution. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened; only selected FiveM/CitizenFX text logs are read locally for specific known markers, and their text is never uploaded; file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. A full-desktop screenshot is captured and retained with the report only when the separate screenshot-consent option is selected; otherwise no screenshot is taken. No files are modified and no processes are terminated.",
+                "note": "Configured names and paths are indicators for manual review, not proof of cheating. The report includes a bounded user/application-file inventory with Windows/system locations excluded, plus a targeted metadata inventory of common FiveM/GTA V and CitizenFX locations and relevant file extensions. Selected FiveM/CitizenFX text logs are checked locally for specific known tool markers; only marker names and line numbers are retained, never log text. Selected FiveM resource/configuration text files are also checked locally; targeted EXE/DLL/ASI/BIN game binaries receive bounded SHA-256 hashing and local static string triage for known tool names and multiple process-memory API markers; only hashes and marker names are retained, never binary contents. Selected resources for known tool names and combinations of gameplay-manipulation indicators; only matched marker names and line numbers are retained, never file text. Windows Recycle Bin metadata is also checked for selected security-relevant file types; only filename, approximate deletion time, size, and a coarse folder category are retained, not the original full path or deleted contents. This does not detect every permanently deleted file and does not perform recovery. The report also includes read-only Microsoft Defender Operational detection/action event metadata (IDs 1116-1119, bounded to 90 days) and USB/USBSTOR registry history; USB registry entries are historical records, not proof of current connection or removal, and serial-like instance identifiers are hashed. The report also includes bounded, read-only Amcache inventory metadata for relevant FiveM/GTA V context and name/path leads; Amcache inventory is not proof of execution. The recent activity section includes every process still running at scan time, marks processes started within the last 24 hours, and adds Windows Prefetch execution evidence from the last 24 hours where available; Prefetch timestamps are approximate and may be unavailable if disabled. File timestamps show last modification, not last execution; archives are not opened; only selected FiveM/CitizenFX text logs are read locally for specific known markers, and their text is never uploaded; file contents are never uploaded. Valid Authenticode signatures identify a verified publisher but do not prove a program is harmless. Coverage is bounded by time and item limits and cannot guarantee detection of every cheat. Dates are retained in UTC and local display format. A full-desktop screenshot is captured and retained with the report only when the separate screenshot-consent option is selected; otherwise no screenshot is taken. No files are modified and no processes are terminated.",
                 "processes": processes,
             }
             add_localized_indicator_fields(self.report, self.lang)
