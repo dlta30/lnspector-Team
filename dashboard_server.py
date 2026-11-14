@@ -1601,6 +1601,28 @@ def report_detail(report_id):
     return page("""
     <style>
 
+      .forensic-layout{display:grid;grid-template-columns:210px minmax(0,1fr);gap:16px;align-items:start;direction:ltr}
+      .forensic-sidebar{position:sticky;top:14px;min-height:calc(100vh - 120px);background:#0d1110;border:1px solid #ffffff12;border-radius:14px;padding:16px 10px;direction:rtl}
+      .forensic-brand{padding:8px 12px 18px;border-bottom:1px solid #ffffff12;margin-bottom:14px}
+      .forensic-brand strong{display:block;color:#ff637d;font-size:19px;letter-spacing:1.5px}
+      .forensic-brand small{color:#8e98a2;font-size:10px;letter-spacing:2px}
+      .forensic-nav-label{color:#66716f;font-size:10px;font-weight:800;padding:12px 12px 6px}
+      .forensic-nav{display:flex;flex-direction:column;gap:4px}
+      .forensic-nav a{display:flex;align-items:center;justify-content:space-between;gap:8px;text-decoration:none;color:#aab4b2;padding:10px 12px;border-radius:8px;font-size:12px;border-right:2px solid transparent}
+      .forensic-nav a:hover,.forensic-nav a.active{background:#18201e;color:#f4f7f6;border-right-color:#ff536f}
+      .forensic-nav em{font-style:normal;color:#7f8b88;font-size:10px;font-variant-numeric:tabular-nums}
+      .forensic-main{min-width:0;direction:rtl}
+      .finding-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px;background:#0c100f;border:1px solid #ffffff14;border-radius:12px;margin:0 0 14px}
+      .finding-toolbar input{flex:1;min-width:190px;background:#080c0b;border:1px solid #293330;color:#e7eeeb;border-radius:7px;padding:10px}
+      .finding-filter{border:1px solid #34403c;background:#111715;color:#b8c3bf;border-radius:18px;padding:7px 12px;font-size:11px;cursor:pointer}
+      .finding-filter[aria-pressed="true"]{border-color:#ff536f;color:#ff9bad;background:#321821}
+      .finding-counter{margin-right:auto;color:#71807b;font-size:10px}
+      .forensic-main .card{background:#0d1110;border-color:#ffffff12}
+      .forensic-main .report-metric{background:#101614;border-radius:10px}
+      .forensic-main .process-embed{background:#101513;border-radius:9px;margin:8px 0;box-shadow:none}
+      .forensic-main .process-embed-head{background:#141b18}
+      .forensic-main .process-embed.flagged{border-left:2px solid #e9a23b}
+      @media(max-width:850px){.forensic-layout{grid-template-columns:1fr}.forensic-sidebar{position:relative;min-height:0}.forensic-nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}.forensic-main{min-width:0}}
       .report-hero{position:relative;isolation:isolate;overflow:hidden;padding:clamp(22px,4vw,38px);border-radius:22px;background:radial-gradient(ellipse at 95% 0%,#7f1d3b55,transparent 42%),linear-gradient(135deg,#17131f 0%,#10121c 55%,#0c0e14 100%);border:1px solid #ff49652b;margin-bottom:20px;box-shadow:0 18px 55px #0005}
       .report-hero:after{content:"3eN";position:absolute;z-index:-1;left:18px;bottom:-35px;font-size:clamp(76px,14vw,150px);font-weight:900;letter-spacing:-8px;color:#ffffff06;direction:ltr}
       .report-status{display:inline-flex;align-items:center;gap:8px;padding:10px 15px;border-radius:11px;font-weight:900;font-size:14px;margin:4px 0;border:1px solid transparent}
@@ -1634,14 +1656,33 @@ def report_detail(report_id):
       function chooseDiscordVerdict(form){return collectReportVerdict(form,"تأكيد إرسال التقرير إلى Discord مع PDF والصورة إن وُجدت؟");}
       function chooseReportVerdict(form){return collectReportVerdict(form,"تأكيد حفظ التصنيف والسبب في لوحة التقارير؟");}
     </script>
-    <div class="card">
+    <div class="forensic-layout">
+      <aside class="forensic-sidebar">
+        <div class="forensic-brand"><strong>3EN INSPECT</strong><small>FORENSIC REPORT</small></div>
+        <div class="forensic-nav-label">REPORT</div>
+        <nav class="forensic-nav">
+          <a class="active" href="#report-summary">الملخص <em>01</em></a>
+          <a href="#recent-apps">سجل التشغيل <em>{{ recent_apps|length }}</em></a>
+          <a href="#recent-files">الملفات الحديثة <em>{{ recent_files|length }}</em></a>
+          <a href="#process-list">العمليات <em>{{ processes|length }}</em></a>
+          <a href="#artifact-list">آثار الملفات <em>{{ artifacts|length }}</em></a>
+        </nav>
+        <div class="forensic-nav-label">CONTEXT</div>
+        <nav class="forensic-nav">
+          <a href="#report-summary">معلومات الجهاز</a>
+          <a href="#report-notes">ملاحظات الفحص</a>
+          <a href="{{ url_for('reports') }}">العودة للتقارير</a>
+        </nav>
+      </aside>
+      <main class="forensic-main">
+      <div class="card">
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:14px">
         <a class="btn" href="{{ url_for('reports') }}">← رجوع للتقارير</a>
         <a class="btn" href="{{ url_for('report_pdf', report_id=r['id']) }}" style="background:linear-gradient(120deg,#e72f53,#8f1737);color:#fff;border-color:#ff5b78;font-weight:800">⬇ تنزيل التقرير PDF</a>
         <a class="btn" href="#process-list">▤ عرض بطاقات العمليات</a>
         {% if actor_role in ('owner','deputy','inspector') %}<form method="post" action="{{ url_for('report_send_discord', report_id=r['id']) }}" style="display:inline;margin:0" onsubmit="return chooseDiscordVerdict(this);"><input type="hidden" name="verdict" value=""><input type="hidden" name="reason" value=""><button class="btn" type="submit" style="background:linear-gradient(120deg,#5865F2,#404EED);color:#fff;border-color:#7984ff;font-weight:800">◈ إرسال في Discord</button></form>{% endif %}
       </div>
-      <div class="report-hero">
+      <div class="report-hero" id="report-summary">
         <div class="muted">3eN INSPECT · تقرير فحص #{{ r['id'] }}</div>
         <h2 style="margin-top:10px">نتيجة فحص الجهاز</h2>
         <span class="report-status {{ status_class }}">{{ status_title }}</span>
@@ -1662,11 +1703,18 @@ def report_detail(report_id):
         <div class="report-metric">ملفات مواقع FiveM<strong>{{ report_data.get('fivem_artifact_count', 0) }}</strong></div>
         <div class="report-metric">مؤشرات FiveM<strong>{{ report_data.get('fivem_indicator_match_count', 0) }}</strong></div>
       </div>
+      <div class="finding-toolbar" role="search">
+        <input id="forensic-search" type="search" placeholder="ابحث في النتائج والمسارات والتواريخ…" aria-label="Search findings, paths and timestamps">
+        <button class="finding-filter" type="button" data-filter="all" aria-pressed="true">الكل</button>
+        <button class="finding-filter" type="button" data-filter="warning" aria-pressed="false">تحذيرات · {{ findings|length + artifact_findings|length }}</button>
+        <button class="finding-filter" type="button" data-filter="info" aria-pressed="false">معلومات</button>
+        <span class="finding-counter" id="finding-counter">—</span>
+      </div>
       <div class="card" id="recent-apps">
         <h2>البرامج التي لها سجل خلال آخر 24 ساعة</h2>
         <p class="muted">يشمل العمليات المفتوحة الآن وسجلات Windows Prefetch لآخر 24 ساعة. سجل Prefetch قد يبقى بعد حذف البرنامج، ويظهر كقرينة تشغيل تقريبية. إذا وُجد اسم مطابق في سلة المحذوفات نعرض وقت الحذف، لكن تطابق الاسم لا يؤكد المسار. قد لا تتوفر السجلات إذا كان Prefetch معطلاً أو تم تنظيفه.</p>
         {% for item in visible_recent_apps %}
-          <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}">
+          <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}" data-report-entry data-severity="{{ 'warning' if item.get('indicator_matches') else 'info' }}">
             <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}🕒{% endif %}</span><span class="process-embed-title">{{ item.get('app_name') or item.get('file_name') or 'تطبيق غير معروف' }}</span><span class="process-embed-meta">{{ 'يعمل الآن' if item.get('currently_running') else 'سجل تشغيل تقريبي' }}</span><span class="process-embed-meta">{{ item.get('evidence_source') or 'مصدر غير محدد' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">{{ item.get('indicator_category') or 'مؤشرات هاك/غش' }} — يحتاج مراجعة</span>{% endif %}</div>
             <div class="field"><b>المسار / سجل التشغيل</b><span dir="ltr">{{ item.get('path') or 'غير متاح' }}</span></div>
             <div class="field"><b>وقت آخر ظهور / تشغيل</b><span dir="ltr">{{ item.get('last_seen_display') or item.get('last_seen_at') or 'غير متاح' }}</span></div>
@@ -1681,7 +1729,7 @@ def report_detail(report_id):
         <h2>Recent — الملفات الحديثة وآثار الملفات المحذوفة</h2>
         <p class="muted">يعرض اختصارات الملفات الحديثة في Windows Recent. إذا كان الملف الهدف غير موجود، فقد يكون محذوفًا أو منقولًا؛ ولا نعدّه محذوفًا بشكل مؤكد إلا عند وجود سجل مطابق في سلة المحذوفات.</p>
         {% for item in visible_recent_files %}
-          <article class="process-embed">
+          <article class="process-embed" data-report-entry data-severity="info">
             <div class="process-embed-head"><span>🕘</span><span class="process-embed-title">{{ item.get('file_name') or item.get('shortcut_name') or 'ملف غير معروف' }}</span>
               {% if item.get('recycle_bin_name_match') %}<span class="tag" style="background:#48221e;color:#ffc078">اسم مطابق في سلة المحذوفات — يحتاج مطابقة المسار</span>
               {% elif item.get('target_status') == 'missing_or_moved' %}<span class="tag">الملف غير موجود — قد يكون محذوفًا أو منقولًا</span>
@@ -1694,7 +1742,7 @@ def report_detail(report_id):
           </article>
         {% else %}<div class="empty-state">لا توجد اختصارات ملفات حديثة في مجلد Recent.</div>{% endfor %}
       </div>
-      <div class="card"><h2>النتيجة والتوصية</h2><p>{{ status_detail }}</p><p class="muted">{{ report_data.get('note', 'النتائج الآلية مؤشرات أولية وتحتاج إلى مراجعة بشرية.') }}</p></div>
+      <div class="card" id="report-notes"><h2>النتيجة والتوصية</h2><p>{{ status_detail }}</p><p class="muted">{{ report_data.get('note', 'النتائج الآلية مؤشرات أولية وتحتاج إلى مراجعة بشرية.') }}</p></div>
       <div class="card" id="process-list">
         <h2>الملفات والعمليات</h2>
         <p class="muted">أسماء الملفات ومساراتها وأوقات التشغيل وتواريخ الملفات المتاحة. تاريخ إنشاء الملف لا يثبت وقت تنزيله بدقة.</p>
@@ -1702,7 +1750,7 @@ def report_detail(report_id):
         <div class="muted" style="margin:10px 0">عرض {{ visible_processes|length }} من أصل {{ processes|length }} عملية · الصفحة {{ process_page }} من {{ process_pages }}</div>
         <div id="file-list">
         {% for item in visible_processes %}
-          <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}" data-file-search="{{ (item.get('file_name','') ~ ' ' ~ item.get('process_name','') ~ ' ' ~ item.get('executable_path','') ~ ' ' ~ item.get('command_line',''))|e }}">
+          <article class="process-embed {% if item.get('indicator_matches') %}flagged{% endif %}" data-report-entry data-severity="{{ 'warning' if item.get('indicator_matches') else 'info' }}" data-file-search="{{ (item.get('file_name','') ~ ' ' ~ item.get('process_name','') ~ ' ' ~ item.get('executable_path','') ~ ' ' ~ item.get('command_line',''))|e }}">
             <div class="process-embed-head"><span>{% if item.get('indicator_matches') %}⚠️{% else %}📄{% endif %}</span><span class="process-embed-title">{{ item.get('file_name') or item.get('process_name') or 'ملف غير معروف' }}</span><span class="process-embed-meta">PID {{ item.get('pid') or '—' }}</span>{% if item.get('indicator_matches') %}<span class="tag" style="background:#48221e;color:#ffc078">{{ item.get('indicator_category') or 'مؤشرات هاك/غش' }} — يحتاج مراجعة</span>{% endif %}</div>
             <div class="field"><b>اسم العملية</b><span dir="ltr">{{ item.get('process_name') or 'غير متاح' }}</span></div>
             <div class="field"><b>اسم الملف</b><span dir="ltr">{{ item.get('file_name') or 'غير متاح' }}</span></div>
@@ -1746,8 +1794,8 @@ def report_detail(report_id):
           {% if artifact_page < artifact_pages %}<a class="btn" href="{{ url_for('report_detail',report_id=r['id'],process_page=process_page,artifact_page=artifact_page+1) }}#artifact-list">الملفات التالية →</a>{% endif %}
         </div>{% endif %}
       </div>
-      <script>(function(){const input=document.getElementById('file-search'),items=Array.from(document.querySelectorAll('[data-file-search]')),none=document.getElementById('file-none');if(!input)return;input.addEventListener('input',()=>{const q=input.value.trim().toLocaleLowerCase();let n=0;items.forEach(el=>{const ok=el.dataset.fileSearch.toLocaleLowerCase().includes(q);el.style.display=ok?'block':'none';if(ok)n++;});if(none)none.style.display=n?'none':'block';});})();</script>
-    </div>
+      <script>(function(){const input=document.getElementById('forensic-search'),entries=Array.from(document.querySelectorAll('[data-report-entry]')),filters=Array.from(document.querySelectorAll('[data-filter]')),counter=document.getElementById('finding-counter');let active='all';function apply(){const q=(input?.value||'').trim().toLocaleLowerCase();let shown=0;entries.forEach(el=>{const text=(el.innerText||'').toLocaleLowerCase(),severity=el.dataset.severity||'info';const ok=(active==='all'||severity===active)&&(!q||text.includes(q));el.style.display=ok?'block':'none';if(ok)shown++;});if(counter)counter.textContent=shown+' / '+entries.length+' entries';}filters.forEach(btn=>btn.addEventListener('click',()=>{active=btn.dataset.filter;filters.forEach(x=>x.setAttribute('aria-pressed',String(x===btn)));apply();}));input?.addEventListener('input',apply);apply();})();</script>
+    </div></main></div>
     """,r=r,report_data=report_data,processes=processes,visible_processes=visible_processes,process_page=process_page,process_pages=process_pages,process_count=process_count,match_count=match_count,startup=startup,findings=findings,artifacts=artifacts,visible_artifacts=visible_artifacts,artifact_page=artifact_page,artifact_pages=artifact_pages,file_artifact_count=file_artifact_count,status_title=status_title,status_class=status_class,status_detail=status_detail,actor_role=actor["role"],source_label=source_label,target_label=target_label,recent_apps=recent_apps,visible_recent_apps=visible_recent_apps,recent_files=recent_files,visible_recent_files=visible_recent_files)
 
 @app.post("/reports/<int:report_id>/send-discord")
