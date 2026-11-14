@@ -1901,6 +1901,8 @@ def report_pdf(report_id):
     artifacts = data.get("file_artifacts", []) if isinstance(data.get("file_artifacts", []), list) else []
     recent_apps = data.get("recent_apps_24h", []) if isinstance(data.get("recent_apps_24h", []), list) else []
     recent_files = data.get("recent_files", []) if isinstance(data.get("recent_files", []), list) else []
+    defender_history = data.get("defender_history", []) if isinstance(data.get("defender_history", []), list) else []
+    usb_device_history = data.get("usb_device_history", []) if isinstance(data.get("usb_device_history", []), list) else []
     process_findings = [x for x in processes if isinstance(x, dict) and x.get("indicator_matches")]
     file_findings = [x for x in artifacts if isinstance(x, dict) and x.get("indicator_matches")]
     deleted_files = [x for x in artifacts if isinstance(x, dict) and x.get("kind") == "deleted_file_metadata"]
@@ -1985,9 +1987,28 @@ def report_pdf(report_id):
         p(T("الملخص: ","Summary: ")+str(r["summary"] or T("لا يوجد ملخص","No summary"))),
         p(T("نظرة عامة","Overview"),"Head3EN"),
         table([[c(T("العمليات","Processes")),c(T("مؤشرات الأسماء","Name indicators")),c(T("الملفات","Files")),c(T("برامج آخر 24 ساعة","Apps in last 24h")),c(T("الملفات الحديثة","Recent files"))],[c(data.get("process_count",len(processes))),c(len(process_findings)+len(file_findings)),c(data.get("file_artifact_count",len(artifacts))),c(len(recent_apps)),c(len(recent_files))]],[34.8*mm]*5),
+        p(T("سجل Defender: ","Defender events: ")+str(len(defender_history))+T(" · سجل USB التاريخي: "," · USB history entries: ")+str(len(usb_device_history))),
         p(T("ملخص التوقيعات الرقمية","Digital signature summary"),"Head3EN"),
         p(T("التوقيعات الموثقة: ","Verified signatures: ")+str(verified)+T(" · ملفات EXE/DLL غير الموثقة: "," · Unverified EXE/DLL: ")+str(unverified)+T(". التوقيع الصحيح لا يثبت أن البرنامج آمن أو خالٍ من الغش.",". A valid signature does not prove the program is safe or cheat-free."))
     ]
+
+    if defender_history:
+        story.append(p(T("سجل Microsoft Defender — أحداث الكشف والإجراء","Microsoft Defender history — detection and action events"),"Head3EN"))
+        rows=[[c(T("الحدث","Event")),c(T("اسم التهديد","Threat")),c(T("الإجراء","Action")),c(T("الوقت — السعودية","Time — Saudi Arabia")),c(T("المسار","Affected path"))]]
+        for item in defender_history[:200]:
+            rows.append([c(item.get("event_id")),c(item.get("threat_name"),120),c(item.get("action_name"),100),c(format_saudi_time(item.get("event_time"),language),100),c(item.get("affected_path"),180)])
+        story.append(table(rows,[17*mm,42*mm,32*mm,40*mm,55*mm]))
+    else:
+        story.append(p(T("لا توجد أحداث Defender ضمن النطاق أو أن السجل غير متاح.","No Defender events in scope or the event log was unavailable.")))
+
+    if usb_device_history:
+        story.append(p(T("سجل أجهزة USB التاريخي","Historical USB device registry entries"),"Head3EN"))
+        rows=[[c(T("اسم الجهاز","Device")),c(T("الفئة","Class")),c(T("بصمة مختصرة","Fingerprint")),c(T("آخر تعديل — السعودية","Last registry write — Saudi Arabia"))]]
+        for item in usb_device_history[:250]:
+            rows.append([c(item.get("device_name"),120),c(item.get("device_class"),100),c(item.get("instance_fingerprint"),40),c(format_saudi_time(item.get("last_registry_write"),language),100)])
+        story.append(table(rows,[50*mm,48*mm,35*mm,53*mm]))
+    else:
+        story.append(p(T("لا توجد سجلات USB متاحة.","No USB registry history entries were available.")))
 
     if recent_apps:
         story.append(p(T("البرامج التي لها سجل خلال آخر 24 ساعة","Applications with activity evidence in the last 24 hours"),"Head3EN"))
