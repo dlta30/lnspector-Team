@@ -922,7 +922,7 @@ def collect_defender_history(progress, max_events=200, days=90, language="ar"):
     if platform.system().lower() != "windows":
         return [], {"status": "unsupported_platform", "events_reviewed": 0}
     script = r"""
-$ids = @(1116,1117,1118,1119)
+$ids = @(1116,1117,1118,1119,5007)
 $events = @(Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational'; Id=$ids; StartTime=(Get-Date).AddDays(-90)} -MaxEvents 200 -ErrorAction SilentlyContinue)
 $result = foreach ($event in $events) {
   try {
@@ -961,18 +961,19 @@ ConvertTo-Json -InputObject @($result) -Depth 4 -Compress
             if not isinstance(item, dict):
                 continue
             event_id = int(item.get("event_id") or 0)
-            if event_id not in (1116, 1117, 1118, 1119):
+            if event_id not in (1116, 1117, 1118, 1119, 5007):
                 continue
             rows.append({
                 "event_id": event_id,
                 "event_time": item.get("event_time"),
+                "event_time_saudi": format_saudi_time(item.get("event_time"), language),
                 "threat_name": str(item.get("threat_name") or "Unknown")[:180],
                 "action_name": str(item.get("action_name") or "Not recorded")[:100],
                 "affected_path": str(item.get("affected_path") or "")[:700],
                 "severity_id": str(item.get("severity_id") or "")[:30],
                 "category_id": str(item.get("category_id") or "")[:30],
                 "source": "Microsoft-Windows-Windows Defender/Operational",
-                "interpretation": "Historical Defender event; review event ID, action and current device state. It is not by itself proof of a game cheat.",
+                "interpretation": ("Defender configuration-change event; review the recorded change and administrator activity." if event_id == 5007 else "Historical Defender event; review event ID, action and current device state. It is not by itself proof of a game cheat."),
             })
         progress(72, f"Microsoft Defender history events reviewed: {len(rows)}")
         return rows, {"status": "ok", "events_reviewed": len(rows), "lookback_days": days}
