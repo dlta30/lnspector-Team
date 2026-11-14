@@ -1752,7 +1752,7 @@ def report_detail(report_id):
         {% for item in defender_history %}
           <article class="process-embed {% if item.get('event_id') == 1116 %}flagged{% endif %}" data-report-entry data-severity="{{ 'warning' if item.get('event_id') == 1116 else 'info' }}">
             <div class="process-embed-head"><span>🛡️</span><span class="process-embed-title">{{ item.get('threat_name') or 'Threat event' }}</span><span class="process-embed-meta">Event {{ item.get('event_id') }}</span></div>
-            <div class="field"><b>الوقت — السعودية (UTC+3)</b><span dir="ltr">{{ item.get('event_time')|default('غير متاح') }}</span></div>
+            <div class="field"><b>الوقت — السعودية (UTC+3)</b><span dir="ltr">{{ item.get('event_time_saudi') or item.get('event_time') or 'غير متاح' }}</span></div>
             <div class="field"><b>الإجراء</b><span>{{ item.get('action_name') or 'غير مسجل' }}</span></div>
             {% if item.get('affected_path') %}<div class="field"><b>المسار المتأثر (قد يكون منقحًا)</b><span dir="ltr">{{ item.get('affected_path') }}</span></div>{% endif %}
             <div class="field"><b>المصدر</b><span>{{ item.get('source') }}</span></div>
