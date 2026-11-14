@@ -1665,89 +1665,52 @@ class InspectorApp(tk.Tk):
             self._build_consent_screen()
 
     def _build_consent_screen(self):
-        BG, PANEL, RED = "#080a10", "#111521", "#ff365c"
-        WHITE, MUTED, LINE = "#f4f6fc", "#aab3c5", "#30384b"
-        self.configure(bg=BG)
-        style = ttk.Style(self)
-        style.theme_use("clam")
-        style.configure("TButton", font=("Segoe UI", 10, "bold"), padding=(18, 13),
-                        background="#242a3b", foreground=WHITE, bordercolor=LINE, relief="flat")
-        style.map("TButton", background=[("active", "#542033")], foreground=[("active", "white")])
-
-        shell = tk.Frame(self, bg=BG)
-        shell.pack(fill="both", expand=True, padx=16, pady=14)
-
-        hero = tk.Frame(shell, bg="#090b12", height=360, highlightbackground=LINE, highlightthickness=1)
-        hero.pack(fill="x")
-        hero.pack_propagate(False)
+        # Full-screen, image-first consent: no separate panels or language switch.
+        self.lang = "en"
+        self.configure(bg="#050609")
+        self.attributes("-fullscreen", True)
+        screen_w, screen_h = self.winfo_screenwidth(), self.winfo_screenheight()
         self._hero_photo = None
+        canvas = tk.Canvas(self, width=screen_w, height=screen_h, bg="#050609",
+                           highlightthickness=0, bd=0)
+        canvas.pack(fill="both", expand=True)
         try:
             from PIL import Image, ImageTk
             root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
             hero_path = os.path.join(root, "3en-inspect-hero.jpg")
             with Image.open(hero_path) as src:
-                photo = src.convert("RGB").resize((1080, 360), Image.Resampling.LANCZOS)
+                photo = src.convert("RGB")
+                ratio = max(screen_w / photo.width, screen_h / photo.height)
+                photo = photo.resize((int(photo.width * ratio), int(photo.height * ratio)), Image.Resampling.LANCZOS)
+                left = max(0, (photo.width - screen_w) // 2)
+                top = max(0, (photo.height - screen_h) // 2)
+                photo = photo.crop((left, top, left + screen_w, top + screen_h))
             self._hero_photo = ImageTk.PhotoImage(photo)
-            tk.Label(hero, image=self._hero_photo, bg="#090b12", bd=0).place(x=0, y=0, relwidth=1, relheight=1)
+            canvas.create_image(0, 0, image=self._hero_photo, anchor="nw")
         except Exception:
-            hero.configure(bg="#15101a")
-        # Dark glass overlay keeps the brand readable over the supplied Charger artwork.
-        shade = tk.Frame(hero, bg="#090b12", padx=24, pady=18)
-        shade.place(relx=0.035, rely=0.08, relwidth=0.54, relheight=0.82)
-        tk.Label(shade, text="3EN", bg="#090b12", fg=RED,
-                 font=("Segoe UI", 13, "bold")).pack(anchor="w")
-        tk.Label(shade, text="INSPECT", bg="#090b12", fg=WHITE,
-                 font=("Segoe UI", 31, "bold")).pack(anchor="w", pady=(2, 0))
-        tk.Label(shade, text=self._t("تحقيق جنائي رقمي • فحص بموافقة صريحة",
-                                     "DIGITAL FORENSICS  •  EXPLICIT CONSENT"),
-                 bg="#090b12", fg="#ff7891", font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(3, 14))
-        tk.Label(shade, text=self._t("تحليل موجّه لآثار FiveM و GTA V ومؤشرات الأدوات والتلاعب.",
-                                     "Targeted analysis of FiveM / GTA V traces, tool indicators and tampering evidence."),
-                 bg="#090b12", fg="#c4cada", font=("Segoe UI", 10),
-                 wraplength=510, justify="left").pack(anchor="w")
-        tk.Label(shade, text="SECURITY INSPECTION  /  3EN TEAM",
-                 bg="#090b12", fg="#7f8ba2", font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(18, 0))
-
-        top = tk.Frame(shell, bg=BG)
-        top.pack(fill="x", pady=(12, 10))
-        tk.Label(top, text=self._t("قبل بدء الفحص", "BEFORE INSPECTION"),
-                 bg=BG, fg=WHITE, font=("Segoe UI", 18, "bold")).pack(side="left")
-        self.session_badge = tk.Label(top, text=self._t("●  بانتظار الموافقة", "●  AWAITING CONSENT"),
-                                      bg="#321522", fg="#ff8098", padx=13, pady=8,
-                                      font=("Segoe UI", 9, "bold"))
-        self.session_badge.pack(side="right")
-        self.language_choice = ttk.Combobox(top, state="readonly", width=11,
-            values=("العربية", "English"), font=("Segoe UI", 9))
-        self.language_choice.set("العربية" if self.lang == "ar" else "English")
-        self.language_choice.pack(side="right", padx=(0, 10))
-        self.language_choice.bind("<<ComboboxSelected>>", self._change_language)
-
-        consent = tk.Frame(shell, bg=PANEL, padx=20, pady=17,
-                           highlightbackground=LINE, highlightthickness=1)
-        consent.pack(fill="x")
-        tk.Label(consent, text=self._t("01  /  الموافقة والتفويض", "01  /  CONSENT & AUTHORIZATION"),
-                 bg=PANEL, fg="#ff7891", font=("Segoe UI", 9, "bold")).pack(anchor="w")
+            canvas.create_rectangle(0, 0, screen_w, screen_h, fill="#090b12", outline="")
+            canvas.create_text(screen_w // 2, screen_h // 2 - 80, text="3EN INSPECT",
+                               fill="#f4f6fc", font=("Segoe UI", 42, "bold"))
+        # Text is placed directly over the artwork; there are no opaque cards.
+        canvas.create_text(int(screen_w * .70), int(screen_h * .37),
+                           text="CONSENT REQUIRED", fill="#ffffff",
+                           font=("Segoe UI", 27, "bold"), anchor="center")
+        canvas.create_text(int(screen_w * .70), int(screen_h * .45),
+                           text="Review and agree before starting the inspection.",
+                           fill="#f0f2f6", font=("Segoe UI", 15), anchor="center")
+        canvas.create_text(int(screen_w * .70), int(screen_h * .52),
+                           text="I authorize the stated device inspection and evidence collection.",
+                           fill="#f0f2f6", font=("Segoe UI", 12), anchor="center")
         self.consent_scan = tk.BooleanVar(value=False)
-        tk.Checkbutton(consent,
-            text=self._t("أوافق على فحص هذا الجهاز وجمع بياناته المحددة، والتقاط صورة للشاشة، وإرسال تقرير الفحص إلى المفتش.",
-                         "I authorize this device inspection, collection of the stated evidence, desktop screenshot capture, and delivery of the report to the inspector."),
-            variable=self.consent_scan, command=self._accept_consent,
-            bg=PANEL, fg=WHITE, selectcolor="#202638", activebackground=PANEL,
-            activeforeground=WHITE, wraplength=980, justify="left",
-            font=("Segoe UI", 10), relief="flat", padx=0, pady=7).pack(anchor="w")
-        tk.Label(consent,
-            text=self._t("بمجرد تحديد الموافقة ينتقل البرنامج تلقائيًا إلى شاشة التقدم ويبدأ الفحص. يمكنك إغلاق البرنامج قبل الموافقة.",
-                         "Checking the consent box moves to the progress screen and starts the inspection automatically. You may close the app before consenting."),
-            bg=PANEL, fg=MUTED, font=("Segoe UI", 9), wraplength=980,
-            justify="left").pack(anchor="w", pady=(6, 0))
-
-        bottom = tk.Frame(shell, bg=BG)
-        bottom.pack(fill="x", pady=(10, 0))
-        tk.Label(bottom, text=self._t("فحص موجّه • نتائج قابلة للمراجعة • لا حذف لملفات الجهاز",
-                                      "TARGETED SCAN  •  REVIEWABLE FINDINGS  •  NO DEVICE FILE DELETION"),
-                 bg=BG, fg="#8792a8", font=("Segoe UI", 8, "bold")).pack(side="left")
-        tk.Label(self, text="BY:ROITH", bg="#0d1018", fg="#7e899f",
-                 font=("Segoe UI", 8, "bold"), pady=8).pack(fill="x")
+        button = tk.Button(self, text="I AGREE & START SCAN", command=self._accept_consent,
+                           bg="#b8172e", fg="white", activebackground="#ed2946",
+                           activeforeground="white", relief="flat", bd=0,
+                           font=("Segoe UI", 15, "bold"), padx=30, pady=15,
+                           cursor="hand2")
+        canvas.create_window(int(screen_w * .70), int(screen_h * .64), window=button)
+        canvas.create_text(screen_w - 24, screen_h - 18, text="BY:ROITH",
+                           fill="#d6d6d6", font=("Segoe UI", 9, "bold"), anchor="se")
+        self.bind("<Escape>", lambda _event: self.attributes("-fullscreen", False))
 
     def _accept_consent(self):
         if not self.consent_scan.get() or self.scan_running:
