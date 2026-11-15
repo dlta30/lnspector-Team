@@ -1950,7 +1950,7 @@ class InspectorApp(tk.Tk):
             except Exception:
                 detail = ""
             if exc.code == 409:
-                        self.session_badge.configure(text=self._t("●  تم الفحص مسبقًا", "●  ALREADY INSPECTED"), bg="#351521", fg="#ff8093")
+                self.session_badge.configure(text=self._t("●  تم الفحص مسبقًا", "●  ALREADY INSPECTED"), bg="#351521", fg="#ff8093")
                 self.status.set(self._t("تم فحص هذا العضو مسبقًا أو أن الفحص جارٍ بالفعل.", "This member has already been inspected or an inspection is already running."))
                 self.start_button.configure(state="disabled")
                 messagebox.showinfo(APP, self._t("تم فحصك مسبقًا. لا يمكن استخدام رابط الفحص مرة أخرى.", "You have already been inspected. This inspection link cannot be reused."))
