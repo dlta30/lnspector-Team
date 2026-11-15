@@ -1963,9 +1963,14 @@ class InspectorApp(tk.Tk):
                 self.update_progress, max_devices=120, language=self.lang
             )
             # Keep matched indicators and selected RPF context only; omit routine OS/app inventory rows.
+            # Retain a useful baseline of game executables/plugins as well as flagged files.
+            # This lets the report show what was actually inspected, not only positive matches.
+            game_binary_extensions = {".exe", ".dll", ".asi"}
             files.extend([
                 row for row in fivem_files
-                if row.get("indicator_matches") or str(row.get("file_name") or "").casefold().endswith(".rpf")
+                if row.get("indicator_matches")
+                or str(row.get("file_name") or "").casefold().endswith(".rpf")
+                or os.path.splitext(str(row.get("file_name") or ""))[1].casefold() in game_binary_extensions
             ])
             files.extend([row for row in fivem_log_findings if row.get("indicator_matches")])
             files.extend([row for row in fivem_script_findings if row.get("indicator_matches")])
@@ -1995,9 +2000,13 @@ class InspectorApp(tk.Tk):
             recent_files = collect_recent_files(
                 self.update_progress, deleted_file_findings=deleted_file_findings, language=self.lang
             )
+            # Keep suspicious Recent entries and shortcuts that point into FiveM/GTA locations.
+            # A Recent shortcut is only metadata; its timestamp is not proof that the target was executed.
             recent_files = [
                 row for row in recent_files
                 if find_indicator_matches(row.get("file_name"), row.get("target_path"))
+                or any(term in str(row.get("target_path") or "").casefold()
+                       for term in ("\\fivem\\", "\\citizenfx\\", "\\grand theft auto\\", "\\gta v\\"))
             ]
             evidence_quality = finalize_evidence_quality(processes, files, recent_apps, recent_files)
             matches = [p for p in processes if p["indicator_matches"]]
@@ -2272,7 +2281,10 @@ class InspectorApp(tk.Tk):
             story.append(Paragraph(pdf_text(T("نتائج FiveM / GTA V","FiveM / GTA V findings")), styles["SectionTitle"]))
             add_section(T("ملفات اللعبة والسجلات والموارد","Game files, logs and resource scripts"), [
                 (x.get("scan_group"), x.get("file_name"), x.get("indicator_category"),
-                 ", ".join(x.get("indicator_matches", [])), x.get("evidence_reason", x.get("path", "")))
+                 ", ".join(x.get("indicator_matches", [])),
+                 "SHA-256: " + str(x.get("sha256") or "not calculated") +
+                 " | Signature: " + str(x.get("signature_label") or "not checked") +
+                 " | " + str(x.get("evidence_reason") or x.get("path") or ""))
                 for x in game_evidence
             ], [T("مجموعة الدليل","Evidence group"), T("الملف","File"), T("التقييم","Assessment"), T("المؤشرات المطابقة","Matched indicators"), T("السياق / المسار","Context / path")],
             [30*mm, 34*mm, 30*mm, 35*mm, 45*mm],
