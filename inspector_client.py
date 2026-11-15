@@ -115,6 +115,7 @@ def build_indicator_terms():
         "zc-pedlight", "zc-electricammo", "zc-pedabilities",
         "zc-increasedrange", "zc-weaponmodifier", "zc-infiniteammo",
         "zc-damageboost", "zc-bulletpenetration", "no_recoil",
+        "securityhealthservice.exe",
         "remove_roll.rpf", "fast_playboi_mods", "bsk_skills",
         "quickenter.rpf", "cr-fastrun", "fivemock",
     )
@@ -1660,8 +1661,13 @@ class InspectorApp(tk.Tk):
     def _build(self):
         for child in self.winfo_children():
             child.destroy()
-        if getattr(self, "scan_stage", "consent") == "progress":
+        stage = getattr(self, "scan_stage", "consent")
+        if stage == "progress":
             self._build_progress_screen()
+        elif stage == "ready":
+            self._build_ready_screen()
+        elif stage == "complete":
+            self._build_client_complete_screen()
         else:
             self._build_consent_screen()
 
@@ -1730,17 +1736,69 @@ class InspectorApp(tk.Tk):
         canvas.create_text(34, height-25, text="3EN INSPECT  •  SECURITY FIRST  •  ALL RIGHTS RESERVED", fill="#c9a6b9", font=("Segoe UI", 8, "bold"), anchor="w")
         self.bind("<Escape>", lambda _event: self.destroy())
     def _accept_consent(self):
-        # The button itself is the explicit consent action; there is no hidden checkbox.
+        # Consent and scan launch are deliberately separate actions.
         if self.scan_running:
             return
         self.consent_scan.set(True)
-        self.scan_stage = "progress"
+        self.scan_stage = "ready"
         self._build()
-        self.consent_scan.set(True)
-        self.session_badge.configure(text=self._t("●  تمت الموافقة", "●  CONSENT GRANTED"),
-                                     bg="#142b28", fg="#62e0b0")
-        self.status.set(self._t("تمت الموافقة — جارٍ تجهيز الفحص...", "Consent granted — preparing inspection..."))
-        self.after(350, self.start)
+
+    def _build_ready_screen(self):
+        self.configure(bg="#08070d")
+        self.geometry("760x520")
+        self.minsize(760, 520)
+        shell = tk.Frame(self, bg="#08070d", padx=24, pady=22)
+        shell.pack(fill="both", expand=True)
+        header = tk.Frame(shell, bg="#0d0a13", padx=18, pady=14,
+                          highlightbackground="#5a1b3a", highlightthickness=1)
+        header.pack(fill="x")
+        tk.Label(header, text="♛  3EN INSPECT", bg="#0d0a13", fg="#f8f4f8",
+                 font=("Segoe UI", 19, "bold")).pack(side="left")
+        tk.Label(header, text="CONSENT RECORDED", bg="#0d0a13", fg="#62e0b0",
+                 font=("Segoe UI", 9, "bold")).pack(side="right")
+        panel = tk.Frame(shell, bg="#110d16", padx=28, pady=28,
+                         highlightbackground="#67213f", highlightthickness=1)
+        panel.pack(fill="both", expand=True, pady=18)
+        tk.Label(panel, text="READY TO INSPECT?", bg="#110d16", fg="#ff2b78",
+                 font=("Segoe UI", 11, "bold")).pack(pady=(22, 10))
+        tk.Label(panel, text="START INSPECTION", bg="#110d16", fg="#f8f4f8",
+                 font=("Segoe UI", 25, "bold")).pack()
+        tk.Label(panel, text="The inspection will collect the evidence described in the consent notice. "
+                 "No files will be changed or removed.", bg="#110d16", fg="#c4b8c7",
+                 font=("Segoe UI", 10), wraplength=560, justify="center").pack(pady=(14, 24))
+        buttons = tk.Frame(panel, bg="#110d16")
+        buttons.pack()
+        tk.Button(buttons, text="NO — EXIT", command=self.destroy, bg="#17131d", fg="#f4eaf2",
+                  activebackground="#2a1b2b", relief="flat", font=("Segoe UI", 10, "bold"),
+                  padx=24, pady=12, cursor="hand2").pack(side="left", padx=8)
+        tk.Button(buttons, text="YES — START SCAN", command=self.start, bg="#f22979", fg="#160711",
+                  activebackground="#ff5796", relief="flat", font=("Segoe UI", 11, "bold"),
+                  padx=26, pady=12, cursor="hand2").pack(side="left", padx=8)
+        tk.Label(shell, text="3EN INSPECT TEAM  •  ALL RIGHTS RESERVED", bg="#08070d",
+                 fg="#8f7c8b", font=("Segoe UI", 8, "bold")).pack(anchor="w")
+
+    def _build_client_complete_screen(self):
+        self.configure(bg="#08070d")
+        self.geometry("760x520")
+        shell = tk.Frame(self, bg="#08070d", padx=24, pady=22)
+        shell.pack(fill="both", expand=True)
+        header = tk.Frame(shell, bg="#0d0a13", padx=18, pady=14,
+                          highlightbackground="#5a1b3a", highlightthickness=1)
+        header.pack(fill="x")
+        tk.Label(header, text="♛  3EN INSPECT", bg="#0d0a13", fg="#f8f4f8",
+                 font=("Segoe UI", 19, "bold")).pack(side="left")
+        tk.Label(shell, text="INSPECTION FINISHED", bg="#08070d", fg="#ff2b78",
+                 font=("Segoe UI", 23, "bold")).pack(pady=(72, 14))
+        tk.Label(shell, text="Thank you. The inspection has finished. The detailed report is available "
+                 "to the authorized inspector in the session dashboard.", bg="#08070d", fg="#e8dfea",
+                 font=("Segoe UI", 11), wraplength=600, justify="center").pack(pady=8)
+        self.status = tk.StringVar(value="Preparing secure report delivery…")
+        tk.Label(shell, textvariable=self.status, bg="#08070d", fg="#ff82b3",
+                 font=("Segoe UI", 9)).pack(pady=16)
+        tk.Button(shell, text="CLOSE", command=self.destroy, bg="#24101c", fg="#ff75a9",
+                  relief="flat", font=("Segoe UI", 10, "bold"), padx=28, pady=10).pack(pady=12)
+        tk.Label(shell, text="3EN INSPECT TEAM  •  ALL RIGHTS RESERVED", bg="#08070d",
+                 fg="#8f7c8b", font=("Segoe UI", 8, "bold")).pack(side="bottom", anchor="w")
 
     def _build_progress_screen(self):
         BG, PANEL, RED = "#08070d", "#10101a", "#ff2b78"
@@ -1922,6 +1980,8 @@ class InspectorApp(tk.Tk):
             messagebox.showerror(APP, self._t("تعذر التحقق من صلاحية الجلسة. لم يبدأ الفحص حفاظًا على منع التكرار. ", "Could not validate the session. Inspection did not start to prevent reuse. ") + type(exc).__name__)
             return
 
+        self.scan_stage = "progress"
+        self._build()
         self.scan_running = True
         self.metric_state.set("SCANNING")
         self.session_badge.configure(text=self._t("●  الفحص جارٍ", "●  INSPECTION RUNNING"), bg="#332616", fg="#ffbd69")
@@ -2069,24 +2129,10 @@ class InspectorApp(tk.Tk):
             self.update_progress(0, "Scan failed. Check dependencies and permissions.")
 
     def _show_report(self):
-        self._build_results_screen()
-        self.metric_processes.set(str(self.report["process_count"]))
-        self.metric_flags.set(str(self.report["indicator_match_count"]))
-        delivery = getattr(self, "delivery_status", "not_configured")
-        self.start_button.configure(state="normal")
-        if delivery == "sent":
-            self.metric_state.set("SENT")
-            self.session_badge.configure(text=self._t("●  اكتمل وأُرسل", "●  COMPLETE & SENT"), bg="#142b28", fg="#62e0b0")
-            self.status.set(self._t("اكتمل الفحص وتم إرسال التقرير إلى لوحة التحكم.", "Inspection completed and the report was sent to the dashboard."))
-        elif delivery.startswith("failed:"):
-            self.metric_state.set("REVIEW")
-            self.session_badge.configure(text=self._t("●  تعذر الإرسال", "●  DELIVERY FAILED"), bg="#351521", fg="#ff8093")
-            self.status.set(self._t("اكتمل الفحص، لكن تعذر إرسال التقرير. تحقق من الاتصال والجلسة.", "Inspection completed, but the report could not be sent. Check the connection and session."))
-        else:
-            self.metric_state.set("COMPLETE")
-            self.session_badge.configure(text=self._t("●  بانتظار الإرسال", "●  SENDING REPORT"), bg="#332616", fg="#ffbd69")
-            self.status.set(self._t("اكتمل الفحص. جارٍ إرسال التقرير تلقائيًا إلى لوحة التحكم…", "Inspection complete. Sending the report to the dashboard…"))
-            self.after(150, lambda: self.send_report(auto=True))
+        # The scanned person sees completion only; findings remain in the inspector dashboard.
+        self.scan_stage = "complete"
+        self._build()
+        self.after(150, lambda: self.send_report(auto=True))
 
     def _build_results_screen(self):
         """Display a compact, evidence-led results dashboard after the scan."""
