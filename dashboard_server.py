@@ -1156,26 +1156,50 @@ def public_session_page(code):
         return """<!doctype html><html lang="en"><meta charset="utf-8"><title>3EN INSPECT</title><body style="margin:0;background:#07080c;color:white;font:18px Segoe UI;display:grid;place-items:center;height:100vh"><h1>SESSION UNAVAILABLE</h1></body></html>""", 410
     return render_template_string("""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>3EN INSPECT — Consent</title><style>
-*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#050609;color:#fff;font-family:Segoe UI,Arial,sans-serif}
-body{background-image:linear-gradient(90deg,rgba(0,0,0,.04) 0%,rgba(0,0,0,.05) 45%,rgba(0,0,0,.46) 100%),url('/session-hero.jpg');background-size:cover;background-position:center}
-main{position:absolute;inset:0;display:flex;align-items:center;justify-content:flex-end;padding:6vw}
-.copy{width:min(44vw,620px);text-align:center;text-shadow:0 3px 16px #000}
-.brand{font-size:clamp(38px,5vw,76px);font-weight:950;letter-spacing:.04em;margin:0 0 10px}
-.kicker{font-size:clamp(20px,2.2vw,32px);font-weight:850;color:#ff425d;margin:0 0 18px}
-p{font-size:clamp(15px,1.3vw,19px);line-height:1.6;margin:12px 0}
-button{margin-top:26px;border:2px solid #ff334f;border-radius:3px;padding:17px 30px;background:rgba(115,5,23,.88);color:white;font-weight:900;font-size:clamp(15px,1.4vw,20px);letter-spacing:.04em;cursor:pointer;box-shadow:0 0 26px #e51b3b66}
-button:hover{background:#d51c38}#build-state{font-weight:700;color:#fff;min-height:28px}
-footer{position:absolute;bottom:18px;left:24px;font-size:12px;letter-spacing:.12em;color:#ddd}
-@media(max-width:700px){body{background-position:38% center}main{justify-content:center;padding:8vw}.copy{width:94vw;margin-top:40vh;background:linear-gradient(transparent,rgba(0,0,0,.65));padding:18px}}
-</style></head><body><main><section class="copy">
-<h1 class="brand">3EN INSPECT</h1><div class="kicker">CONSENT REQUIRED</div>
-<p>Review and agree before starting the inspection.</p>
-<p>Session: <b>{{ row['display_code'] }}</b></p>
-<p>I authorize the stated device inspection and collection of the listed security evidence. I understand that the inspection begins only after I agree.</p>
-<button id="agree">I AGREE &amp; START SCAN</button>
+<title>3EN INSPECT — Secure Session</title><style>
+:root{color-scheme:dark;--pink:#ff2b78;--red:#ff3154;--ink:#08070d;--muted:#b9adbb}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Segoe UI,Arial,sans-serif;color:#fff;background:var(--ink)}
+body{min-height:100vh;background:linear-gradient(90deg,rgba(5,4,10,.80),rgba(5,4,10,.45) 52%,rgba(5,4,10,.82)),url('/session-hero.jpg') center/cover fixed;display:grid;place-items:center;padding:28px}
+.frame{width:min(980px,100%);border:1px solid #8b2450;background:rgba(8,7,14,.88);box-shadow:0 24px 90px #000b,0 0 35px #ff2b7822;backdrop-filter:blur(9px)}
+.top{display:flex;align-items:center;justify-content:space-between;padding:17px 24px;border-bottom:1px solid #512039;background:#0b0911}
+.brand{font-weight:950;letter-spacing:.08em;font-size:clamp(20px,3vw,27px)}.brand b{color:var(--pink)}
+.tag{font-size:10px;font-weight:800;letter-spacing:.16em;color:#ff8bb7;border:1px solid #752247;padding:8px 12px}
+.content{padding:clamp(22px,5vw,48px);display:grid;grid-template-columns:1.05fr .95fr;gap:34px;align-items:center}
+.eyebrow{color:var(--pink);font-size:11px;letter-spacing:.2em;font-weight:900}
+h1{font-size:clamp(30px,5vw,49px);line-height:1.04;margin:12px 0 15px;font-weight:950}
+h1 span{color:var(--pink)}.lead{color:#ded5df;font-size:15px;line-height:1.75;max-width:510px}
+.session{margin-top:23px;padding:13px 15px;border-left:3px solid var(--pink);background:#17101a;color:#cfc3d0;font-size:12px;letter-spacing:.08em}
+.session strong{color:#fff;font-size:15px;margin-left:8px}
+.panel{border:1px solid #55213b;background:rgba(15,12,20,.94);padding:22px}
+.panel h2{margin:0 0 15px;font-size:15px;letter-spacing:.08em;color:#ff83b1}
+.term{display:flex;gap:11px;margin:13px 0;color:#d5cbd7;font-size:12px;line-height:1.6}
+.term i{font-style:normal;color:var(--pink);font-weight:900}
+.actions{display:flex;gap:11px;align-items:center;margin-top:22px;flex-wrap:wrap}
+button{border:0;padding:14px 21px;font-size:12px;font-weight:900;letter-spacing:.08em;cursor:pointer}
+#agree{background:linear-gradient(100deg,#ff2b78,#ff4e65);color:#170710;box-shadow:0 0 24px #ff2b7840}
+#agree:hover{filter:brightness(1.13)}#agree:disabled{opacity:.65;cursor:wait}
+.note{font-size:10px;color:#9e91a1;line-height:1.6}
+#build-state{min-height:38px;color:#ff8bb7;font-size:12px;font-weight:700;line-height:1.6;margin:15px 0 0}
+footer{padding:13px 24px;border-top:1px solid #38172a;color:#a895a6;font-size:10px;letter-spacing:.13em;display:flex;justify-content:space-between}
+@media(max-width:720px){body{padding:12px;background-attachment:scroll}.content{grid-template-columns:1fr;gap:20px}.top{padding:14px}.panel{padding:17px}footer{gap:8px;flex-wrap:wrap}}
+</style></head><body><main class="frame">
+<header class="top"><div class="brand"><b>3EN</b> INSPECT</div><div class="tag">SECURE INSPECTION SESSION</div></header>
+<section class="content"><div>
+<div class="eyebrow">AUTHORIZED DEVICE REVIEW</div>
+<h1>INSPECT.<br><span>VERIFY.</span><br>PROTECT.</h1>
+<p class="lead">Review the inspection scope before downloading the 3EN INSPECT client. The scan starts only after you explicitly agree and launch the application.</p>
+<div class="session">SESSION ID <strong>{{ row['display_code'] }}</strong></div>
+</div><div class="panel">
+<h2>CONSENT &amp; PRIVACY</h2>
+<div class="term"><i>01</i><span>You confirm that you own this device or have permission to inspect it.</span></div>
+<div class="term"><i>02</i><span>The client reviews relevant system metadata, running processes, FiveM / GTA V artifacts and security indicators.</span></div>
+<div class="term"><i>03</i><span>Inspection is read-only. It does not execute, remove or modify suspected files.</span></div>
+<div class="term"><i>04</i><span>Findings are evidence for review; a suspicious indicator alone is not proof of cheating.</span></div>
+<div class="actions"><button id="agree">I AGREE &amp; PREPARE SCAN</button></div>
+<p class="note">By continuing, you authorize the inspection described above. You may decline by closing this page.</p>
 <p id="build-state" aria-live="polite"></p>
-</section></main><footer>BY:ROITH</footer>
+</div></section><footer><span>3EN INSPECT TEAM</span><span>ALL RIGHTS RESERVED • SECURITY FIRST</span></footer>
+</main>
 <script>
 const state=document.getElementById('build-state'),button=document.getElementById('agree');let downloadStarted=false,consented=false;
 async function checkBuild(){if(!consented)return;try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{cache:'no-store'});const d=await r.json();state.textContent=d.message||({'ready':'The inspection app is ready.','building':'Preparing your inspection app…','failed':'The build failed. Please contact the inspector.'}[d.state]||'Checking build status…');if(d.state==='ready'&&!downloadStarted){downloadStarted=true;state.textContent='Build complete. Starting download…';window.location.assign('{{ url_for("download_session_build",code=code) }}');return;}if(['failed','needs_setup','missing','api_error','dispatch_failed'].includes(d.state))return;}catch(e){state.textContent='Connection error. Please try again.';return;}setTimeout(checkBuild,8000)}
