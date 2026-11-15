@@ -1666,54 +1666,69 @@ class InspectorApp(tk.Tk):
             self._build_consent_screen()
 
     def _build_consent_screen(self):
-        # Full-screen, image-first consent: no separate panels or language switch.
+        """Branded 3EN consent screen; artwork is decorative and consent remains explicit."""
         self.lang = "en"
-        self.configure(bg="#050609")
-        self.attributes("-fullscreen", False)
-        self.geometry("820x560")
-        screen_w, screen_h = 820, 560
+        self.configure(bg="#07070c")
+        self.geometry("920x620")
+        self.minsize(820, 560)
         self._hero_photo = None
-        canvas = tk.Canvas(self, width=screen_w, height=screen_h, bg="#050609",
-                           highlightthickness=0, bd=0)
+        canvas = tk.Canvas(self, bg="#07070c", highlightthickness=0, bd=0)
         canvas.pack(fill="both", expand=True)
+        canvas.update_idletasks()
+        width, height = max(820, self.winfo_width()), max(560, self.winfo_height())
         try:
-            from PIL import Image, ImageTk
+            from PIL import Image, ImageTk, ImageEnhance
             root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
             hero_path = os.path.join(root, "3en-inspect-hero.jpg")
             with Image.open(hero_path) as src:
                 photo = src.convert("RGB")
-                ratio = max(screen_w / photo.width, screen_h / photo.height)
+                ratio = max(width / photo.width, height / photo.height)
                 photo = photo.resize((int(photo.width * ratio), int(photo.height * ratio)), Image.Resampling.LANCZOS)
-                left = max(0, (photo.width - screen_w) // 2)
-                top = max(0, (photo.height - screen_h) // 2)
-                photo = photo.crop((left, top, left + screen_w, top + screen_h))
+                left, top = (photo.width-width)//2, (photo.height-height)//2
+                photo = photo.crop((left, top, left+width, top+height))
+                photo = ImageEnhance.Brightness(photo).enhance(0.42)
             self._hero_photo = ImageTk.PhotoImage(photo)
             canvas.create_image(0, 0, image=self._hero_photo, anchor="nw")
         except Exception:
-            canvas.create_rectangle(0, 0, screen_w, screen_h, fill="#090b12", outline="")
-            canvas.create_text(screen_w // 2, screen_h // 2 - 80, text="3EN INSPECT",
-                               fill="#f4f6fc", font=("Segoe UI", 42, "bold"))
-        # Text is placed directly over the artwork; there are no opaque cards.
-        canvas.create_text(int(screen_w * .70), int(screen_h * .37),
-                           text="CONSENT REQUIRED", fill="#ffffff",
-                           font=("Segoe UI", 27, "bold"), anchor="center")
-        canvas.create_text(int(screen_w * .70), int(screen_h * .45),
-                           text="Review and agree before starting the inspection.",
-                           fill="#f0f2f6", font=("Segoe UI", 15), anchor="center")
-        canvas.create_text(int(screen_w * .70), int(screen_h * .52),
-                           text="I authorize the stated device inspection and evidence collection.",
-                           fill="#f0f2f6", font=("Segoe UI", 12), anchor="center")
+            canvas.create_rectangle(0, 0, width, height, fill="#090911", outline="")
+        pink, red, white, muted = "#ff2b78", "#ff3154", "#f7f4fa", "#b8b3c2"
+        canvas.create_rectangle(10, 10, width-10, height-10, outline="#9b174c", width=2)
+        canvas.create_rectangle(10, 10, width-10, 58, fill="#090811", outline="#52152e", width=1)
+        canvas.create_text(34, 34, text="♛", fill=pink, font=("Segoe UI Symbol", 24, "bold"), anchor="w")
+        canvas.create_text(76, 34, text="3EN INSPECT", fill=white, font=("Segoe UI", 19, "bold"), anchor="w")
+        canvas.create_text(width-38, 34, text="×", fill=pink, font=("Segoe UI", 22), anchor="center")
+        canvas.create_text(42, 92, text="◇", fill=pink, font=("Segoe UI", 29), anchor="w")
+        canvas.create_text(92, 92, text="End-User License Agreement", fill=white, font=("Segoe UI", 22, "bold"), anchor="w")
+        canvas.create_text(94, 124, text="Review the inspection scope and privacy terms before continuing.", fill=muted, font=("Segoe UI", 10), anchor="w")
+        canvas.create_rectangle(width-112, 78, width-42, 112, fill="#f52b80", outline="")
+        canvas.create_text(width-77, 95, text="100%", fill="#120812", font=("Segoe UI", 11, "bold"))
+        card_x1, card_y1, card_x2, card_y2 = 32, 154, width-32, height-118
+        canvas.create_rectangle(card_x1, card_y1, card_x2, card_y2, fill="#090a12", stipple="gray50", outline="#67213f", width=2)
+        canvas.create_rectangle(card_x1+16, card_y1+18, card_x1+21, card_y2-18, fill=pink, outline="")
+        terms = [
+            ("By using 3EN INSPECT, you agree to the following terms and conditions.", 13, white, "normal"),
+            ("1. 3EN INSPECT — LICENSE TERMS", 12, pink, "bold"),
+            ("This tool is provided by 3EN Inspect Team for authorized cybersecurity and digital forensic inspection.", 10, white, "normal"),
+            ("You must have permission from the device owner before starting an inspection.", 10, white, "normal"),
+            ("2. PRIVACY & EVIDENCE", 12, pink, "bold"),
+            ("The client collects the stated system, process, file metadata and FiveM / GTA V indicators.", 10, white, "normal"),
+            ("Files are not executed, changed or deleted. Selected text indicators are analyzed locally.", 10, white, "normal"),
+            ("A suspicious indicator is a lead for human review — it is not proof of cheating by itself.", 10, white, "normal"),
+            ("3. REPORT DELIVERY", 12, pink, "bold"),
+            ("After consent, the inspection report is sent to the session dashboard when configured.", 10, white, "normal"),
+            ("Contact: 3EN INSPECT TEAM", 10, muted, "bold"),
+        ]
+        y = card_y1 + 30
+        for text, size, color, weight in terms:
+            canvas.create_text(card_x1+34, y, text=text, fill=color, font=("Segoe UI", size, weight), anchor="nw", width=card_x2-card_x1-60)
+            y += 29 if size >= 12 else 25
         self.consent_scan = tk.BooleanVar(value=False)
-        button = tk.Button(self, text="I AGREE & START SCAN", command=self._accept_consent,
-                           bg="#b8172e", fg="white", activebackground="#ed2946",
-                           activeforeground="white", relief="flat", bd=0,
-                           font=("Segoe UI", 15, "bold"), padx=30, pady=15,
-                           cursor="hand2")
-        canvas.create_window(int(screen_w * .70), int(screen_h * .64), window=button)
-        canvas.create_text(screen_w - 24, screen_h - 18, text="BY:ROITH",
-                           fill="#d6d6d6", font=("Segoe UI", 9, "bold"), anchor="se")
-        self.bind("<Escape>", lambda _event: self.focus_force())
-
+        decline = tk.Button(self, text="Decline & Exit", command=self.destroy, bg="#11101a", fg=white, activebackground="#281322", activeforeground=white, relief="flat", bd=1, highlightthickness=1, highlightbackground="#a51b50", font=("Segoe UI", 10, "bold"), padx=22, pady=10, cursor="hand2")
+        agree = tk.Button(self, text="✓  I AGREE", command=self._accept_consent, bg="#f22979", fg="#160711", activebackground="#ff5796", activeforeground="#160711", relief="flat", bd=0, font=("Segoe UI", 11, "bold"), padx=24, pady=10, cursor="hand2")
+        canvas.create_window(width-292, height-70, window=decline)
+        canvas.create_window(width-140, height-70, window=agree)
+        canvas.create_text(34, height-25, text="3EN INSPECT  •  SECURITY FIRST  •  ALL RIGHTS RESERVED", fill="#c9a6b9", font=("Segoe UI", 8, "bold"), anchor="w")
+        self.bind("<Escape>", lambda _event: self.destroy())
     def _accept_consent(self):
         # The button itself is the explicit consent action; there is no hidden checkbox.
         if self.scan_running:
@@ -1728,78 +1743,64 @@ class InspectorApp(tk.Tk):
         self.after(350, self.start)
 
     def _build_progress_screen(self):
-        BG, PANEL, RED = "#080a10", "#111521", "#ff365c"
-        WHITE, MUTED, LINE = "#f4f6fc", "#98a3b8", "#2b3244"
-        GREEN = "#62e0b0"
+        BG, PANEL, RED = "#08070d", "#10101a", "#ff2b78"
+        WHITE, MUTED, LINE = "#f7f4fa", "#b5adbd", "#4b1934"
         self.configure(bg=BG)
         style = ttk.Style(self)
         style.theme_use("clam")
-        style.configure("TProgressbar", troughcolor="#22283a", background=RED,
-                        bordercolor="#22283a", lightcolor=RED, darkcolor=RED, thickness=16)
-        style.configure("TButton", font=("Segoe UI", 10, "bold"), padding=(16, 12),
-                        background="#202638", foreground=WHITE, bordercolor=LINE, relief="flat")
-
+        style.configure("TProgressbar", troughcolor="#24101c", background=RED, bordercolor="#24101c", lightcolor=RED, darkcolor=RED, thickness=16)
+        style.configure("TButton", font=("Segoe UI", 10, "bold"), padding=(14, 10), background="#20101c", foreground=WHITE, bordercolor=LINE, relief="flat")
         shell = tk.Frame(self, bg=BG)
-        shell.pack(fill="both", expand=True, padx=18, pady=16)
-        header = tk.Frame(shell, bg=PANEL, padx=20, pady=15,
-                          highlightbackground=LINE, highlightthickness=1)
+        shell.pack(fill="both", expand=True, padx=14, pady=12)
+        header = tk.Frame(shell, bg="#0b0911", padx=18, pady=12, highlightbackground=LINE, highlightthickness=1)
         header.pack(fill="x")
-        tk.Label(header, text="3EN  /  INSPECT", bg=PANEL, fg=WHITE,
-                 font=("Segoe UI", 21, "bold")).pack(side="left")
-        self.session_badge = tk.Label(header, text=self._t("●  الفحص جارٍ", "●  INSPECTION RUNNING"),
-                                      bg="#332616", fg="#ffbd69", padx=13, pady=8,
-                                      font=("Segoe UI", 9, "bold"))
-        self.session_badge.pack(side="right", padx=(12, 0))
-        self.language_choice = ttk.Combobox(header, state="readonly", width=11,
-            values=("العربية", "English"), font=("Segoe UI", 9))
-        self.language_choice.set("العربية" if self.lang == "ar" else "English")
-        self.language_choice.pack(side="right")
-        self.language_choice.bind("<<ComboboxSelected>>", self._change_language)
-
-        tk.Label(shell, text=self._t("مركز التحقيق الرقمي", "FORENSIC INSPECTION CENTER"),
-                 bg=BG, fg=WHITE, font=("Segoe UI", 24, "bold")).pack(anchor="w", pady=(24, 4))
-        tk.Label(shell, text=self._t("تم تسجيل موافقتك. يجري الآن جمع القرائن المحددة وتحليلها.",
-                                     "Your consent is recorded. Targeted evidence is now being collected and analyzed."),
-                 bg=BG, fg=MUTED, font=("Segoe UI", 10)).pack(anchor="w", pady=(0, 18))
-
+        tk.Label(header, text="♛  3EN INSPECT", bg="#0b0911", fg=WHITE, font=("Segoe UI", 18, "bold")).pack(side="left")
+        self.session_badge = tk.Label(header, text=self._t("●  الفحص جارٍ", "●  SCAN IN PROGRESS"), bg="#321124", fg="#ff7eae", padx=12, pady=7, font=("Segoe UI", 9, "bold"))
+        self.session_badge.pack(side="right")
+        hero = tk.Frame(shell, bg="#0b0911", highlightbackground=LINE, highlightthickness=1)
+        hero.pack(fill="both", expand=True, pady=(12, 10))
+        self._progress_photo = None
+        try:
+            from PIL import Image, ImageTk, ImageEnhance
+            root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+            hero_path = os.path.join(root, "3en-inspect-hero.jpg")
+            with Image.open(hero_path) as src:
+                photo = src.convert("RGB")
+                w, h = 860, 360
+                ratio = max(w/photo.width, h/photo.height)
+                photo = photo.resize((int(photo.width*ratio), int(photo.height*ratio)), Image.Resampling.LANCZOS)
+                left, top = (photo.width-w)//2, (photo.height-h)//2
+                photo = ImageEnhance.Brightness(photo.crop((left, top, left+w, top+h))).enhance(0.32)
+            self._progress_photo = ImageTk.PhotoImage(photo)
+            tk.Label(hero, image=self._progress_photo, bg="#0b0911", bd=0).place(relx=0.5, rely=0.5, anchor="center")
+        except Exception:
+            pass
+        overlay = tk.Frame(hero, bg="#090811", padx=26, pady=22)
+        overlay.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.82)
+        tk.Label(overlay, text="3EN", bg="#090811", fg="#ff2b78", font=("Segoe UI", 34, "bold")).pack()
+        tk.Label(overlay, text="INSPECT", bg="#090811", fg=WHITE, font=("Segoe UI", 19, "bold")).pack(pady=(0, 8))
+        tk.Label(overlay, text="SCAN IN PROGRESS", bg="#090811", fg=WHITE, font=("Segoe UI", 17, "bold")).pack()
+        tk.Label(overlay, text="Checking FiveM / GTA V artifacts, execution traces and suspicious indicators...", bg="#090811", fg="#ff70a8", font=("Segoe UI", 9)).pack(pady=(5, 16))
+        self.status = tk.StringVar(value=self._t("جارٍ بدء الفحص...", "Preparing targeted inspection..."))
+        tk.Label(overlay, textvariable=self.status, bg="#090811", fg=WHITE, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 9))
+        self.progress = ttk.Progressbar(overlay, maximum=100, mode="determinate")
+        self.progress.pack(fill="x")
+        self.progress_percent = tk.Label(overlay, text="0%", bg="#090811", fg="#ff2b78", font=("Segoe UI", 14, "bold"))
+        self.progress_percent.pack(anchor="e", pady=(6, 0))
         metrics = tk.Frame(shell, bg=BG)
-        metrics.pack(fill="x", pady=(0, 15))
+        metrics.pack(fill="x")
         self.metric_processes = tk.StringVar(value="—")
         self.metric_flags = tk.StringVar(value="—")
         self.metric_state = tk.StringVar(value="SCANNING")
-        for title, value, accent in [
-            (self._t("العمليات المرتبطة", "RELEVANT PROCESSES"), self.metric_processes, RED),
-            (self._t("المؤشرات المكتشفة", "INDICATORS"), self.metric_flags, "#ffbd69"),
-            (self._t("حالة الفحص", "SCAN STATUS"), self.metric_state, GREEN),
-        ]:
-            card = tk.Frame(metrics, bg=PANEL, highlightbackground=LINE, highlightthickness=1, padx=18, pady=17)
-            card.pack(side="left", fill="both", expand=True, padx=(0, 10))
-            tk.Label(card, text=title, bg=PANEL, fg=MUTED,
-                     font=("Segoe UI", 8, "bold")).pack(anchor="w")
-            tk.Label(card, textvariable=value, bg=PANEL, fg=accent,
-                     font=("Segoe UI", 23, "bold")).pack(anchor="w", pady=(7, 0))
-
-        scanbox = tk.Frame(shell, bg=PANEL, highlightbackground=LINE, highlightthickness=1, padx=20, pady=20)
-        scanbox.pack(fill="x", pady=(0, 14))
-        tk.Label(scanbox, text=self._t("02  /  تقدم التحقيق", "02  /  INVESTIGATION PROGRESS"),
-                 bg=PANEL, fg="#ff7891", font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        self.status = tk.StringVar(value=self._t("جارٍ بدء الفحص...", "Starting inspection..."))
-        tk.Label(scanbox, textvariable=self.status, bg=PANEL, fg=WHITE,
-                 font=("Segoe UI", 10)).pack(anchor="w", pady=(10, 12))
-        self.progress = ttk.Progressbar(scanbox, maximum=100, mode="determinate")
-        self.progress.pack(fill="x")
-        self.progress_percent = tk.Label(scanbox, text="0%", bg=PANEL, fg=RED,
-                                          font=("Segoe UI", 15, "bold"))
-        self.progress_percent.pack(anchor="e", pady=(8, 0))
-        tk.Label(shell, text=self._t("لا يتم حذف أي ملف من الجهاز. التقرير يقتصر على المؤشرات والقرائن ذات الصلة.",
-                                     "No files are deleted from the device. The report focuses on relevant indicators and evidence."),
-                 bg=BG, fg=MUTED, font=("Segoe UI", 9)).pack(anchor="w")
-        tk.Label(self, text="BY:ROITH", bg="#0d1018", fg="#7e899f",
-                 font=("Segoe UI", 8, "bold"), pady=8).pack(fill="x")
+        for title, value, accent in [("PROCESSES", self.metric_processes, RED), ("INDICATORS", self.metric_flags, "#ffb04d"), ("SCAN STATUS", self.metric_state, "#ff7eae")]:
+            card = tk.Frame(metrics, bg=PANEL, highlightbackground=LINE, highlightthickness=1, padx=14, pady=9)
+            card.pack(side="left", fill="both", expand=True, padx=(0, 8))
+            tk.Label(card, text=title, bg=PANEL, fg=MUTED, font=("Segoe UI", 8, "bold")).pack(anchor="w")
+            tk.Label(card, textvariable=value, bg=PANEL, fg=accent, font=("Segoe UI", 17, "bold")).pack(anchor="w", pady=(3, 0))
         self.consent_scan = tk.BooleanVar(value=True)
-        self.start_button = ttk.Button(shell, text=self._t("الفحص جارٍ", "INSPECTION RUNNING"))
+        self.start_button = ttk.Button(shell, text="INSPECTION RUNNING")
         self.start_button.pack_forget()
-
+        tk.Label(shell, text="READ-ONLY INSPECTION  •  3EN INSPECT TEAM  •  ALL RIGHTS RESERVED", bg=BG, fg="#8f7c8b", font=("Segoe UI", 8, "bold"), pady=5).pack(anchor="w")
     def _change_language(self, _event=None):
         # Rebuild translated widgets without losing an active scan or its UI state.
         consent_accepted = bool(getattr(self, "consent_scan", None) and self.consent_scan.get())
@@ -2068,6 +2069,7 @@ class InspectorApp(tk.Tk):
             self.update_progress(0, "Scan failed. Check dependencies and permissions.")
 
     def _show_report(self):
+        self._build_results_screen()
         self.metric_processes.set(str(self.report["process_count"]))
         self.metric_flags.set(str(self.report["indicator_match_count"]))
         delivery = getattr(self, "delivery_status", "not_configured")
@@ -2086,6 +2088,64 @@ class InspectorApp(tk.Tk):
             self.status.set(self._t("اكتمل الفحص. جارٍ إرسال التقرير تلقائيًا إلى لوحة التحكم…", "Inspection complete. Sending the report to the dashboard…"))
             self.after(150, lambda: self.send_report(auto=True))
 
+    def _build_results_screen(self):
+        """Display a compact, evidence-led results dashboard after the scan."""
+        for child in self.winfo_children(): child.destroy()
+        self.configure(bg="#08070d")
+        shell = tk.Frame(self, bg="#08070d", padx=14, pady=12)
+        shell.pack(fill="both", expand=True)
+        header = tk.Frame(shell, bg="#0d0a13", padx=16, pady=11, highlightbackground="#5a1b3a", highlightthickness=1)
+        header.pack(fill="x")
+        tk.Label(header, text="♛  3EN INSPECT", bg="#0d0a13", fg="#f8f4f8", font=("Segoe UI", 17, "bold")).pack(side="left")
+        tk.Label(header, text="INSPECTION REPORT  •  FIVE M / GTA V", bg="#0d0a13", fg="#ff4b91", font=("Segoe UI", 9, "bold")).pack(side="right")
+        title = tk.Frame(shell, bg="#08070d")
+        title.pack(fill="x", pady=(14, 10))
+        tk.Label(title, text="Scan Completed", bg="#08070d", fg="#f8f4f8", font=("Segoe UI", 20, "bold")).pack(side="left")
+        tk.Label(title, text=format_saudi_time(self.report.get("created_at"), "en"), bg="#08070d", fg="#b8aaba", font=("Segoe UI", 8)).pack(side="right")
+        cards = tk.Frame(shell, bg="#08070d")
+        cards.pack(fill="x", pady=(0, 10))
+        stats = [("PROCESSES", self.report.get("process_count", 0)), ("FILE INDICATORS", self.report.get("file_indicator_match_count", 0)), ("PROCESS INDICATORS", self.report.get("indicator_match_count", 0)), ("HIGH CONFIDENCE", self.report.get("high_confidence_finding_count", 0))]
+        for label, value in stats:
+            card = tk.Frame(cards, bg="#15101a", padx=12, pady=10, highlightbackground="#54203a", highlightthickness=1)
+            card.pack(side="left", fill="both", expand=True, padx=(0, 7))
+            tk.Label(card, text=label, bg="#15101a", fg="#b9aaba", font=("Segoe UI", 8, "bold")).pack(anchor="w")
+            tk.Label(card, text=str(value), bg="#15101a", fg="#ff3d88", font=("Segoe UI", 20, "bold")).pack(anchor="w", pady=(3, 0))
+        body = tk.Frame(shell, bg="#08070d")
+        body.pack(fill="both", expand=True)
+        left = tk.Frame(body, bg="#110d16", padx=12, pady=12, highlightbackground="#54203a", highlightthickness=1)
+        left.pack(side="left", fill="y", padx=(0, 9))
+        tk.Label(left, text="REPORT SECTIONS", bg="#110d16", fg="#ff4b91", font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 8))
+        sections = [("FiveM / GTA V", len([x for x in self.report.get("file_artifacts", []) if x.get("scan_group") in ("ملفات FiveM وGTA V", "سجلات FiveM وCitizenFX", "سكربتات وإعدادات FiveM")])), ("Suspicious files", self.report.get("file_indicator_match_count", 0)), ("Processes", self.report.get("process_count", 0)), ("Recent activity", len(self.report.get("recent_apps_24h", []))), ("Deleted traces", len([x for x in self.report.get("file_artifacts", []) if x.get("scan_group") == "آثار ملفات محذوفة"]))]
+        for name, count in sections:
+            tk.Label(left, text=f"▸  {name}  ({count})", bg="#110d16", fg="#e6dce6", font=("Segoe UI", 9), pady=6).pack(anchor="w")
+        right = tk.Frame(body, bg="#110d16", padx=12, pady=10, highlightbackground="#54203a", highlightthickness=1)
+        right.pack(side="left", fill="both", expand=True)
+        tk.Label(right, text="KEY FINDINGS  /  NEEDS REVIEW", bg="#110d16", fg="#ff4b91", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 8))
+        columns = ("group", "file", "confidence", "reason")
+        table = ttk.Treeview(right, columns=columns, show="headings", height=9)
+        for col, label, width in [("group", "SOURCE", 130), ("file", "FILE / PROCESS", 190), ("confidence", "LEVEL", 85), ("reason", "INDICATOR / EVIDENCE", 230)]:
+            table.heading(col, text=label); table.column(col, width=width, anchor="w")
+        style = ttk.Style(self); style.configure("Treeview", background="#0b0910", fieldbackground="#0b0910", foreground="#f0e8f0", rowheight=25, borderwidth=0); style.configure("Treeview.Heading", background="#24101c", foreground="#ff80b2", font=("Segoe UI", 8, "bold"))
+        table.pack(fill="both", expand=True)
+        findings = []
+        for item in self.report.get("file_artifacts", []):
+            if item.get("indicator_matches"): findings.append((item.get("scan_group", "File"), item.get("file_name", "—"), item.get("triage_level", "review"), ", ".join(item.get("indicator_matches", []))))
+        for item in self.report.get("processes", []):
+            if item.get("indicator_matches"): findings.append(("Process", item.get("process_name", "—"), item.get("triage_level", "review"), ", ".join(item.get("indicator_matches", []))))
+        for row in findings[:150]: table.insert("", "end", values=tuple(str(x)[:180] for x in row))
+        if not findings: table.insert("", "end", values=("No matched indicators", "No configured name match", "INFO", "No matching indicators were found in the inspected scope."))
+        footer = tk.Frame(shell, bg="#08070d")
+        footer.pack(fill="x", pady=(10, 0))
+        tk.Label(footer, text="Indicators are leads for manual review — not proof of cheating. Coverage is bounded.", bg="#08070d", fg="#b9aaba", font=("Segoe UI", 8)).pack(side="left")
+        tk.Button(footer, text="EXPORT PDF", command=self.export_pdf, bg="#24101c", fg="#ff75a9", activebackground="#3b1730", activeforeground="#ffffff", relief="flat", font=("Segoe UI", 9, "bold"), padx=14, pady=9).pack(side="right", padx=(7, 0))
+        tk.Button(footer, text="SEND / RETRY", command=lambda: self.send_report(auto=False), bg="#f22979", fg="#160711", activebackground="#ff5796", relief="flat", font=("Segoe UI", 9, "bold"), padx=14, pady=9).pack(side="right")
+        self.status = tk.StringVar(value="Report ready for review.")
+        tk.Label(shell, textvariable=self.status, bg="#08070d", fg="#ff82b3", font=("Segoe UI", 8)).pack(anchor="w", pady=(6, 0))
+        self.metric_processes = tk.StringVar(value=str(self.report.get("process_count", 0)))
+        self.metric_flags = tk.StringVar(value=str(self.report.get("indicator_match_count", 0)))
+        self.metric_state = tk.StringVar(value="COMPLETE")
+        self.session_badge = tk.Label(header, text="●  COMPLETE", bg="#24101c", fg="#ff82b3")
+        self.start_button = tk.Button(shell, text="")
     def send_report(self, auto=False):
         if not self.report:
             messagebox.showwarning(APP, self._t("ابدأ الفحص أولًا.", "Start the inspection first."))
@@ -2121,7 +2181,7 @@ class InspectorApp(tk.Tk):
             self.session_badge.configure(text=self._t("●  تم الإرسال", "●  SENT"), bg="#142b28", fg="#62e0b0")
             self.status.set(self._t("تم إرسال التقرير تلقائيًا إلى لوحة التحكم.", "The report was sent automatically to the dashboard."))
             self.start_button.configure(state="disabled")
-            self.after(1200, self._close_then_offer_folder)
+            # Keep the completed report visible so the operator can review and export it.
         except urllib.error.HTTPError as exc:
             try:
                 detail = exc.read(1200).decode("utf-8", errors="replace").strip()
