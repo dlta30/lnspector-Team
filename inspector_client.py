@@ -1860,9 +1860,6 @@ class InspectorApp(tk.Tk):
             return
         self._build()
         self.consent_scan.set(consent_accepted)
-        self.metric_state.set(current_state)
-        self.metric_processes.set(process_metric)
-        self.metric_flags.set(flag_metric)
         self.progress.configure(value=progress_value)
         self.progress_percent.configure(text=f"{progress_value}%")
         self.status.set(self._progress_text(progress_message))
@@ -1914,7 +1911,6 @@ class InspectorApp(tk.Tk):
         def paint():
             value = max(0, min(100, int(value)))
             self.progress.configure(value=value)
-            self.progress_percent.configure(text=f"{value}%")
             self.status.set(self._progress_text(text))
 
         self.after(0, paint)
@@ -1954,8 +1950,7 @@ class InspectorApp(tk.Tk):
             except Exception:
                 detail = ""
             if exc.code == 409:
-                self.metric_state.set("USED")
-                self.session_badge.configure(text=self._t("●  تم الفحص مسبقًا", "●  ALREADY INSPECTED"), bg="#351521", fg="#ff8093")
+                        self.session_badge.configure(text=self._t("●  تم الفحص مسبقًا", "●  ALREADY INSPECTED"), bg="#351521", fg="#ff8093")
                 self.status.set(self._t("تم فحص هذا العضو مسبقًا أو أن الفحص جارٍ بالفعل.", "This member has already been inspected or an inspection is already running."))
                 self.start_button.configure(state="disabled")
                 messagebox.showinfo(APP, self._t("تم فحصك مسبقًا. لا يمكن استخدام رابط الفحص مرة أخرى.", "You have already been inspected. This inspection link cannot be reused."))
@@ -1969,11 +1964,8 @@ class InspectorApp(tk.Tk):
         self.scan_stage = "progress"
         self._build()
         self.scan_running = True
-        self.metric_state.set("SCANNING")
         self.session_badge.configure(text=self._t("●  الفحص جارٍ", "●  INSPECTION RUNNING"), bg="#332616", fg="#ffbd69")
         self.start_button.configure(state="disabled")
-        self.metric_processes.set("…")
-        self.metric_flags.set("…")
         self.status.set(self._t("الفحص جارٍ…", "Inspection running…"))
         threading.Thread(target=self._scan_worker, daemon=True).start()
 
