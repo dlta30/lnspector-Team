@@ -1709,8 +1709,16 @@ class InspectorApp(tk.Tk):
         width, height = max(820, self.winfo_width()), max(560, self.winfo_height())
         try:
             from PIL import Image, ImageTk, ImageEnhance
-            root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-            hero_path = os.path.join(root, "3en-inspect-hero.jpg")
+            # Resolve the artwork from PyInstaller's onedir bundle and safe local fallbacks.
+            candidates = [
+                os.path.join(getattr(sys, "_MEIPASS", ""), "3en-inspect-hero.jpg"),
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "3en-inspect-hero.jpg"),
+                os.path.join(os.path.dirname(sys.executable), "3en-inspect-hero.jpg"),
+                os.path.join(os.path.dirname(sys.executable), "_internal", "3en-inspect-hero.jpg"),
+            ]
+            hero_path = next((p for p in candidates if p and os.path.isfile(p)), None)
+            if not hero_path:
+                raise FileNotFoundError("Bundled 3en-inspect-hero.jpg was not found")
             with Image.open(hero_path) as src:
                 photo = src.convert("RGB")
                 ratio = max(width / photo.width, height / photo.height)
@@ -1844,8 +1852,12 @@ class InspectorApp(tk.Tk):
                 photo = ImageEnhance.Brightness(photo.crop((left, top, left + w, top + h))).enhance(0.72)
             self._progress_photo = ImageTk.PhotoImage(photo)
             tk.Label(hero, image=self._progress_photo, bg=BG, bd=0).place(relx=0.5, rely=0.5, anchor="center")
-        except Exception:
+        except Exception as exc:
             hero.configure(bg="#090911")
+            try:
+                print("3EN scan artwork could not be loaded:", type(exc).__name__, str(exc))
+            except Exception:
+                pass
 
         # The progress bar is the only live scan UI element.
         bar_wrap = tk.Frame(shell, bg="#090811", padx=12, pady=10,
