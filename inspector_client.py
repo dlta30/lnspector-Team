@@ -2173,23 +2173,21 @@ class InspectorApp(tk.Tk):
                 result = json.loads(response.read().decode("utf-8"))
             self.report["dashboard_report_id"] = result.get("report_id")
             self.delivery_status = "sent"
-            self.metric_state.set("SENT")
-            self.session_badge.configure(text=self._t("●  تم الإرسال", "●  SENT"), bg="#142b28", fg="#62e0b0")
-            self.status.set(self._t("تم إرسال التقرير تلقائيًا إلى لوحة التحكم.", "The report was sent automatically to the dashboard."))
-            self.start_button.configure(state="disabled")
-            # Keep the completed report visible so the operator can review and export it.
+            if hasattr(self, "status"):
+                self.status.set(self._t("تم إرسال التقرير تلقائيًا إلى لوحة التحكم.", "The report was securely sent to the inspector dashboard."))
+            # The scanned person sees only the completion screen; detailed findings stay in the dashboard.
         except urllib.error.HTTPError as exc:
             try:
                 detail = exc.read(1200).decode("utf-8", errors="replace").strip()
             except Exception:
                 detail = ""
             self.delivery_status = "failed: HTTP " + str(exc.code)
-            self.session_badge.configure(text="●  تعذر الإرسال", bg="#351521", fg="#ff8093")
-            self.status.set("رفض الخادم التقرير (HTTP " + str(exc.code) + "). " + (detail[:180] if detail else "تحقق من صلاحية الجلسة وحجم التقرير."))
+            if hasattr(self, "status"):
+                self.status.set("تعذر إرسال التقرير (HTTP " + str(exc.code) + "). " + (detail[:180] if detail else "تحقق من الاتصال."))
         except Exception as exc:
             self.delivery_status = "failed: " + type(exc).__name__
-            self.session_badge.configure(text="●  تعذر الإرسال", bg="#351521", fg="#ff8093")
-            self.status.set("تعذر الإرسال: " + type(exc).__name__ + ". تحقق من الاتصال ثم أعد المحاولة.")
+            if hasattr(self, "status"):
+                self.status.set("تعذر الإرسال: " + type(exc).__name__ + ". تحقق من الاتصال.")
 
     def export_pdf(self):
         if not self.report:
