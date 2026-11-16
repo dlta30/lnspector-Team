@@ -115,7 +115,8 @@ def build_indicator_terms():
         "zc-pedlight", "zc-electricammo", "zc-pedabilities",
         "zc-increasedrange", "zc-weaponmodifier", "zc-infiniteammo",
         "zc-damageboost", "zc-bulletpenetration", "no_recoil",
-        "securityhealthservice.exe",
+        "securityhealthservice.exe", "processhacker", "xenos", "winject",
+        "aimware", "phantom menu", "lua executor", "lua injector",
         "remove_roll.rpf", "fast_playboi_mods", "bsk_skills",
         "quickenter.rpf", "cr-fastrun", "fivemock",
     )
@@ -133,6 +134,25 @@ BINARY_INDICATOR_LABELS = {
     "setwindowshookex": ("تثبيت خطاف لمراقبة أحداث Windows", "Installing a Windows event hook"),
     "openprocess": ("فتح مقبض لعملية أخرى", "Opening another process handle"),
 }
+
+def classify_fivem_indicator_categories(values):
+    """Map observed strings to review categories; categories are leads, never proof of cheating."""
+    text = " ".join(str(value or "").casefold() for value in (values or []))
+    categories = []
+    groups = [
+        ("AIM_ASSIST", ("aimbot", "silent aim", "silentaim", "triggerbot", "aimware")),
+        ("ESP_WALLHACK", ("wallhack", "fivem esp", " esp", "chams", "entity esp")),
+        ("MOVEMENT_MANIPULATION", ("noclip", "no clip", "fly hack", "flyhack", "freecam", "free cam", "teleport", "speedhack", "speed hack", "superjump", "super jump")),
+        ("WEAPON_MANIPULATION", ("magic bullet", "magicbullet", "no recoil", "norecoil", "rapid fire", "rapidfire", "firerate", "infiniteammo", "infinite ammo", "explosiveammo", "weapon modifier")),
+        ("INJECTOR_OR_LOADER", ("injector", "xenos", "winject", "extreme injector", "lua executor", "lua injector", "processhacker")),
+        ("CHEAT_MENU", ("eulen", "redengine", "red engine", "lynx", "lambda menu", "menyo", "tiago modz", "taigomodz", "falloutmenu", "cobramenu", "dopamine menu", "monstermenu", "fivesense_v2", "phantom menu")),
+        ("SPOOFER_OR_BYPASS", ("spoofer", "bypass", "hwid")),
+    ]
+    for label, needles in groups:
+        if any(needle in text for needle in needles):
+            categories.append(label)
+    return categories
+
 
 def localized_indicator_labels(values, language="ar"):
     labels = []
@@ -584,6 +604,7 @@ def collect_fivem_artifacts(progress, max_files=8000, max_scan_seconds=35):
             "modified_display": modified_display, "sha256": digest,
             "hash_skipped_large_file": too_large,
             "indicator_matches": matches,
+            "fivem_indicator_categories": classify_fivem_indicator_categories(matches),
             "context_flags": ["FiveM/GTA V location"],
             "indicator_category": "مؤشرات هاك/غش" if matches else "لا توجد مطابقة اسمية",
             "assessment": "review" if matches else "metadata_only",
@@ -617,7 +638,7 @@ def collect_fivem_log_evidence(progress, max_files=250, max_file_bytes=2_000_000
         "eulen", "redengine", "red engine", "lynx", "lambda", "menyo",
         "tiago modz", "taigomodz", "swoopiexyz", "xenos", "extreme injector",
         "phantom menu", "lua executor", "lua injector", "cheat engine",
-        "silent aim", "wallhack", "aimbot", "fivem esp", "falloutmenu",
+        "silent aim", "silentaim", "wallhack", "aimbot", "triggerbot", "fivem esp", "falloutmenu",
         "cobramenu", "dopamine menu", "monstermenu", "fivesense_v2",
     )
     started = time.monotonic()
@@ -683,6 +704,7 @@ def collect_fivem_log_evidence(progress, max_files=250, max_file_bytes=2_000_000
                     "modified_at": utc_timestamp(st.st_mtime),
                     "modified_display": local_time.strftime("%B %d, %Y %I:%M:%S %p"),
                     "indicator_matches": sorted(matched_lines.keys()),
+                    "fivem_indicator_categories": classify_fivem_indicator_categories(matched_lines.keys()),
                     "matched_line_numbers": {
                         key: values[:30] for key, values in matched_lines.items()
                     },
@@ -730,8 +752,10 @@ def collect_fivem_script_evidence(progress, max_files=1000, max_file_bytes=512_0
     )
     behavior_markers = (
         "aimbot", "silentaim", "silent aim", "wallhack", "triggerbot",
-        "magicbullet", "magic bullet", "norecoil", "no recoil", "freecam",
-        "godmode", "god mode", "noclip", "vehicle godmode", "weapon modifier",
+        "magicbullet", "magic bullet", "norecoil", "no recoil", "freecam", "free cam",
+        "godmode", "god mode", "noclip", "no clip", "flyhack", "fly hack",
+        "teleport", "speedhack", "speed hack", "superjump", "super jump",
+        "rapidfire", "rapid fire", "vehicle godmode", "weapon modifier",
     )
     started = time.monotonic()
     candidates, seen = [], set()
@@ -804,6 +828,7 @@ def collect_fivem_script_evidence(progress, max_files=1000, max_file_bytes=512_0
                     "modified_at": utc_timestamp(st.st_mtime),
                     "modified_display": local_time.strftime("%B %d, %Y %I:%M:%S %p"),
                     "indicator_matches": matched,
+                    "fivem_indicator_categories": classify_fivem_indicator_categories(matched),
                     "matched_line_numbers": line_map,
                     "matched_line_count": sum(len(v) for v in line_map.values()),
                     "content_uploaded": False,
