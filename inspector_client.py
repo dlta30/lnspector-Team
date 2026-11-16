@@ -1787,14 +1787,8 @@ class InspectorApp(tk.Tk):
         header.pack(fill="x")
         tk.Label(header, text="♛  3EN INSPECT", bg="#0d0a13", fg="#f8f4f8",
                  font=("Segoe UI", 19, "bold")).pack(side="left")
-        tk.Label(shell, text="INSPECTION FINISHED", bg="#08070d", fg="#ff2b78",
-                 font=("Segoe UI", 23, "bold")).pack(pady=(72, 14))
-        tk.Label(shell, text="Thank you. The inspection has finished. The detailed report is available "
-                 "to the authorized inspector in the session dashboard.", bg="#08070d", fg="#e8dfea",
-                 font=("Segoe UI", 11), wraplength=600, justify="center").pack(pady=8)
-        self.status = tk.StringVar(value="Preparing secure report delivery…")
-        tk.Label(shell, textvariable=self.status, bg="#08070d", fg="#ff82b3",
-                 font=("Segoe UI", 9)).pack(pady=16)
+        tk.Label(shell, text="SCAN COMPLETED", bg="#08070d", fg="#ff2b78",
+                 font=("Segoe UI", 25, "bold")).pack(pady=(105, 30))
         tk.Button(shell, text="CLOSE", command=self.destroy, bg="#24101c", fg="#ff75a9",
                   relief="flat", font=("Segoe UI", 10, "bold"), padx=28, pady=10).pack(pady=12)
         tk.Label(shell, text="3EN INSPECT TEAM  •  ALL RIGHTS RESERVED", bg="#08070d",
