@@ -1801,50 +1801,46 @@ class InspectorApp(tk.Tk):
                  fg="#8f7c8b", font=("Segoe UI", 8, "bold")).pack(side="bottom", anchor="w")
 
     def _build_progress_screen(self):
-        BG, PANEL, RED = "#08070d", "#10101a", "#ff2b78"
-        WHITE, MUTED, LINE = "#f7f4fa", "#b5adbd", "#4b1934"
+        """Show the car artwork with a single progress bar; no scan details are exposed."""
+        BG, RED = "#08070d", "#ff2b78"
         self.configure(bg=BG)
-        style = ttk.Style(self)
-        style.theme_use("clam")
-        style.configure("TProgressbar", troughcolor="#24101c", background=RED, bordercolor="#24101c", lightcolor=RED, darkcolor=RED, thickness=16)
-        style.configure("TButton", font=("Segoe UI", 10, "bold"), padding=(14, 10), background="#20101c", foreground=WHITE, bordercolor=LINE, relief="flat")
+        self.geometry("920x560")
+        self.minsize(820, 500)
         shell = tk.Frame(self, bg=BG)
-        shell.pack(fill="both", expand=True, padx=14, pady=12)
-        header = tk.Frame(shell, bg="#0b0911", padx=18, pady=12, highlightbackground=LINE, highlightthickness=1)
-        header.pack(fill="x")
-        tk.Label(header, text="♛  3EN INSPECT", bg="#0b0911", fg=WHITE, font=("Segoe UI", 18, "bold")).pack(side="left")
-        self.session_badge = tk.Label(header, text=self._t("●  الفحص جارٍ", "●  SCAN IN PROGRESS"), bg="#321124", fg="#ff7eae", padx=12, pady=7, font=("Segoe UI", 9, "bold"))
-        self.session_badge.pack(side="right")
-        hero = tk.Frame(shell, bg="#0b0911", highlightbackground=LINE, highlightthickness=1)
-        hero.pack(fill="both", expand=True, pady=(12, 10))
+        shell.pack(fill="both", expand=True, padx=10, pady=10)
+
         self._progress_photo = None
+        hero = tk.Frame(shell, bg=BG, bd=0)
+        hero.pack(fill="both", expand=True)
         try:
             from PIL import Image, ImageTk, ImageEnhance
             root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
             hero_path = os.path.join(root, "3en-inspect-hero.jpg")
             with Image.open(hero_path) as src:
                 photo = src.convert("RGB")
-                w, h = 860, 360
-                ratio = max(w/photo.width, h/photo.height)
-                photo = photo.resize((int(photo.width*ratio), int(photo.height*ratio)), Image.Resampling.LANCZOS)
-                left, top = (photo.width-w)//2, (photo.height-h)//2
-                photo = ImageEnhance.Brightness(photo.crop((left, top, left+w, top+h))).enhance(0.32)
+                w, h = 900, 500
+                ratio = max(w / photo.width, h / photo.height)
+                photo = photo.resize((int(photo.width * ratio), int(photo.height * ratio)), Image.Resampling.LANCZOS)
+                left, top = (photo.width - w) // 2, (photo.height - h) // 2
+                photo = ImageEnhance.Brightness(photo.crop((left, top, left + w, top + h))).enhance(0.72)
             self._progress_photo = ImageTk.PhotoImage(photo)
-            tk.Label(hero, image=self._progress_photo, bg="#0b0911", bd=0).place(relx=0.5, rely=0.5, anchor="center")
+            tk.Label(hero, image=self._progress_photo, bg=BG, bd=0).place(relx=0.5, rely=0.5, anchor="center")
         except Exception:
-            pass
-        overlay = tk.Frame(hero, bg="#090811", padx=26, pady=22)
-        overlay.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.82)
-        tk.Label(overlay, text="3EN", bg="#090811", fg="#ff2b78", font=("Segoe UI", 34, "bold")).pack()
-        tk.Label(overlay, text="INSPECT", bg="#090811", fg=WHITE, font=("Segoe UI", 19, "bold")).pack(pady=(0, 8))
-        self.status = tk.StringVar(value=self._t("جارٍ بدء الفحص...", "Preparing targeted inspection..."))
-        tk.Label(overlay, textvariable=self.status, bg="#090811", fg=WHITE, font=("Segoe UI", 9)).pack(anchor="w", pady=(0, 9))
-        self.progress = ttk.Progressbar(overlay, maximum=100, mode="determinate")
+            hero.configure(bg="#090911")
+
+        # The progress bar is the only live scan UI element.
+        bar_wrap = tk.Frame(shell, bg="#090811", padx=12, pady=10,
+                            highlightbackground="#67213f", highlightthickness=1)
+        bar_wrap.pack(fill="x", pady=(8, 0))
+        style = ttk.Style(self)
+        style.theme_use("clam")
+        style.configure("TProgressbar", troughcolor="#24101c", background=RED,
+                        bordercolor="#24101c", lightcolor=RED, darkcolor=RED, thickness=14)
+        self.progress = ttk.Progressbar(bar_wrap, maximum=100, mode="determinate")
         self.progress.pack(fill="x")
-        self.consent_scan = tk.BooleanVar(value=True)
         self.start_button = ttk.Button(shell, text="INSPECTION RUNNING")
         self.start_button.pack_forget()
-        tk.Label(shell, text="READ-ONLY INSPECTION  •  3EN INSPECT TEAM  •  ALL RIGHTS RESERVED", bg=BG, fg="#8f7c8b", font=("Segoe UI", 8, "bold"), pady=5).pack(anchor="w")
+
     def _change_language(self, _event=None):
         # Rebuild translated widgets without losing an active scan or its UI state.
         consent_accepted = bool(getattr(self, "consent_scan", None) and self.consent_scan.get())
@@ -1861,26 +1857,6 @@ class InspectorApp(tk.Tk):
         self._build()
         self.consent_scan.set(consent_accepted)
         self.progress.configure(value=progress_value)
-        self.progress_percent.configure(text=f"{progress_value}%")
-        self.status.set(self._progress_text(progress_message))
-        if self.scan_running:
-            self.start_button.configure(state="disabled")
-            self.session_badge.configure(
-                text=self._t("●  الفحص جارٍ", "●  INSPECTION RUNNING"),
-                bg="#332616", fg="#ffbd69"
-            )
-        elif current_state in ("COMPLETE", "SENT", "REVIEW"):
-            self.start_button.configure(state="normal")
-            if current_state == "SENT":
-                badge_text = self._t("●  اكتمل وأُرسل", "●  COMPLETE & SENT")
-                badge_bg, badge_fg = "#142b28", "#62e0b0"
-            elif current_state == "REVIEW":
-                badge_text = self._t("●  تعذر الإرسال", "●  DELIVERY FAILED")
-                badge_bg, badge_fg = "#351521", "#ff8093"
-            else:
-                badge_text = self._t("●  بانتظار الإرسال", "●  SENDING REPORT")
-                badge_bg, badge_fg = "#332616", "#ffbd69"
-            self.session_badge.configure(text=badge_text, bg=badge_bg, fg=badge_fg)
 
     def _progress_text(self, value):
         if self.lang == "ar":
@@ -1910,8 +1886,8 @@ class InspectorApp(tk.Tk):
         self._progress_message = str(text)
         def paint():
             value = max(0, min(100, int(value)))
-            self.progress.configure(value=value)
-            self.status.set(self._progress_text(text))
+            if hasattr(self, "progress"):
+                self.progress.configure(value=value)
 
         self.after(0, paint)
 
@@ -1962,11 +1938,8 @@ class InspectorApp(tk.Tk):
             return
 
         self.scan_stage = "progress"
-        self._build()
         self.scan_running = True
-        self.session_badge.configure(text=self._t("●  الفحص جارٍ", "●  INSPECTION RUNNING"), bg="#332616", fg="#ffbd69")
-        self.start_button.configure(state="disabled")
-        self.status.set(self._t("الفحص جارٍ…", "Inspection running…"))
+        self._build()
         threading.Thread(target=self._scan_worker, daemon=True).start()
 
     def _scan_worker(self):
@@ -2103,8 +2076,7 @@ class InspectorApp(tk.Tk):
             self.after(0, self._show_report)
         except Exception as exc:
             self.scan_running = False
-            self.after(0, lambda: (messagebox.showerror(APP, str(exc)), self.start_button.configure(state="normal"), self.session_badge.configure(text=self._t("●  تعذر إكمال الفحص", "●  INSPECTION FAILED"), bg="#351521", fg="#ff8093")))
-            self.update_progress(0, "Scan failed. Check dependencies and permissions.")
+            self.after(0, lambda: messagebox.showerror(APP, self._t("تعذر إكمال الفحص. تم استهلاك الجلسة لمنع إعادة استخدامها؛ تواصل مع المسؤول لإنشاء جلسة جديدة.", "Inspection could not be completed. This one-time session remains locked; contact the inspector for a new session.")))
 
     def _show_report(self):
         # The scanned person sees completion only; findings remain in the inspector dashboard.
