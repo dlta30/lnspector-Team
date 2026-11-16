@@ -1159,21 +1159,53 @@ def public_session_page(code):
 <title>3EN INSPECT</title><style>
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Segoe UI,Arial,sans-serif}
 body{min-height:100vh;display:grid;place-items:center;padding:24px;color:#fff;background:radial-gradient(ellipse at 50% 42%,#260b18 0%,#10080f 43%,#050509 100%)}
-main{width:min(680px,100%);min-height:300px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:1px solid #8b1745;background:rgba(8,7,13,.86);box-shadow:0 0 55px #ff174422;padding:44px 28px}
-.brand{font-size:clamp(26px,5vw,40px);font-weight:1000;letter-spacing:.12em;margin-bottom:54px}
+main{width:min(680px,100%);min-height:330px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;border:1px solid #8b1745;background:rgba(8,7,13,.9);box-shadow:0 0 55px #ff174422;padding:44px 28px}
+.brand{font-size:clamp(26px,5vw,40px);font-weight:1000;letter-spacing:.12em;margin-bottom:44px}
 .brand b{color:#ff2b78}
 .label{font-size:11px;font-weight:900;letter-spacing:.24em;color:#ff648f;margin-bottom:15px}
 .name{font-size:clamp(22px,4vw,34px);font-weight:850;overflow-wrap:anywhere}
-.line{width:76px;height:3px;background:#ff2b78;margin-top:27px;box-shadow:0 0 18px #ff2b78}
+.status{font-size:13px;font-weight:900;letter-spacing:.14em;color:#ff4d8b;margin-top:32px}
+.hint{font-size:12px;color:#b9aab6;margin-top:10px}
+.track{width:min(390px,90%);height:7px;background:#26131e;border-radius:20px;overflow:hidden;margin-top:19px;border:1px solid #512039}
+.fill{height:100%;width:34%;border-radius:20px;background:linear-gradient(90deg,#a80f4b,#ff2b78,#ff8ab5);animation:build 1.8s ease-in-out infinite alternate}
+@keyframes build{from{transform:translateX(-75%);width:28%}to{transform:translateX(250%);width:48%}}
+.status.error{color:#ff5265}.status.ready{color:#65e6a1}
+@media(max-width:480px){main{padding:36px 18px;min-height:310px}.brand{margin-bottom:36px}}
 </style></head><body><main>
 <div class="brand"><b>3EN</b> INSPECT</div>
 <div class="label">PRIVATE INSPECTION SESSION FOR</div>
 <div class="name">{{ row['target_label'] }}</div>
-<div class="line"></div>
+<div id="buildStatus" class="status">BUILDING YOUR INSPECTION FILE...</div>
+<div id="buildHint" class="hint">Please keep this page open. Your download will start automatically when ready.</div>
+<div id="buildTrack" class="track"><div class="fill"></div></div>
 </main>
 <script>
-let downloadStarted=false;
-async function checkBuild(){try{const r=await fetch('{{ url_for("session_build_status",code=code) }}',{cache:'no-store'});const d=await r.json();if(d.state==='ready'&&!downloadStarted){downloadStarted=true;window.location.assign('{{ url_for("download_session_build",code=code) }}');return;}if(['failed','needs_setup','missing','api_error','dispatch_failed'].includes(d.state))return;}catch(e){return;}setTimeout(checkBuild,8000)}
+let downloadStarted=false, stopped=false;
+const statusEl=document.getElementById('buildStatus');
+const hintEl=document.getElementById('buildHint');
+const trackEl=document.getElementById('buildTrack');
+async function checkBuild(){
+ if(stopped||downloadStarted)return;
+ try{
+  const r=await fetch('{{ url_for("session_build_status",code=code) }}',{cache:'no-store'});
+  const d=await r.json();
+  if(d.state==='ready'){
+   downloadStarted=true;statusEl.textContent='BUILD COMPLETE — STARTING DOWNLOAD';statusEl.className='status ready';
+   hintEl.textContent='Your inspection file is ready.';trackEl.style.display='none';
+   window.location.assign('{{ url_for("download_session_build",code=code) }}');return;
+  }
+  if(['failed','needs_setup','missing','api_error','dispatch_failed'].includes(d.state)){
+   stopped=true;statusEl.textContent='BUILD COULD NOT BE COMPLETED';statusEl.className='status error';
+   hintEl.textContent='Please contact the inspection team and try a newly generated session.';trackEl.style.display='none';return;
+  }
+  statusEl.textContent='BUILDING YOUR INSPECTION FILE...';
+  hintEl.textContent='Please keep this page open. Your download will start automatically when ready.';
+ }catch(e){
+  statusEl.textContent='CONNECTING TO BUILD SERVICE...';
+  hintEl.textContent='Waiting for a secure connection. This page will retry automatically.';
+ }
+ setTimeout(checkBuild,5000);
+}
 checkBuild();
 </script></body></html>""", code=code, row=row)
 
