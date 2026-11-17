@@ -2193,11 +2193,15 @@ class InspectorApp(tk.Tk):
         # Keep the initial status as review; the reviewer makes the final decision in the dashboard.
         self.report["review_label"] = "review"
         self.report["review_label_ar"] = "بانتظار تصنيف المراجع في لوحة التحكم"
-        self.status.set(self._t("جارٍ إرسال التقرير بعد موافقتك…", "Sending the report with your consent…"))
+        if hasattr(self, "status"):
+            self.status.set(self._t("جارٍ إرسال التقرير بعد موافقتك…", "Sending the report with your consent…"))
+        if hasattr(self, "delivery_message"):
+            self.delivery_message.set("SENDING REPORT TO INSPECTOR...")
         try:
             import urllib.request
             endpoint = self.active_dashboard_url.rstrip("/") + "/api/v1/session-report"
-            self.status.set(self._t("جارٍ إرسال التقرير إلى لوحة المسؤول…", "Sending report to the inspector dashboard…"))
+            if hasattr(self, "status"):
+                self.status.set(self._t("جارٍ إرسال التقرير إلى لوحة المسؤول…", "Sending report to the inspector dashboard…"))
             # Do not attach a full-desktop screenshot by default: it can inflate the
             # JSON body beyond the server limit and contains unrelated private content.
             self.report.pop("desktop_screenshot_base64", None)
