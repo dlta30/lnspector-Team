@@ -1821,9 +1821,17 @@ class InspectorApp(tk.Tk):
         tk.Label(header, text="♛  3EN INSPECT", bg="#0d0a13", fg="#f8f4f8",
                  font=("Segoe UI", 19, "bold")).pack(side="left")
         tk.Label(shell, text="SCAN COMPLETED", bg="#08070d", fg="#ff2b78",
-                 font=("Segoe UI", 25, "bold")).pack(pady=(105, 30))
+                 font=("Segoe UI", 25, "bold")).pack(pady=(88, 20))
+        self.delivery_message = tk.StringVar(value="SENDING REPORT TO INSPECTOR...")
+        self.delivery_status_label = tk.Label(shell, textvariable=self.delivery_message,
+            bg="#08070d", fg="#ff82b3", font=("Segoe UI", 9, "bold"))
+        self.delivery_status_label.pack(pady=(0, 16))
+        self.retry_report_button = tk.Button(shell, text="RETRY REPORT",
+            command=lambda: self.send_report(auto=False), bg="#24101c", fg="#ff75a9",
+            relief="flat", font=("Segoe UI", 9, "bold"), padx=20, pady=8)
+        self.retry_report_button.pack_forget()
         tk.Button(shell, text="CLOSE", command=self.destroy, bg="#24101c", fg="#ff75a9",
-                  relief="flat", font=("Segoe UI", 10, "bold"), padx=28, pady=10).pack(pady=12)
+                  relief="flat", font=("Segoe UI", 10, "bold"), padx=28, pady=10).pack(pady=8)
         tk.Label(shell, text="3EN INSPECT TEAM  •  ALL RIGHTS RESERVED", bg="#08070d",
                  fg="#8f7c8b", font=("Segoe UI", 8, "bold")).pack(side="bottom", anchor="w")
 
@@ -1841,8 +1849,16 @@ class InspectorApp(tk.Tk):
         hero.pack(fill="both", expand=True)
         try:
             from PIL import Image, ImageTk, ImageEnhance
-            root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
-            hero_path = os.path.join(root, "3en-inspect-hero.jpg")
+            # PyInstaller onedir stores --add-data files under _internal on current builds.
+            candidates = [
+                os.path.join(getattr(sys, "_MEIPASS", ""), "3en-inspect-hero.jpg"),
+                os.path.join(os.path.dirname(os.path.abspath(__file__)), "3en-inspect-hero.jpg"),
+                os.path.join(os.path.dirname(sys.executable), "3en-inspect-hero.jpg"),
+                os.path.join(os.path.dirname(sys.executable), "_internal", "3en-inspect-hero.jpg"),
+            ]
+            hero_path = next((p for p in candidates if p and os.path.isfile(p)), None)
+            if not hero_path:
+                raise FileNotFoundError("Bundled 3en-inspect-hero.jpg was not found in the app bundle")
             with Image.open(hero_path) as src:
                 photo = src.convert("RGB")
                 w, h = 900, 500
@@ -2181,9 +2197,11 @@ class InspectorApp(tk.Tk):
         try:
             import urllib.request
             endpoint = self.active_dashboard_url.rstrip("/") + "/api/v1/session-report"
-            self.status.set(self._t("جارٍ تجهيز صورة الشاشة وإرسال التقرير…", "Preparing the screenshot and sending the report…"))
-            self.report["desktop_screenshot_base64"] = capture_desktop_screenshot_base64()
-            self.report["desktop_screenshot_captured_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            self.status.set(self._t("جارٍ إرسال التقرير إلى لوحة المسؤول…", "Sending report to the inspector dashboard…"))
+            # Do not attach a full-desktop screenshot by default: it can inflate the
+            # JSON body beyond the server limit and contains unrelated private content.
+            self.report.pop("desktop_screenshot_base64", None)
+            self.report.pop("desktop_screenshot_captured_at", None)
             summary_text = (
                 f"{self.report['review_label_ar']} — {self.report['indicator_match_count']} مؤشرات عمليات "
                 f"و{self.report.get('file_indicator_match_count', 0)} مؤشرات ملفات للمراجعة"
@@ -2203,7 +2221,11 @@ class InspectorApp(tk.Tk):
             self.delivery_status = "sent"
             if hasattr(self, "status"):
                 self.status.set(self._t("تم إرسال التقرير تلقائيًا إلى لوحة التحكم.", "The report was securely sent to the inspector dashboard."))
-            # The scanned person sees only the completion screen; detailed findings stay in the dashboard.
+            if hasattr(self, "delivery_message"):
+                self.delivery_message.set("REPORT SENT TO INSPECTOR")
+            if hasattr(self, "retry_report_button"):
+                self.retry_report_button.pack_forget()
+            # The scanned person sees completion only; detailed findings stay in the dashboard.
         except urllib.error.HTTPError as exc:
             try:
                 detail = exc.read(1200).decode("utf-8", errors="replace").strip()
@@ -2212,10 +2234,18 @@ class InspectorApp(tk.Tk):
             self.delivery_status = "failed: HTTP " + str(exc.code)
             if hasattr(self, "status"):
                 self.status.set("تعذر إرسال التقرير (HTTP " + str(exc.code) + "). " + (detail[:180] if detail else "تحقق من الاتصال."))
+            if hasattr(self, "delivery_message"):
+                self.delivery_message.set("REPORT NOT SENT — CONTACT INSPECTOR")
+            if hasattr(self, "retry_report_button"):
+                self.retry_report_button.pack(pady=(0, 8))
         except Exception as exc:
             self.delivery_status = "failed: " + type(exc).__name__
             if hasattr(self, "status"):
                 self.status.set("تعذر الإرسال: " + type(exc).__name__ + ". تحقق من الاتصال.")
+            if hasattr(self, "delivery_message"):
+                self.delivery_message.set("REPORT NOT SENT — CHECK CONNECTION")
+            if hasattr(self, "retry_report_button"):
+                self.retry_report_button.pack(pady=(0, 8))
 
     def export_pdf(self):
         if not self.report:
