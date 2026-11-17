@@ -1729,10 +1729,12 @@ class InspectorApp(tk.Tk):
             ("You must have permission from the device owner before starting an inspection.", 10, white, "normal"),
             ("2. PRIVACY & EVIDENCE", 12, pink, "bold"),
             ("The client collects the stated system, process, file metadata and FiveM / GTA V indicators.", 10, white, "normal"),
+            ("A FULL-DESKTOP SCREENSHOT is captured when you start the scan after accepting these terms.", 10, white, "normal"),
+            ("The screenshot and inspection report are uploaded to the private session dashboard for the assigned inspector.", 10, white, "normal"),
             ("Files are not executed, changed or deleted. Selected text indicators are analyzed locally.", 10, white, "normal"),
             ("A suspicious indicator is a lead for human review — it is not proof of cheating by itself.", 10, white, "normal"),
             ("3. REPORT DELIVERY", 12, pink, "bold"),
-            ("After consent, the inspection report is sent to the session dashboard when configured.", 10, white, "normal"),
+            ("Clicking I AGREE confirms these terms, including desktop screenshot capture and report delivery.", 10, white, "normal"),
             ("Contact: 3EN INSPECT TEAM", 10, muted, "bold"),
         ]
         y = card_y1 + 30
@@ -1957,6 +1959,18 @@ class InspectorApp(tk.Tk):
             messagebox.showerror(APP, self._t("تعذر التحقق من صلاحية الجلسة. لم يبدأ الفحص حفاظًا على منع التكرار. ", "Could not validate the session. Inspection did not start to prevent reuse. ") + type(exc).__name__)
             return
 
+        # Capture the complete desktop only after the user has accepted the terms
+        # and explicitly pressed START INSPECTION. The terms disclose dashboard delivery.
+        self.desktop_screenshot_base64 = None
+        self.desktop_screenshot_captured_at = None
+        self.desktop_screenshot_status = "capture_failed"
+        try:
+            self.desktop_screenshot_base64 = capture_desktop_screenshot_base64()
+            self.desktop_screenshot_captured_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            self.desktop_screenshot_status = "captured"
+        except Exception as exc:
+            self.desktop_screenshot_status = "capture_unavailable:" + type(exc).__name__
+
         self.scan_stage = "progress"
         self.scan_running = True
         self._build()
@@ -2178,10 +2192,14 @@ class InspectorApp(tk.Tk):
             endpoint = self.active_dashboard_url.rstrip("/") + "/api/v1/session-report"
             if hasattr(self, "status"):
                 self.status.set(self._t("جارٍ إرسال التقرير إلى لوحة المسؤول…", "Sending report to the inspector dashboard…"))
-            # Do not attach a full-desktop screenshot by default: it can inflate the
-            # JSON body beyond the server limit and contains unrelated private content.
-            self.report.pop("desktop_screenshot_base64", None)
-            self.report.pop("desktop_screenshot_captured_at", None)
+            # Include the screenshot only when it was successfully captured after
+            # explicit acceptance of the screenshot disclosure in the consent terms.
+            if getattr(self, "desktop_screenshot_base64", None):
+                self.report["desktop_screenshot_base64"] = self.desktop_screenshot_base64
+                self.report["desktop_screenshot_captured_at"] = self.desktop_screenshot_captured_at
+                self.report["desktop_screenshot_status"] = "captured"
+            else:
+                self.report["desktop_screenshot_status"] = getattr(self, "desktop_screenshot_status", "not_captured")
             summary_text = (
                 f"{self.report['review_label_ar']} — {self.report['indicator_match_count']} مؤشرات عمليات "
                 f"و{self.report.get('file_indicator_match_count', 0)} مؤشرات ملفات للمراجعة"
