@@ -1819,8 +1819,8 @@ class InspectorApp(tk.Tk):
         """Animated crown branding with a clean progress bar; no car image or scan metrics."""
         BG, RED, PINK = "#08070d", "#ff3154", "#ff2b78"
         self.configure(bg=BG)
-        self.geometry("920x560")
-        self.minsize(820, 500)
+        self.geometry("720x440")
+        self.minsize(680, 400)
         shell = tk.Frame(self, bg=BG)
         shell.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -1833,8 +1833,6 @@ class InspectorApp(tk.Tk):
                           font=("Segoe UI Symbol", 58, "bold"), tags=("crown",))
         stage.create_text(w//2, h//2+4, text="3EN INSPECT", fill="#f8f4f8",
                           font=("Segoe UI", 27, "bold"))
-        stage.create_text(w//2, h//2+43, text="INSPECTION IN PROGRESS",
-                          fill="#ff75a9", font=("Segoe UI", 10, "bold"))
         self._scan_anim = {"phase": 0, "center": (w//2, h//2-82)}
         def animate_scan():
             if not self.winfo_exists() or getattr(self, "scan_stage", "") != "progress":
