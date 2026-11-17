@@ -1707,29 +1707,7 @@ class InspectorApp(tk.Tk):
         canvas.pack(fill="both", expand=True)
         canvas.update_idletasks()
         width, height = max(820, self.winfo_width()), max(560, self.winfo_height())
-        try:
-            from PIL import Image, ImageTk, ImageEnhance
-            # Resolve the artwork from PyInstaller's onedir bundle and safe local fallbacks.
-            candidates = [
-                os.path.join(getattr(sys, "_MEIPASS", ""), "3en-inspect-hero.jpg"),
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), "3en-inspect-hero.jpg"),
-                os.path.join(os.path.dirname(sys.executable), "3en-inspect-hero.jpg"),
-                os.path.join(os.path.dirname(sys.executable), "_internal", "3en-inspect-hero.jpg"),
-            ]
-            hero_path = next((p for p in candidates if p and os.path.isfile(p)), None)
-            if not hero_path:
-                raise FileNotFoundError("Bundled 3en-inspect-hero.jpg was not found")
-            with Image.open(hero_path) as src:
-                photo = src.convert("RGB")
-                ratio = max(width / photo.width, height / photo.height)
-                photo = photo.resize((int(photo.width * ratio), int(photo.height * ratio)), Image.Resampling.LANCZOS)
-                left, top = (photo.width-width)//2, (photo.height-height)//2
-                photo = photo.crop((left, top, left+width, top+height))
-                photo = ImageEnhance.Brightness(photo).enhance(0.42)
-            self._hero_photo = ImageTk.PhotoImage(photo)
-            canvas.create_image(0, 0, image=self._hero_photo, anchor="nw")
-        except Exception:
-            canvas.create_rectangle(0, 0, width, height, fill="#090911", outline="")
+        canvas.create_rectangle(0, 0, width, height, fill="#090911", outline="")
         pink, red, white, muted = "#ff2b78", "#ff3154", "#f7f4fa", "#b8b3c2"
         canvas.create_rectangle(10, 10, width-10, height-10, outline="#9b174c", width=2)
         canvas.create_rectangle(10, 10, width-10, 58, fill="#090811", outline="#52152e", width=1)
@@ -1836,46 +1814,44 @@ class InspectorApp(tk.Tk):
                  fg="#8f7c8b", font=("Segoe UI", 8, "bold")).pack(side="bottom", anchor="w")
 
     def _build_progress_screen(self):
-        """Show the car artwork with a single progress bar; no scan details are exposed."""
-        BG, RED = "#08070d", "#ff2b78"
+        """Animated crown branding with a clean progress bar; no car image or scan metrics."""
+        BG, RED, PINK = "#08070d", "#ff3154", "#ff2b78"
         self.configure(bg=BG)
         self.geometry("920x560")
         self.minsize(820, 500)
         shell = tk.Frame(self, bg=BG)
         shell.pack(fill="both", expand=True, padx=10, pady=10)
 
-        self._progress_photo = None
-        hero = tk.Frame(shell, bg=BG, bd=0)
-        hero.pack(fill="both", expand=True)
-        try:
-            from PIL import Image, ImageTk, ImageEnhance
-            # PyInstaller onedir stores --add-data files under _internal on current builds.
-            candidates = [
-                os.path.join(getattr(sys, "_MEIPASS", ""), "3en-inspect-hero.jpg"),
-                os.path.join(os.path.dirname(os.path.abspath(__file__)), "3en-inspect-hero.jpg"),
-                os.path.join(os.path.dirname(sys.executable), "3en-inspect-hero.jpg"),
-                os.path.join(os.path.dirname(sys.executable), "_internal", "3en-inspect-hero.jpg"),
-            ]
-            hero_path = next((p for p in candidates if p and os.path.isfile(p)), None)
-            if not hero_path:
-                raise FileNotFoundError("Bundled 3en-inspect-hero.jpg was not found in the app bundle")
-            with Image.open(hero_path) as src:
-                photo = src.convert("RGB")
-                w, h = 900, 500
-                ratio = max(w / photo.width, h / photo.height)
-                photo = photo.resize((int(photo.width * ratio), int(photo.height * ratio)), Image.Resampling.LANCZOS)
-                left, top = (photo.width - w) // 2, (photo.height - h) // 2
-                photo = ImageEnhance.Brightness(photo.crop((left, top, left + w, top + h))).enhance(0.72)
-            self._progress_photo = ImageTk.PhotoImage(photo)
-            tk.Label(hero, image=self._progress_photo, bg=BG, bd=0).place(relx=0.5, rely=0.5, anchor="center")
-        except Exception as exc:
-            hero.configure(bg="#090911")
-            try:
-                print("3EN scan artwork could not be loaded:", type(exc).__name__, str(exc))
-            except Exception:
-                pass
+        stage = tk.Canvas(shell, bg=BG, highlightthickness=0, bd=0)
+        stage.pack(fill="both", expand=True)
+        stage.update_idletasks()
+        w, h = max(800, stage.winfo_width()), max(360, stage.winfo_height())
+        stage.create_rectangle(8, 8, w-8, h-8, outline="#67213f", width=1)
+        stage.create_text(w//2, h//2-82, text="♛", fill=PINK,
+                          font=("Segoe UI Symbol", 58, "bold"), tags=("crown",))
+        stage.create_text(w//2, h//2+4, text="3EN INSPECT", fill="#f8f4f8",
+                          font=("Segoe UI", 27, "bold"))
+        stage.create_text(w//2, h//2+43, text="INSPECTION IN PROGRESS",
+                          fill="#ff75a9", font=("Segoe UI", 10, "bold"))
+        self._scan_anim = {"phase": 0, "center": (w//2, h//2-82)}
+        def animate_scan():
+            if not self.winfo_exists() or getattr(self, "scan_stage", "") != "progress":
+                return
+            phase = self._scan_anim["phase"]
+            cx, cy = self._scan_anim["center"]
+            stage.delete("orbit")
+            import math
+            for i in range(12):
+                angle = (phase * 0.16) + (i * math.tau / 12)
+                x, y = cx + math.cos(angle)*55, cy + math.sin(angle)*55
+                shade = PINK if i == (phase % 12) else "#67213f"
+                stage.create_oval(x-3, y-3, x+3, y+3, fill=shade, outline="", tags=("orbit",))
+            pulse = 52 + (phase % 8)
+            stage.itemconfigure("crown", font=("Segoe UI Symbol", pulse, "bold"))
+            self._scan_anim["phase"] = (phase + 1) % 48
+            self.after(90, animate_scan)
+        animate_scan()
 
-        # The progress bar is the only live scan UI element.
         bar_wrap = tk.Frame(shell, bg="#090811", padx=12, pady=10,
                             highlightbackground="#67213f", highlightthickness=1)
         bar_wrap.pack(fill="x", pady=(8, 0))
