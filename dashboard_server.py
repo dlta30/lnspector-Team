@@ -1062,7 +1062,7 @@ def home():
     can_see_reports = user["role"] == "owner"
     with db() as con:
         total_sessions = con.execute("SELECT COUNT(*) n FROM inspection_sessions").fetchone()["n"]
-        pending_sessions = con.execute("SELECT COUNT(*) n FROM inspection_sessions WHERE status='open' AND expires_at>?", (now(),)).fetchone()["n"]
+        pending_sessions = con.execute("SELECT COUNT(*) n FROM inspection_sessions WHERE status IN ('open','scanning') AND expires_at>?", (now(),)).fetchone()["n"]
         completed_reports = con.execute("SELECT COUNT(*) n FROM reports").fetchone()["n"] if can_see_reports else 0
         recent_reports = [dict(row) for row in con.execute("SELECT r.id,r.session_id,r.computer_label,r.created_at,r.summary,s.target_label FROM reports r LEFT JOIN inspection_sessions s ON s.display_code=r.session_id ORDER BY r.id DESC LIMIT 6").fetchall()] if can_see_reports else []
         recent_sessions = [dict(row) for row in con.execute("SELECT s.display_code,COALESCE(u.discord_server_name,u.discord_username,s.created_by) AS creator_name,u.discord_username AS creator_username,s.created_at,s.expires_at,s.status,(SELECT MAX(r.id) FROM reports r WHERE r.session_id=s.display_code) AS report_id FROM inspection_sessions s LEFT JOIN users u ON u.username=s.created_by OR u.discord_username=s.created_by ORDER BY s.id DESC LIMIT 6").fetchall()] if user["role"] in ("owner","deputy","team","inspector") else []
