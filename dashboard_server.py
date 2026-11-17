@@ -1588,6 +1588,7 @@ def report_detail(report_id):
         abort(403)
     source_label = report_source_label(r["submitted_by"])
     target_label = inspection_target_label(r["session_id"])
+    envelope = {}
     try:
         envelope = json.loads(r["payload"])
         if not isinstance(envelope, dict):
@@ -1960,6 +1961,7 @@ def report_pdf(report_id):
         data = envelope.get("report") if isinstance(envelope, dict) and isinstance(envelope.get("report"), dict) else envelope
         if not isinstance(data, dict): data = {}
     except Exception:
+        envelope = {}
         payload, data = str(r["payload"]), {}
 
     language = request.args.get("lang", "").strip().lower()
@@ -2038,7 +2040,7 @@ def report_pdf(report_id):
     styles.add(ParagraphStyle(name="Raw3EN", parent=styles["BodyText"], fontName="Courier", fontSize=5.5, leading=6.5, wordWrap="CJK"))
     styles["Title"].fontName = font_name
     styles["Heading1"].fontName = font_name
-    def p(value, style="Meta3EN"): return Paragraph(txt(value), styles[style])
+    def p(value, style="Meta3EN"): return Paragraph(escape(txt(value)), styles[style])
     def c(value, limit=500): return Paragraph(escape(txt(str(value or "—"))[:limit]), styles["Cell3EN"])
     def table(rows, widths):
         obj = Table(rows, colWidths=widths, repeatRows=1, hAlign="RIGHT" if language == "ar" else "LEFT")
