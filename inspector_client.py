@@ -1941,7 +1941,8 @@ class InspectorApp(tk.Tk):
     def update_progress(self, value, text):
         # Collector callbacks report phase-local milestones. Keep the displayed
         # percentage monotonic and reserve 100% for the worker's final success path.
-        incoming = max(0, min(99, int(value)))
+        final_success = int(value) >= 100 and "اكتمل الفحص وتجهيز التقرير" in str(text)
+        incoming = 100 if final_success else max(0, min(99, int(value)))
         self._progress_value = max(int(getattr(self, "_progress_value", 0)), incoming)
         self._progress_message = str(text)
         current = self._progress_value
