@@ -1816,55 +1816,89 @@ class InspectorApp(tk.Tk):
                  fg="#8f7c8b", font=("Segoe UI", 8, "bold")).pack(side="bottom", anchor="w")
 
     def _build_progress_screen(self):
-        """Animated crown branding with a clean progress bar; no car image or scan metrics."""
-        BG, RED, PINK = "#08070d", "#ff3154", "#ff2b78"
+        """Premium dark/red inspection screen with truthful, monotonic progress."""
+        BG, PANEL, RED, PINK, WHITE, MUTED = "#07070c", "#100d15", "#ff3154", "#ff2b78", "#f8f4f8", "#a99eac"
         self.configure(bg=BG)
-        self.geometry("720x440")
-        self.minsize(680, 400)
-        shell = tk.Frame(self, bg=BG)
-        shell.pack(fill="both", expand=True, padx=10, pady=10)
+        self.geometry("860x560")
+        self.minsize(800, 520)
+        shell = tk.Frame(self, bg=BG, padx=22, pady=18)
+        shell.pack(fill="both", expand=True)
 
-        stage = tk.Canvas(shell, bg=BG, highlightthickness=0, bd=0)
-        stage.pack(fill="both", expand=True)
-        stage.update_idletasks()
-        w, h = max(800, stage.winfo_width()), max(360, stage.winfo_height())
-        stage.create_rectangle(8, 8, w-8, h-8, outline="#67213f", width=1)
-        stage.create_text(w//2, h//2-82, text="♛", fill=PINK,
-                          font=("Segoe UI Symbol", 58, "bold"), tags=("crown",))
-        stage.create_text(w//2, h//2+4, text="3EN INSPECT", fill="#f8f4f8",
-                          font=("Segoe UI", 27, "bold"))
-        self._scan_anim = {"phase": 0, "center": (w//2, h//2-82)}
-        def animate_scan():
-            if not self.winfo_exists() or getattr(self, "scan_stage", "") != "progress":
-                return
-            phase = self._scan_anim["phase"]
-            cx, cy = self._scan_anim["center"]
-            stage.delete("orbit")
-            import math
-            for i in range(12):
-                angle = (phase * 0.16) + (i * math.tau / 12)
-                x, y = cx + math.cos(angle)*55, cy + math.sin(angle)*55
-                shade = PINK if i == (phase % 12) else "#67213f"
-                stage.create_oval(x-3, y-3, x+3, y+3, fill=shade, outline="", tags=("orbit",))
-            pulse = 52 + (phase % 8)
-            stage.itemconfigure("crown", font=("Segoe UI Symbol", pulse, "bold"))
-            self._scan_anim["phase"] = (phase + 1) % 48
-            self.after(90, animate_scan)
-        animate_scan()
+        # Branded top rail.
+        header = tk.Frame(shell, bg="#0d0a12", padx=20, pady=13,
+                          highlightbackground="#55203a", highlightthickness=1)
+        header.pack(fill="x")
+        tk.Label(header, text="♛", bg="#0d0a12", fg=PINK,
+                 font=("Segoe UI Symbol", 24, "bold")).pack(side="left")
+        brand = tk.Frame(header, bg="#0d0a12")
+        brand.pack(side="left", padx=(10, 0))
+        tk.Label(brand, text="3EN INSPECT", bg="#0d0a12", fg=WHITE,
+                 font=("Segoe UI", 18, "bold")).pack(anchor="w")
+        tk.Label(brand, text="FIVEM SECURITY INSPECTION", bg="#0d0a12", fg=RED,
+                 font=("Segoe UI", 8, "bold")).pack(anchor="w", pady=(1, 0))
+        tk.Label(header, text="● LIVE", bg="#0d0a12", fg="#ff668e",
+                 font=("Segoe UI", 9, "bold")).pack(side="right")
 
-        bar_wrap = tk.Frame(shell, bg="#090811", padx=12, pady=10,
-                            highlightbackground="#67213f", highlightthickness=1)
-        bar_wrap.pack(fill="x", pady=(8, 0))
+        # Main visual panel.
+        panel = tk.Frame(shell, bg=PANEL, padx=24, pady=20,
+                         highlightbackground="#70213f", highlightthickness=1)
+        panel.pack(fill="both", expand=True, pady=(16, 14))
+        panel.grid_columnconfigure(0, weight=1)
+
+        logo_box = tk.Frame(panel, bg=PANEL)
+        logo_box.pack(fill="both", expand=True)
+        self._scan_logo_photo = None
+        try:
+            from PIL import Image, ImageTk
+            resource_root = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+            logo_path = os.path.join(resource_root, "3en.png")
+            if os.path.isfile(logo_path):
+                with Image.open(logo_path) as im:
+                    im = im.convert("RGBA")
+                    im.thumbnail((150, 150), Image.Resampling.LANCZOS)
+                self._scan_logo_photo = ImageTk.PhotoImage(im)
+                tk.Label(logo_box, image=self._scan_logo_photo, bg=PANEL).pack(pady=(8, 4))
+            else:
+                tk.Label(logo_box, text="♛", bg=PANEL, fg=PINK,
+                         font=("Segoe UI Symbol", 64, "bold")).pack(pady=(10, 4))
+        except Exception:
+            tk.Label(logo_box, text="♛", bg=PANEL, fg=PINK,
+                     font=("Segoe UI Symbol", 64, "bold")).pack(pady=(10, 4))
+
+        tk.Label(logo_box, text="INSPECTION IN PROGRESS", bg=PANEL, fg=WHITE,
+                 font=("Segoe UI", 20, "bold")).pack(pady=(3, 4))
+        tk.Label(logo_box, text="Analyzing selected FiveM and Windows evidence",
+                 bg=PANEL, fg=MUTED, font=("Segoe UI", 9)).pack()
+
+        progress_card = tk.Frame(panel, bg="#0a0810", padx=18, pady=16,
+                                 highlightbackground="#4a1b32", highlightthickness=1)
+        progress_card.pack(fill="x", pady=(20, 6))
+        top_line = tk.Frame(progress_card, bg="#0a0810")
+        top_line.pack(fill="x", pady=(0, 10))
+        tk.Label(top_line, text="SCAN PROGRESS", bg="#0a0810", fg=MUTED,
+                 font=("Segoe UI", 9, "bold")).pack(side="left")
+        self.progress_percent = tk.StringVar(value=f"{int(self._progress_value)}%")
+        tk.Label(top_line, textvariable=self.progress_percent, bg="#0a0810", fg=PINK,
+                 font=("Segoe UI", 17, "bold")).pack(side="right")
+
         style = ttk.Style(self)
         style.theme_use("clam")
-        style.configure("TProgressbar", troughcolor="#24101c", background=RED,
-                        bordercolor="#24101c", lightcolor=RED, darkcolor=RED, thickness=14)
-        self.progress = ttk.Progressbar(bar_wrap, maximum=100, mode="determinate")
+        style.configure("3EN.Horizontal.TProgressbar", troughcolor="#28121e",
+                        background=RED, bordercolor="#28121e",
+                        lightcolor=PINK, darkcolor=RED, thickness=18)
+        self.progress = ttk.Progressbar(progress_card, maximum=100, mode="determinate",
+                                         style="3EN.Horizontal.TProgressbar")
         self.progress.pack(fill="x")
-        self.start_button = ttk.Button(shell, text="INSPECTION RUNNING")
-        self.start_button.pack_forget()
+        self.progress.configure(value=max(0, min(100, int(self._progress_value))))
 
-    def _change_language(self, _event=None):
+        self.progress_status = tk.StringVar(value=self._progress_text(self._progress_message))
+        tk.Label(progress_card, textvariable=self.progress_status, bg="#0a0810",
+                 fg="#c8bdc9", font=("Segoe UI", 9), anchor="w").pack(fill="x", pady=(10, 0))
+
+        tk.Label(shell, text="AUTHORIZED SESSION  •  3EN INSPECT TEAM",
+                 bg=BG, fg="#766b78", font=("Segoe UI", 8, "bold")).pack(anchor="center")
+
+        def _change_language(self, _event=None):
         # Rebuild translated widgets without losing an active scan or its UI state.
         consent_accepted = bool(getattr(self, "consent_scan", None) and self.consent_scan.get())
         progress_value = int(getattr(self, "_progress_value", 0))
@@ -1905,13 +1939,22 @@ class InspectorApp(tk.Tk):
         return result
 
     def update_progress(self, value, text):
-        self._progress_value = max(0, min(100, int(value)))
+        # Collector callbacks report phase-local milestones. Keep the displayed
+        # percentage monotonic and reserve 100% for the worker's final success path.
+        incoming = max(0, min(99, int(value)))
+        self._progress_value = max(int(getattr(self, "_progress_value", 0)), incoming)
         self._progress_message = str(text)
+        current = self._progress_value
+        message = self._progress_text(self._progress_message)
         def paint():
-            value = max(0, min(100, int(value)))
+            if not self.winfo_exists():
+                return
             if hasattr(self, "progress"):
-                self.progress.configure(value=value)
-
+                self.progress.configure(value=current)
+            if hasattr(self, "progress_percent"):
+                self.progress_percent.set(f"{current}%")
+            if hasattr(self, "progress_status"):
+                self.progress_status.set(message)
         self.after(0, paint)
 
     def _close_then_offer_folder(self):
