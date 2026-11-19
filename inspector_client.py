@@ -2149,7 +2149,8 @@ class InspectorApp(tk.Tk):
             self.update_progress(100, "اكتمل الفحص وتجهيز التقرير.")
             self.scan_running = False
             self.delivery_status = "pending"
-            self.after(0, self._show_report)
+            # Hold the completed 100% state briefly so the user can see it before the completion screen.
+            self.after(1200, self._show_report)
         except Exception as exc:
             self.scan_running = False
             self.after(0, lambda: messagebox.showerror(APP, self._t("تعذر إكمال الفحص. تم استهلاك الجلسة لمنع إعادة استخدامها؛ تواصل مع المسؤول لإنشاء جلسة جديدة.", "Inspection could not be completed. This one-time session remains locked; contact the inspector for a new session.")))
