@@ -1898,7 +1898,7 @@ class InspectorApp(tk.Tk):
         tk.Label(shell, text="AUTHORIZED SESSION  •  3EN INSPECT TEAM",
                  bg=BG, fg="#766b78", font=("Segoe UI", 8, "bold")).pack(anchor="center")
 
-        def _change_language(self, _event=None):
+    def _change_language(self, _event=None):
         # Rebuild translated widgets without losing an active scan or its UI state.
         consent_accepted = bool(getattr(self, "consent_scan", None) and self.consent_scan.get())
         progress_value = int(getattr(self, "_progress_value", 0))
