@@ -533,7 +533,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
         'description': ('اعتمد المراجع تصنيف «كلين». لا تُرسل تفاصيل المؤشرات أو أعدادها إلى Discord؛ تبقى في لوحة المفتش. هذا القرار اليدوي لا يثبت خلو الجهاز من كل المخاطر.' if verdict == 'clean' else ('اعتمد المراجع تصنيف «هاك / مشتبه». المؤشرات تحتاج تحققًا يدويًا ولا تُعد وحدها إثباتًا قاطعًا.\n\n' if verdict == 'hack' else 'التقرير بانتظار قرار المراجع.\n\n') + safe(summary or 'تم استلام التقرير وحفظه في لوحة التحكم.', 700)),
         'color': verdict_color,
         'fields': fields[:25],
-        'footer': {'text': 'BY:ROITH'}
+        'footer': {'text': 'BY:BEV'}
     }
     message = {
         'username': '3eN Inspect Team',
@@ -586,7 +586,7 @@ def notify_discord(report_id, session_code, computer, summary, report=None, verd
             canvas_obj.saveState()
             canvas_obj.setFont('Helvetica', 8)
             canvas_obj.setFillColorRGB(0.45, 0.45, 0.45)
-            canvas_obj.drawCentredString(A4[0] / 2, 8 * mm, 'BY:ROITH')
+            canvas_obj.drawCentredString(A4[0] / 2, 8 * mm, 'BY:BEV')
             canvas_obj.restoreState()
 
         doc.build(story, onFirstPage=draw_discord_pdf_footer, onLaterPages=draw_discord_pdf_footer)
@@ -773,7 +773,7 @@ document.addEventListener('DOMContentLoaded', function(){
  apply();
 });
 </script>
-<div class="wrap">{% for msg in get_flashed_messages() %}<div class="notice">{{ msg }}</div>{% endfor %}{{ body|safe }}</div><footer style="text-align:center;padding:18px 12px 24px;color:#778094;font-size:11px;letter-spacing:1px;border-top:1px solid #ffffff10;margin-top:28px">BY:ROITH</footer></html>
+<div class="wrap">{% for msg in get_flashed_messages() %}<div class="notice">{{ msg }}</div>{% endfor %}{{ body|safe }}</div><footer style="text-align:center;padding:18px 12px 24px;color:#778094;font-size:11px;letter-spacing:1px;border-top:1px solid #ffffff10;margin-top:28px">BY:BEV</footer></html>
 """
 
 def page(body, **context):
@@ -986,7 +986,7 @@ def discord_test():
                         {"name": "الحالة", "value": "Webhook متصل", "inline": True},
                         {"name": "أُرسل بواسطة", "value": actor["username"][:80], "inline": True}
                     ],
-                    "footer": {"text": "BY:ROITH"}
+                    "footer": {"text": "BY:BEV"}
                 }],
                 "allowed_mentions": {"parse": []}
             }
@@ -2138,7 +2138,7 @@ def report_pdf(report_id):
         canvas_obj.saveState()
         canvas_obj.setFont(font_name, 8)
         canvas_obj.setFillColor(colors.HexColor("#777777"))
-        canvas_obj.drawCentredString(A4[0] / 2, 8 * mm, "BY:ROITH")
+        canvas_obj.drawCentredString(A4[0] / 2, 8 * mm, "BY:BEV")
         canvas_obj.restoreState()
 
     doc.build(story, onFirstPage=draw_report_footer, onLaterPages=draw_report_footer)
@@ -2247,7 +2247,7 @@ def users_page():
           <p class="muted" style="margin:0 0 18px">أنشئ حساب الموظف وحدد رتبته. تسجيل الدخول يتم عبر Discord فقط.</p>
           <form method="post" style="display:grid;gap:10px">
             <input type="hidden" name="action" value="create">
-            <label>اسم المستخدم</label><input name="username" minlength="3" maxlength="64" autocomplete="off" placeholder="مثال: staff_roith" required>
+            <label>اسم المستخدم</label><input name="username" minlength="3" maxlength="64" autocomplete="off" placeholder="مثال: staff_BEV" required>
             <label>دور الموظف</label>
             <select name="role">
               {% if actor_role == 'owner' %}<option value="deputy">Assistant Inspect</option>{% endif %}
