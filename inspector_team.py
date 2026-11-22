@@ -14,7 +14,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
 APP_NAME = "3EN INSPECT TEAM"
-BYLINE = "by: ROITH"
+BYLINE = "by: BEV"
 REPORT_DIR = Path.home() / "Documents" / "3EN_Inspect_Team"
 CONFIG_PATH = Path(os.environ.get("LOCALAPPDATA", str(Path.home()))) / "3EN_Inspect_Team" / "config.json"
 EXTENSIONS = {".exe", ".dll", ".sys", ".bat", ".cmd", ".ps1", ".vbs", ".scr", ".asi", ".lua"}
@@ -184,7 +184,7 @@ def create_pdf_report(report, destination):
     pdf.setFillColor(colors.black)
     def draw_footer():
         pdf.setFillColor(colors.HexColor('#777777')); pdf.setFont('Helvetica', 8)
-        pdf.drawCentredString(w / 2, 22, 'BY:ROITH')
+        pdf.drawCentredString(w / 2, 22, 'BY:BEV')
     def write(text, bold=False):
         nonlocal y
         if y < 45:
@@ -357,7 +357,7 @@ class InspectorApp:
         tk.Button(footer, text="إرسال التقرير إلى Discord", command=self.send_discord, bg="#5865F2", fg="white", relief="flat", padx=12, pady=7).pack(side="left", padx=(0, 8))
         tk.Button(footer, text="فتح مجلد التقارير", command=self.open_reports, bg=PANEL2, fg=TEXT, relief="flat", padx=12, pady=7).pack(side="left")
         tk.Label(footer, text="الاشتباه ليس إثباتًا • افحص المصدر والتوقيع قبل اتخاذ قرار", bg=BG, fg=MUTED, font=("Segoe UI", 8)).pack(side="left", padx=12)
-        tk.Label(footer, text="BY:ROITH", bg=BG, fg=MUTED, font=("Segoe UI", 8, "bold")).pack(side="right", padx=8)
+        tk.Label(footer, text="BY:BEV", bg=BG, fg=MUTED, font=("Segoe UI", 8, "bold")).pack(side="right", padx=8)
 
         # Additional real pages for saved reports, session history, and settings.
         self.sessions_page = tk.Frame(self.pages, bg=BG)
