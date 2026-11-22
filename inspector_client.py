@@ -2497,7 +2497,7 @@ class InspectorApp(tk.Tk):
                 canvas_obj.saveState()
                 canvas_obj.setFont(pdf_font, 8)
                 canvas_obj.setFillColor(colors.HexColor("#777777"))
-                canvas_obj.drawCentredString(A4[0] / 2, 8 * mm, "BY:ROITH")
+                canvas_obj.drawCentredString(A4[0] / 2, 8 * mm, "BY:BEV")
                 canvas_obj.restoreState()
 
             doc.build(story, onFirstPage=draw_client_pdf_footer, onLaterPages=draw_client_pdf_footer)
