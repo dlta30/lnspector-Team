@@ -334,7 +334,6 @@ def init_db():
             con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_password INTEGER NOT NULL DEFAULT 1")
             con.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_discord_id_unique ON users(discord_id)")
             con.execute("UPDATE users SET role='inspector' WHERE role='team'")
-        migrate_protected_admin(con)
             migrate_protected_admin(con)
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_label TEXT NOT NULL DEFAULT ''")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_discord_id TEXT NOT NULL DEFAULT ''")
@@ -376,6 +375,7 @@ def init_db():
             con.execute("ALTER TABLE users ADD COLUMN has_password INTEGER NOT NULL DEFAULT 1")
         con.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_discord_id_unique ON users(discord_id)")
         con.execute("UPDATE users SET role='inspector' WHERE role='team'")
+        migrate_protected_admin(con)
         session_columns = {row["name"] for row in con.execute("PRAGMA table_info(inspection_sessions)").fetchall()}
         if "target_label" not in session_columns:
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN target_label TEXT NOT NULL DEFAULT ''")
