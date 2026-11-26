@@ -3,7 +3,9 @@
   "name": "3en",
   "main": "worker.py",
   "compatibility_date": "2026-11-03",
-  "compatibility_flags": ["python_workers"],
+  "compatibility_flags": [
+    "python_workers"
+  ],
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",
@@ -15,5 +17,13 @@
       "enabled": true,
       "invocation_logs": true
     }
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "3en-inspect",
+      "database_id": "74bef233-d581-4204-8584-4539300c0805",
+      "migrations_dir": "migrations"
+    }
+  ]
 }
