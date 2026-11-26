@@ -18,6 +18,7 @@ ENV_KEYS = (
     "DISCORD_GUILD_ID",
     "DISCORD_ALLOWED_ROLE_ID",
     "DISCORD_BOT_TOKEN",
+    "DISCORD_WEBHOOK_URL",
     "GITHUB_ACTIONS_TOKEN",
     "GITHUB_REPOSITORY",
     "PUBLIC_DASHBOARD_URL",
@@ -46,8 +47,9 @@ class Default(WorkerEntrypoint):
         try:
             dashboard = importlib.import_module("dashboard_server")
             return await wsgi.fetch(dashboard.app, request, self.env)
-        except Exception:
-            # Do not expose secrets or internal stack traces to visitors.
+        except Exception as exc:
+            # Keep the traceback in Cloudflare logs, but never expose it to visitors.
+            print("3EN Inspect Worker error:", repr(exc))
             return Response(
                 "3EN Inspect is temporarily unavailable. Check Worker logs.",
                 status=500,
