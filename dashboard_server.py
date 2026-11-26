@@ -334,6 +334,8 @@ def init_db():
             con.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS has_password INTEGER NOT NULL DEFAULT 1")
             con.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_discord_id_unique ON users(discord_id)")
             con.execute("UPDATE users SET role='inspector' WHERE role='team'")
+        migrate_protected_admin(con)
+            migrate_protected_admin(con)
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_label TEXT NOT NULL DEFAULT ''")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_discord_id TEXT NOT NULL DEFAULT ''")
             con.execute("ALTER TABLE inspection_sessions ADD COLUMN IF NOT EXISTS target_nickname TEXT NOT NULL DEFAULT ''")
@@ -674,14 +676,37 @@ def log_action(actor, action):
         con.execute("INSERT INTO audit(actor,action,created_at) VALUES(?,?,?)", (actor, action[:240], now()))
 
 def is_root_admin(user):
-    """Recognize the protected 15j2 administrator by either dashboard or Discord username."""
+    """Recognize the protected 33ey administrator by either dashboard or Discord username."""
     if not user:
         return False
     identities = (
         str(user["username"] or "").strip().lstrip("@").casefold(),
         str(user["discord_username"] or "").strip().lstrip("@").casefold(),
     )
-    return "15j2" in identities
+    return "33ey" in identities
+
+def migrate_protected_admin(con):
+    """Promote the unique 33ey account before removing the former 15j2 account."""
+    targets = con.execute(
+        "SELECT id FROM users WHERE lower(username)=? OR lower(COALESCE(discord_username,''))=?",
+        ("33ey", "33ey")
+    ).fetchall()
+    if len(targets) != 1:
+        print("Protected-admin transfer skipped: expected exactly one 33ey account.")
+        return
+    target_id = targets[0]["id"]
+    con.execute(
+        "UPDATE users SET role='owner', can_view=1, can_ingest=1 WHERE id=?",
+        (target_id,)
+    )
+    former_accounts = con.execute(
+        "SELECT id FROM users WHERE lower(username)=? OR lower(COALESCE(discord_username,''))=?",
+        ("15j2", "15j2")
+    ).fetchall()
+    for former in former_accounts:
+        if former["id"] != target_id:
+            con.execute("DELETE FROM users WHERE id=?", (former["id"],))
+    print("Protected-admin transfer completed for 33ey; former 15j2 account removed when distinct.")
 
 def current_user():
     # Cache the authenticated user for this request. Decorators and page()
@@ -2181,7 +2206,7 @@ def users_page():
                     log_action(actor["username"],"updated permissions for "+target["username"])
                     flash("Permissions updated.")
         elif action=="role":
-            # 15j2 can change ranks for all other accounts, including Inspect Managers.
+            # 33ey can change ranks for all other accounts, including Inspect Managers.
             # Other Inspect Managers can change only accounts below their rank.
             if not is_root_admin(actor) and actor["role"] != "owner": abort(403)
             uid=request.form.get("user_id","")
@@ -2205,7 +2230,7 @@ def users_page():
                         log_action(actor["username"],"changed role for "+target["username"]+" to "+role)
                         flash("Role updated.")
         elif action=="delete":
-            # 15j2 may delete every lower rank, including Inspect Managers.
+            # 33ey may delete every lower rank, including Inspect Managers.
             # Other Inspect Managers may delete only accounts below their own rank.
             if not is_root_admin(actor) and actor["role"] != "owner":
                 abort(403)
