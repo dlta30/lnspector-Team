@@ -1,16 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "3en",
-  "main": "worker.py",
-  "compatibility_date": "2026-11-03",
+  "main": "src/worker.py",
+  "compatibility_date": "2026-11-26",
   "compatibility_flags": [
     "python_workers"
-  ],
-  "hyperdrive": [
-    {
-      "binding": "HYPERDRIVE",
-      "id": "3bd23c23334d4aa5854c4dc3e367e121"
-    }
   ],
   "observability": {
     "logs": {
