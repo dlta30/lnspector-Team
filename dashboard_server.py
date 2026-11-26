@@ -250,6 +250,9 @@ class PgConnection:
         return cursor
 
 def db():
+    if os.environ.get("CLOUDFLARE_D1") == "1":
+        from d1_database import D1Connection
+        return D1Connection()
     if DATABASE_URL:
         # Reuse one PostgreSQL connection for the lifetime of the current
         # Flask request. Pages often perform several small queries; opening
@@ -293,6 +296,51 @@ def close_request_database_connection(_error=None):
             app.logger.exception("Failed to close request PostgreSQL connection")
 
 def init_db():
+    if os.environ.get("CLOUDFLARE_D1") == "1":
+        with db() as con:
+            con.executescript(SCHEMA)
+            migrations = {
+                "users": {
+                    "login_token": "TEXT",
+                    "created_by": "TEXT",
+                    "discord_id": "TEXT",
+                    "discord_username": "TEXT",
+                    "discord_server_name": "TEXT",
+                    "discord_avatar": "TEXT",
+                    "has_password": "INTEGER NOT NULL DEFAULT 1",
+                },
+                "inspection_sessions": {
+                    "target_label": "TEXT NOT NULL DEFAULT ''",
+                    "target_discord_id": "TEXT NOT NULL DEFAULT ''",
+                    "target_nickname": "TEXT NOT NULL DEFAULT ''",
+                    "target_username": "TEXT NOT NULL DEFAULT ''",
+                    "downloaded_at": "TEXT",
+                },
+                "reports": {
+                    "review_verdict": "TEXT NOT NULL DEFAULT 'pending'",
+                    "review_reason": "TEXT NOT NULL DEFAULT ''",
+                    "reviewed_by": "TEXT NOT NULL DEFAULT ''",
+                    "reviewed_at": "TEXT",
+                    "discord_sent_at": "TEXT",
+                },
+            }
+            for table, columns in migrations.items():
+                existing = {row["name"] for row in con.execute(f"PRAGMA table_info({table})").fetchall()}
+                for column, definition in columns.items():
+                    if column not in existing:
+                        con.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+            con.execute("CREATE UNIQUE INDEX IF NOT EXISTS users_discord_id_unique ON users(discord_id) WHERE discord_id IS NOT NULL")
+            con.execute("UPDATE users SET role='inspector' WHERE role='team'")
+            row = con.execute("SELECT id FROM users WHERE role='owner' LIMIT 1").fetchone()
+            if not row and OWNER_PASSWORD:
+                con.execute(
+                    "INSERT INTO users(username,password_hash,role,can_view,can_ingest,created_at) VALUES(?,?,?,?,?,?)",
+                    (OWNER_USER, generate_password_hash(OWNER_PASSWORD), "owner", 1, 1, now()),
+                )
+            elif not row:
+                print("FIRST RUN: set INSPECTOR_OWNER_PASSWORD to a strong password before logging in.")
+        print("Inspect database: Cloudflare D1")
+        return
     if DATABASE_URL:
         print("Inspect database: PostgreSQL (DATABASE_URL)")
         schema = """
