@@ -8,6 +8,8 @@ version = "1.0.0"
 requires-python = ">=3.12"
 dependencies = [
     "Flask>=3.0,<4.0",
+    "workers-py>=1.9,<2.0",
+    "workers-runtime-sdk>=1.0",
     "pg8000>=1.31,<2.0",
     "reportlab>=4.0,<5.0",
     "gunicorn>=23.0,<24.0",
@@ -19,8 +21,3 @@ dependencies = [
 [tool.setuptools]
 py-modules = ["dashboard_server"]
 
-[dependency-groups]
-dev = [
-    "workers-py>=1.9,<2.0",
-    "workers-runtime-sdk>=1.0",
-]
